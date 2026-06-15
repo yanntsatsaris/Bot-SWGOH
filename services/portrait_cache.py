@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import requests
+import cloudscraper
 
 log = logging.getLogger(__name__)
 
@@ -18,11 +18,8 @@ _PORTRAIT_URL_TEMPLATES = [
     "https://swgoh.gg/static/img/assets/tex.avatars_{base_id_lower}.png",
 ]
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SwgohBot/1.0)",
-    "Referer": "https://swgoh.gg/",
-}
 _TIMEOUT = 15
+_scraper = cloudscraper.create_scraper()
 
 
 def get_portrait_path(base_id: str) -> Path:
@@ -46,12 +43,12 @@ def download_portrait(base_id: str) -> bool:
     for template in _PORTRAIT_URL_TEMPLATES:
         url = template.format(base_id=base_id, base_id_lower=base_id.lower())
         try:
-            resp = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT)
+            resp = _scraper.get(url, timeout=_TIMEOUT)
             if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
                 dest.write_bytes(resp.content)
                 log.debug("Portrait téléchargé : %s", base_id)
                 return True
-        except requests.RequestException:
+        except Exception:
             continue
 
     log.debug("Portrait introuvable : %s", base_id)

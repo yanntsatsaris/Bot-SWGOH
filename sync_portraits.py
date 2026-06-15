@@ -5,11 +5,14 @@ sync_portraits.py — Télécharge tous les portraits SWGOH en cache local
 import logging
 import sys
 import time
-import cloudscraper
 from pathlib import Path
-from dotenv import load_dotenv
 
+# On charge le .env AVANT d'importer config
+from dotenv import load_dotenv
 load_dotenv()
+
+import requests
+import cloudscraper
 
 from config import COMLINK_URL
 from services.portrait_cache import PORTRAITS_DIR, get_portrait_path
@@ -22,10 +25,9 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-_HTTP_TIMEOUT = 20
+_HTTP_TIMEOUT = 15
 _DELAY = 0.2
 
-# Utilisation de cloudscraper pour contourner les protections
 _SCRAPER = cloudscraper.create_scraper(
     browser={"browser": "chrome", "platform": "linux", "mobile": False}
 )
@@ -33,40 +35,47 @@ _SCRAPER = cloudscraper.create_scraper(
 def _comlink_metadata() -> dict:
     url = f"{COMLINK_URL.rstrip('/')}/metadata"
     try:
-        resp = _SCRAPER.get(url, timeout=_HTTP_TIMEOUT)
+        resp = requests.get(url, timeout=5)
         if resp.status_code == 200: return resp.json()
     except Exception: pass
     try:
-        resp = _SCRAPER.post(url, json={}, timeout=_HTTP_TIMEOUT)
+        resp = requests.post(url, json={}, timeout=5)
         if resp.status_code == 200: return resp.json()
     except Exception: pass
     return {}
 
 def _comlink_data(collection: str) -> list:
     url = f"{COMLINK_URL.rstrip('/')}/data"
-    for p in [{"payload": {"collection": collection}}, {"collection": collection}]:
+    payloads = [
+        {"payload": {"collection": collection}},
+        {"collection": collection}
+    ]
+    for p in payloads:
         try:
-            resp = _SCRAPER.post(url, json=p, timeout=_HTTP_TIMEOUT)
+            resp = requests.post(url, json=p, timeout=10)
             if resp.status_code == 200:
                 data = resp.json()
-                return data if isinstance(data, list) else data.get(collection, [])
+                if isinstance(data, list): return data
+                return data.get(collection, [])
         except Exception: continue
     return []
 
-def _get_cdn_url(meta: dict) -> str:
-    for key in ["assetBundleUrl", "assetsUrl", "assetUrl", "cdnRoot"]:
-        if meta.get(key): return str(meta[key]).rstrip("/")
-    return ""
+def _get_fallback_thumb_map() -> dict:
+    url = "https://raw.githubusercontent.com/swgoh-utils/swgoh-data/master/units.json"
+    try:
+        resp = requests.get(url, timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return {u.get("base_id", "").upper(): u.get("thumbnail_name") for u in data if u.get("base_id")}
+    except Exception: pass
+    return {}
 
 def _download(url: str, dest: Path) -> bool:
     try:
-        resp = _SCRAPER.get(url, timeout=_HTTP_TIMEOUT)
-        if resp.status_code == 200 and (
-            resp.headers.get("content-type", "").startswith("image") or
-            url.endswith(".png") or url.endswith("/")
-        ):
-            # Certains serveurs ne renvoient pas le bon content-type mais renvoient l'image
-            if len(resp.content) > 1000: # Un portrait fait plus de 1ko
+        client = _SCRAPER if "swgoh.gg" in url else requests
+        resp = client.get(url, timeout=_HTTP_TIMEOUT, allow_redirects=True)
+        if resp.status_code == 200 and len(resp.content) > 2000:
+            if b"PNG" in resp.content[:10] or b"JFIF" in resp.content[:10]:
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_bytes(resp.content)
                 return True
@@ -75,42 +84,36 @@ def _download(url: str, dest: Path) -> bool:
 
 def main():
     meta = _comlink_metadata()
-    cdn_base = _get_cdn_url(meta)
+    cdn_base = str(meta.get("assetBundleUrl") or meta.get("assetsUrl") or "").rstrip("/")
 
-    units = _comlink_data("unitsList")
-    thumb_map = {u.get("baseId", "").upper(): u.get("thumbnailName") for u in units if u.get("baseId")}
+    log.info("Récupération des métadonnées des unités...")
+    thumb_map = {u.get("baseId", "").upper(): u.get("thumbnailName") for u in _comlink_data("unitsList") if u.get("baseId")}
+    if not thumb_map:
+        log.info("Tentative via source externe...")
+        thumb_map = _get_fallback_thumb_map()
 
     base_ids = list(STATIC_NAMES.keys())
-    log.info("Début de la synchronisation pour %d unités...", len(base_ids))
+    log.info("Synchronisation de %d portraits...", len(base_ids))
 
     ok = 0
     for bid in base_ids:
         dest = get_portrait_path(bid)
-        if dest.exists():
+        if dest.exists() and dest.stat().st_size > 2000:
             ok += 1
             continue
 
         thumb = thumb_map.get(bid) or f"tex.avatars_{bid.lower()}"
-        if thumb.startswith("tex.avatars_") and not thumb.endswith(".png"):
-            thumb_file = thumb + ".png"
-        else:
-            thumb_file = thumb if thumb.endswith(".png") else f"{thumb}.png"
+        thumb = thumb.replace(".png", "")
 
-        # Liste étendue d'URLs
-        urls = []
-        if cdn_base:
-            urls.append(f"{cdn_base}/{thumb_file}")
-            urls.append(f"{cdn_base}/Android/{thumb_file}")
-
-        # Patterns swgoh.gg officiels et alternatifs
-        urls.extend([
-            f"https://game-assets.swgoh.gg/{thumb_file}",
-            f"https://static-swgoh.gg/game-asset/u/{bid}/",
+        urls = [
             f"https://swgoh.gg/game-asset/u/{bid}/",
-            f"https://static-swgoh.gg/game-asset/u/{bid.lower()}/",
-        ])
+            f"https://game-assets.swgoh.gg/{thumb}.png",
+            f"https://swgoh.gg/static/img/assets/{thumb}.png",
+        ]
+        if cdn_base:
+            urls.insert(0, f"{cdn_base}/{thumb}.png")
+            urls.insert(1, f"{cdn_base}/Android/{thumb}.png")
 
-        # Test des URLs
         found = False
         for url in urls:
             if _download(url, dest):
@@ -121,9 +124,9 @@ def main():
             time.sleep(_DELAY)
 
         if not found:
-            log.warning("✗ Impossible de trouver le portrait pour %s (thumb=%s)", bid, thumb)
+            log.warning("✗ Échec pour %s (thumb=%s)", bid, thumb)
 
-    log.info("Terminé : %d/%d portraits disponibles.", ok, len(base_ids))
+    log.info("Terminé : %d/%d portraits synchronisés.", ok, len(base_ids))
 
 if __name__ == "__main__":
     main()

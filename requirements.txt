@@ -1,0 +1,11 @@
+# Discord
+discord.py==2.4.0
+
+# Variables d'environnement
+python-dotenv==1.0.1
+
+# Requêtes HTTP asynchrones (pour l'API SWGOH)
+aiohttp==3.10.5
+
+# SQLite asynchrone
+aiosqlite==0.20.0

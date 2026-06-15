@@ -13,5 +13,8 @@ DISCORD_GUILD_ID: str | None = os.getenv("DISCORD_GUILD_ID") or None
 # --- API SWGOH ---
 SWGOH_API_URL: str = os.getenv("SWGOH_API_URL", "https://swgoh.gg/api").rstrip("/")
 
+# --- Comlink (auto-hébergé) ---
+COMLINK_URL: str = os.getenv("COMLINK_URL", "http://localhost:3000").rstrip("/")
+
 # --- Base de données ---
 DATABASE_PATH: str = os.getenv("DATABASE_PATH", "database/swgoh.db")

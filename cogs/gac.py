@@ -88,12 +88,38 @@ class GacCog(commands.Cog, name="GAC"):
             title=f"Statistiques GAC — {stats['username']}",
             color=discord.Color.gold(),
         )
-        embed.add_field(name="Ligue",       value=stats.get("league", "N/A"),    inline=True)
-        embed.add_field(name="Division",    value=stats.get("division", "N/A"),  inline=True)
-        embed.add_field(name="Classement",  value=stats.get("rank", "N/A"),      inline=True)
-        embed.add_field(name="Victoires",   value=stats.get("wins", 0),          inline=True)
-        embed.add_field(name="Défaites",    value=stats.get("losses", 0),        inline=True)
-        embed.set_footer(text="Source : SWGOH.GG")
+
+        gac_rank  = stats.get("gac_rank")
+        gac_squad = stats.get("gac_squad", [])
+
+        embed.add_field(
+            name="🏆 Classement GAC",
+            value=f"**#{gac_rank}**" if gac_rank else "N/A",
+            inline=True,
+        )
+        embed.add_field(
+            name="⚔️ Classement Arène",
+            value=f"**#{stats.get('arena_rank')}**" if stats.get("arena_rank") else "N/A",
+            inline=True,
+        )
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+
+        if gac_squad:
+            leader = gac_squad[0]
+            members_text = "  ·  ".join(
+                f"**{m}**" if m == leader else m for m in gac_squad
+            )
+            embed.add_field(name="👥 Équipe GAC défense", value=members_text, inline=False)
+
+        arena_squad = stats.get("arena_squad", [])
+        if arena_squad:
+            leader = arena_squad[0]
+            members_text = "  ·  ".join(
+                f"**{m}**" if m == leader else m for m in arena_squad
+            )
+            embed.add_field(name="🛡️ Équipe Arène", value=members_text, inline=False)
+
+        embed.set_footer(text="Source : SWGOH Comlink")
 
         await interaction.followup.send(embed=embed)
 

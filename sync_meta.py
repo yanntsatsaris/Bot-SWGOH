@@ -18,6 +18,7 @@ import time
 from datetime import datetime
 
 import requests
+import cloudscraper
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -63,27 +64,33 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 def fetch_page(url: str) -> BeautifulSoup | None:
     """
-    Récupère une page HTML avec retry automatique.
+    Récupère une page HTML avec cloudscraper (gère le challenge Cloudflare)
+    et retry automatique.
 
     Returns:
         Objet BeautifulSoup parsé, ou None en cas d'échec définitif.
     """
+    # cloudscraper se comporte comme un navigateur réel face à Cloudflare
+    scraper = cloudscraper.create_scraper(
+        browser={"browser": "chrome", "platform": "linux", "mobile": False}
+    )
+
     for attempt in range(1, RETRY_ATTEMPTS + 1):
         try:
             log.info("[%d/%d] GET %s", attempt, RETRY_ATTEMPTS, url)
-            response = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+            response = scraper.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()
             return BeautifulSoup(response.text, "lxml")
         except requests.exceptions.HTTPError as exc:
             log.error("Erreur HTTP %s : %s", exc.response.status_code, url)
             if exc.response.status_code in (403, 404, 410):
-                break  # Pas la peine de réessayer sur ces codes
+                break
         except requests.exceptions.ConnectionError:
             log.error("Connexion impossible à %s", url)
         except requests.exceptions.Timeout:
             log.error("Timeout sur %s", url)
-        except requests.exceptions.RequestException as exc:
-            log.error("Erreur réseau : %s", exc)
+        except Exception as exc:
+            log.error("Erreur inattendue : %s", exc)
 
         if attempt < RETRY_ATTEMPTS:
             log.info("Nouvelle tentative dans %ds…", RETRY_DELAY)

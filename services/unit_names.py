@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 # Dictionnaire statique — unités GAC les plus fréquentes
 # Clé : base_id Comlink (MAJUSCULES)  |  Valeur : nom affiché
 # ---------------------------------------------------------------------------
-_STATIC_NAMES: dict[str, str] = {
+STATIC_NAMES: dict[str, str] = {
     # --- Sith / Empire ---
     "SITHPALPATINE":                "Sith Eternal Emperor",
     "DARTHVADER":                   "Darth Vader",
@@ -150,7 +150,7 @@ async def build_name_cache() -> None:
     except Exception:
         log.debug("Comlink /localization indisponible, utilisation du dictionnaire statique")
 
-    _cache = dict(_STATIC_NAMES)
+    _cache = dict(STATIC_NAMES)
     log.info("Cache noms chargé depuis dictionnaire statique : %d unités", len(_cache))
 
 
@@ -162,4 +162,4 @@ def get_name(base_id: str) -> str:
     if not _cache:
         # Fallback immédiat sans await si le cache n'est pas initialisé
         return _STATIC_NAMES.get(base_id.upper(), base_id.replace("_", " ").title())
-    return _cache.get(base_id.upper(), _STATIC_NAMES.get(base_id.upper(), base_id.replace("_", " ").title()))
+    return _cache.get(base_id.upper(), STATIC_NAMES.get(base_id.upper(), base_id.replace("_", " ").title()))

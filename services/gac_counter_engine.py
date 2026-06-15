@@ -9,11 +9,12 @@ Logique :
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
-from services.comlink import get_player_roster
-from services.unit_names import get_name
+from services.comlink import get_player, get_player_roster
+from services.unit_names import get_name, STATIC_NAMES
 from database.db import get_db
 
 log = logging.getLogger(__name__)
@@ -62,6 +63,25 @@ def _is_gac_ready(unit: dict) -> bool:
 def _build_roster_index(roster: list[dict]) -> dict[str, dict]:
     """Indexe le roster par base_id pour un accès O(1)."""
     return {u["base_id"].upper(): u for u in roster}
+
+
+async def _get_roster_and_profile(ally_code: str) -> tuple[list[dict], dict]:
+    """Récupère roster + profil en un seul appel (réutilise get_player)."""
+    profile = await get_player(ally_code)
+    roster: list[dict] = []
+    for unit in profile.get("rosterUnit", []):
+        def_id  = unit.get("definitionId", "")
+        base_id = def_id.split(":")[0] if ":" in def_id else def_id
+        if not base_id:
+            continue
+        roster.append({
+            "base_id":    base_id,
+            "rarity":     unit.get("currentRarity", 0),
+            "level":      unit.get("currentLevel", 0),
+            "gear_tier":  unit.get("currentTier", 0),
+            "relic_tier": unit.get("relic", {}).get("currentTier", 0),
+        })
+    return roster, profile
 
 
 def _detect_enemy_meta_teams(
@@ -142,14 +162,11 @@ def _filter_owned_counters(
     Retourne des dicts {name, relic_tier, gear_tier, ready}.
     """
     result = []
+    # Construire le reverse mapping nom → base_id une seule fois
+    name_to_id: dict[str, str] = {v: k for k, v in STATIC_NAMES.items()}
+
     for name in counter_names:
-        # Cherche par nom dans l'index (qui est indexé par base_id)
-        # On fait une recherche inverse via le dict statique
-        from services.unit_names import _STATIC_NAMES
-        base_id = next(
-            (bid for bid, n in _STATIC_NAMES.items() if n == name),
-            None,
-        )
+        base_id = name_to_id.get(name)
         unit = my_index.get(base_id.upper()) if base_id else None
         result.append({
             "name":       name,
@@ -159,7 +176,6 @@ def _filter_owned_counters(
             "ready":      _is_gac_ready(unit) if unit else False,
             "owned":      unit is not None,
         })
-    # Trier : prêts en premier, puis possédés, puis non possédés
     result.sort(key=lambda c: (not c["ready"], not c["owned"]))
     return result
 
@@ -187,20 +203,15 @@ async def analyze_matchup(
         - suggestions     : liste de {enemy_team, counters[]}
         - fmt             : format analysé
     """
-    # Récupération en parallèle des deux rosters
-    import asyncio
-    my_roster, enemy_roster = await asyncio.gather(
-        get_player_roster(my_ally_code),
-        get_player_roster(enemy_ally_code),
+    # Récupération en parallèle des deux rosters + nom ennemi
+    (my_roster, my_profile), (enemy_roster, enemy_profile) = await asyncio.gather(
+        _get_roster_and_profile(my_ally_code),
+        _get_roster_and_profile(enemy_ally_code),
     )
 
     my_index    = _build_roster_index(my_roster)
     enemy_index = _build_roster_index(enemy_roster)
-
-    # Récupérer le nom de l'ennemi
-    from services.comlink import get_player
-    enemy_profile = await get_player(enemy_ally_code)
-    enemy_name = enemy_profile.get("name", enemy_ally_code)
+    enemy_name  = enemy_profile.get("name", enemy_ally_code)
 
     # Détecter les équipes méta de l'ennemi
     enemy_teams = _detect_enemy_meta_teams(enemy_index, fmt)

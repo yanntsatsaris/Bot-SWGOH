@@ -47,4 +47,21 @@ CREATE_TABLES_SQL: list[str] = [
         cached_at   TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
+
+    # ------------------------------------------------------------------
+    # Équipes méta GAC (alimentée par sync_meta.py via cron)
+    # ------------------------------------------------------------------
+    """
+    CREATE TABLE IF NOT EXISTS meta_teams (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        leader_name  TEXT    NOT NULL,
+        members      TEXT    NOT NULL,   -- JSON array de noms de personnages
+        counters     TEXT,               -- JSON array de leader_name adverses
+        format       TEXT    NOT NULL CHECK(format IN ('5v5', '3v3')),
+        win_rate     REAL,               -- 0.0 à 1.0  (ex : 0.72 = 72%)
+        usage_rate   REAL,               -- popularité relative
+        source_url   TEXT,               -- URL source pour traçabilité
+        updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
 ]

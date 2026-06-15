@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 INITIAL_EXTENSIONS = [
     "cogs.gac",
     "cogs.admin",
+    "cogs.gac_test",
 ]
 
 

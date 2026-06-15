@@ -79,7 +79,7 @@ async def _get_roster_and_profile(ally_code: str) -> tuple[list[dict], dict]:
             "rarity":     unit.get("currentRarity", 0),
             "level":      unit.get("currentLevel", 0),
             "gear_tier":  unit.get("currentTier", 0),
-            "relic_tier": unit.get("relic", {}).get("currentTier", 0),
+            "relic_tier": (unit.get("relic") or {}).get("currentTier", 0),
         })
     return roster, profile
 

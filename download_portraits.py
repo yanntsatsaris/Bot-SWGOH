@@ -1,8 +1,8 @@
 """
-download_portraits.py — Télécharge les portraits SWGOH depuis GitHub swgoh-assets
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ce script permet de récupérer l'intégralité des portraits de personnages
-directement depuis le dépôt communautaire Aetb/swgoh-assets.
+download_portraits.py — Télécharge les portraits SWGOH via swgoh-ae2
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ce script utilise l'API locale swgoh-ae2 (port 3001) pour extraire
+les textures officielles du jeu.
 
 Usage :
     python3 download_portraits.py
@@ -10,100 +10,86 @@ Usage :
 import os
 import sys
 import requests
+import time
 from pathlib import Path
 
+# Tentative de chargement du mapping des noms pour avoir les base_id réels
+try:
+    from services.unit_names import STATIC_NAMES
+    BASE_IDS = list(STATIC_NAMES.keys())
+except ImportError:
+    # Fallback minimal si les services ne sont pas accessibles
+    BASE_IDS = ["SITHPALPATINE", "DARTHVADER", "JEDIMASTERKENOBI"]
+
 # --- Configuration ---
-# Dépôt source (fourni par l'utilisateur)
-REPO_OWNER = "Aetb"
-REPO_NAME = "swgoh-assets"
-REPO_PATH = "tex/characters"
-
-# URLs
-API_URL = f"https://api.github.com/repos/{REPO_OWNER}/{REPO_NAME}/contents/{REPO_PATH}"
-HEADERS = {"User-Agent": "SWGOH-Portrait-Downloader"}
-
-# Dossier local de destination (doit correspondre à la config du bot)
+# L'Asset Extractor tourne sur le port 3001 (Docker)
+AE2_URL = "http://localhost:3001"
 DEST_DIR = Path("assets/portraits")
 
-def download_portraits():
+def download_portrait(base_id):
     """
-    Liste et télécharge tous les portraits PNG du dépôt GitHub.
+    Télécharge un portrait unique.
+    L'Asset Extractor utilise généralement le préfixe 'charui_' pour les unités.
     """
-    print("🚀 Initialisation du téléchargement des portraits...")
+    # Le nom de l'asset dans les fichiers du jeu
+    asset_name = f"charui_{base_id.lower()}"
 
-    # 1. Création du dossier si nécessaire
+    # Construction de l'URL AE2
+    # On forceReDownload=false pour économiser les ressources si déjà extrait
+    url = f"{AE2_URL}/Asset/single?assetName={asset_name}&forceReDownload=false"
+
+    dest_path = DEST_DIR / f"{base_id.lower()}.png"
+
+    try:
+        response = requests.get(url, timeout=45) # Extraction peut être lente
+        if response.status_code == 200:
+            # On vérifie qu'on a bien reçu une image PNG
+            if response.content.startswith(b'\x89PNG'):
+                dest_path.write_bytes(response.content)
+                return True
+            else:
+                # Log d'erreur si AE2 renvoie autre chose (ex: JSON d'erreur)
+                log_msg = response.text[:100]
+                return False
+    except Exception:
+        return False
+    return False
+
+def main():
+    print("🎨 SWGOH Portrait Downloader (via AE2)")
+    print(f"🔗 Connexion à swgoh-ae2 sur {AE2_URL}...")
+
+    # 1. Préparation dossier
     if not DEST_DIR.exists():
         DEST_DIR.mkdir(parents=True, exist_ok=True)
-        print(f"✅ Dossier créé : {DEST_DIR}")
-    else:
-        print(f"ℹ️  Dossier cible : {DEST_DIR}")
 
-    # 2. Récupération de la liste des fichiers via l'API GitHub
-    print(f"🔍 Connexion à GitHub ({REPO_OWNER}/{REPO_NAME})...")
+    # 2. Synchronisation du Manifest (optionnel mais recommandé)
+    print("⏳ Mise à jour du Manifest AE2...")
     try:
-        response = requests.get(API_URL, headers=HEADERS, timeout=20)
+        requests.get(f"{AE2_URL}/Asset/downloadManifest", timeout=60)
+    except:
+        print("⚠️  Avertissement : Impossible de forcer la mise à jour du manifest.")
 
-        if response.status_code == 404:
-            print(f"❌ Erreur : Le chemin '{REPO_PATH}' n'a pas été trouvé dans le dépôt '{REPO_OWNER}/{REPO_NAME}'.")
-            return
-        elif response.status_code == 403:
-            print("❌ Erreur : Limite de taux API GitHub atteinte. Réessayez plus tard.")
-            return
+    # 3. Boucle de téléchargement
+    total = len(BASE_IDS)
+    print(f"📦 {total} personnages à traiter.\n")
 
-        response.raise_for_status()
-        files = response.json()
-    except Exception as e:
-        print(f"❌ Impossible de récupérer la liste des fichiers : {e}")
-        return
-
-    # 3. Filtrage des fichiers (uniquement les images PNG)
-    images = [f for f in files if f['type'] == 'file' and f['name'].endswith('.png')]
-    total = len(images)
-
-    if total == 0:
-        print("⚠️ Aucun portrait trouvé dans le répertoire distant.")
-        return
-
-    print(f"📦 {total} portraits détectés. Début du transfert...\n")
-
-    # 4. Boucle de téléchargement
     downloaded = 0
-    errors = 0
+    for i, bid in enumerate(BASE_IDS, 1):
+        # Barre de progression
+        percent = (i / total) * 100
+        bar = '█' * int(percent / 4) + '-' * (25 - int(percent / 4))
 
-    for index, file_info in enumerate(images, 1):
-        raw_name = file_info['name']
-        download_url = file_info['download_url']
-
-        # Nettoyage du nom pour le format attendu par le bot (base_id.png)
-        # On retire le préfixe 'tex.avatars_' et on passe en minuscule
-        clean_name = raw_name.replace("tex.avatars_", "").lower()
-        save_path = DEST_DIR / clean_name
-
-        try:
-            # Téléchargement effectif
-            img_res = requests.get(download_url, headers=HEADERS, timeout=15)
-            img_res.raise_for_status()
-            save_path.write_bytes(img_res.content)
-            downloaded += 1
-        except Exception:
-            errors += 1
-            # On continue malgré l'erreur sur ce fichier
-
-        # --- Barre de progression simple ---
-        progress = (index / total) * 100
-        bar_len = 35
-        filled_len = int(bar_len * index // total)
-        bar = '█' * filled_len + '-' * (bar_len - filled_len)
-
-        # Affichage dynamique sur la même ligne
-        sys.stdout.write(f"\r|{bar}| {progress:3.0f}% ({index}/{total}) {clean_name[:20]:<20}")
+        sys.stdout.write(f"\r|{bar}| {percent:3.0f}% [{i}/{total}] {bid[:15]:<15}")
         sys.stdout.flush()
 
-    print(f"\n\n✨ Opération terminée !")
-    print(f"✅ Portraits téléchargés : {downloaded}")
-    if errors > 0:
-        print(f"❌ Échecs : {errors}")
-    print(f"📂 Localisation : {DEST_DIR.absolute()}")
+        if download_portrait(bid):
+            downloaded += 1
+
+        # Petit temps de pause pour laisser le conteneur respirer
+        time.sleep(0.1)
+
+    print(f"\n\n✨ Terminé ! {downloaded}/{total} portraits sont disponibles dans {DEST_DIR}.")
 
 if __name__ == "__main__":
-    download_portraits()
+    main()

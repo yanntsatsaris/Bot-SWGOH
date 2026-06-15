@@ -89,27 +89,17 @@ class GacCog(commands.Cog, name="GAC"):
             color=discord.Color.gold(),
         )
 
-        gac_rank  = stats.get("gac_rank")
-        gac_squad = stats.get("gac_squad", [])
+        fmt = stats.get("format", "?").upper()
 
-        embed.add_field(
-            name="🏆 Classement GAC",
-            value=f"**#{gac_rank}**" if gac_rank else "N/A",
-            inline=True,
-        )
-        embed.add_field(
-            name="⚔️ Classement Arène",
-            value=f"**#{stats.get('arena_rank')}**" if stats.get("arena_rank") else "N/A",
-            inline=True,
-        )
+        embed.add_field(name="🏆 Ligue",        value=stats.get("league", "N/A"),          inline=True)
+        embed.add_field(name="📊 Division",      value=stats.get("division", "N/A"),         inline=True)
+        embed.add_field(name="🎯 Classement",    value=f"#{stats['rank']}" if stats.get("rank") else "N/A", inline=True)
+        embed.add_field(name="✅ Victoires",      value=str(stats.get("wins", 0)),            inline=True)
+        embed.add_field(name="❌ Défaites",       value=str(stats.get("losses", 0)),           inline=True)
+        embed.add_field(name="⭐ Points saison",  value=str(stats.get("season_points", 0)),   inline=True)
+        embed.add_field(name="⚔️ Format",         value=fmt,                                  inline=True)
+        embed.add_field(name="🛡️ Arène rank",    value=f"#{stats['arena_rank']}" if stats.get("arena_rank") else "N/A", inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-        if gac_squad:
-            leader = gac_squad[0]
-            members_text = "  ·  ".join(
-                f"**{m}**" if m == leader else m for m in gac_squad
-            )
-            embed.add_field(name="👥 Équipe GAC défense", value=members_text, inline=False)
 
         arena_squad = stats.get("arena_squad", [])
         if arena_squad:
@@ -117,7 +107,7 @@ class GacCog(commands.Cog, name="GAC"):
             members_text = "  ·  ".join(
                 f"**{m}**" if m == leader else m for m in arena_squad
             )
-            embed.add_field(name="🛡️ Équipe Arène", value=members_text, inline=False)
+            embed.add_field(name="👥 Équipe Arène", value=members_text, inline=False)
 
         embed.set_footer(text="Source : SWGOH Comlink")
 

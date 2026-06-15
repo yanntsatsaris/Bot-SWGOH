@@ -1,18 +1,11 @@
 """
 sync_portraits.py — Télécharge tous les portraits SWGOH en cache local
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Stratégie :
-  1. Récupère l'URL du CDN EA via /metadata Comlink
-  2. Récupère la liste des unités via /data pour avoir les thumbnailName réels
-  3. Télécharge depuis le CDN EA ou swgoh.gg (plusieurs patterns)
-
-Usage :
-    python sync_portraits.py
 """
 import logging
 import sys
 import time
-import requests
+import cloudscraper
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -30,69 +23,54 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 _HTTP_TIMEOUT = 20
-_DELAY = 0.1
+_DELAY = 0.2
 
-_SESSION = requests.Session()
-_SESSION.headers.update({
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-})
+# Utilisation de cloudscraper pour contourner les protections
+_SCRAPER = cloudscraper.create_scraper(
+    browser={"browser": "chrome", "platform": "linux", "mobile": False}
+)
 
 def _comlink_metadata() -> dict:
-    """Tente de récupérer les métadonnées (GET ou POST)."""
     url = f"{COMLINK_URL.rstrip('/')}/metadata"
-    # Essai GET
     try:
-        resp = _SESSION.get(url, timeout=_HTTP_TIMEOUT)
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-
-    # Essai POST
+        resp = _SCRAPER.get(url, timeout=_HTTP_TIMEOUT)
+        if resp.status_code == 200: return resp.json()
+    except Exception: pass
     try:
-        resp = _SESSION.post(url, json={}, timeout=_HTTP_TIMEOUT)
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-
-    log.warning("Impossible de récupérer les metadata Comlink sur %s", url)
+        resp = _SCRAPER.post(url, json={}, timeout=_HTTP_TIMEOUT)
+        if resp.status_code == 200: return resp.json()
+    except Exception: pass
     return {}
 
 def _comlink_data(collection: str) -> list:
-    """Récupère une collection via /data."""
     url = f"{COMLINK_URL.rstrip('/')}/data"
-    payloads = [
-        {"payload": {"collection": collection}},
-        {"collection": collection}
-    ]
-    for p in payloads:
+    for p in [{"payload": {"collection": collection}}, {"collection": collection}]:
         try:
-            resp = _SESSION.post(url, json=p, timeout=_HTTP_TIMEOUT)
+            resp = _SCRAPER.post(url, json=p, timeout=_HTTP_TIMEOUT)
             if resp.status_code == 200:
                 data = resp.json()
-                if isinstance(data, list): return data
-                return data.get(collection, [])
-        except Exception:
-            continue
+                return data if isinstance(data, list) else data.get(collection, [])
+        except Exception: continue
     return []
 
 def _get_cdn_url(meta: dict) -> str:
-    """Extrait l'URL du CDN."""
     for key in ["assetBundleUrl", "assetsUrl", "assetUrl", "cdnRoot"]:
-        if meta.get(key):
-            return str(meta[key]).rstrip("/")
+        if meta.get(key): return str(meta[key]).rstrip("/")
     return ""
 
 def _download(url: str, dest: Path) -> bool:
     try:
-        resp = _SESSION.get(url, timeout=_HTTP_TIMEOUT)
-        if resp.status_code == 200 and resp.headers.get("content-type", "").startswith("image"):
-            dest.parent.mkdir(parents=True, exist_ok=True)
-            dest.write_bytes(resp.content)
-            return True
-    except Exception:
-        pass
+        resp = _SCRAPER.get(url, timeout=_HTTP_TIMEOUT)
+        if resp.status_code == 200 and (
+            resp.headers.get("content-type", "").startswith("image") or
+            url.endswith(".png") or url.endswith("/")
+        ):
+            # Certains serveurs ne renvoient pas le bon content-type mais renvoient l'image
+            if len(resp.content) > 1000: # Un portrait fait plus de 1ko
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(resp.content)
+                return True
+    except Exception: pass
     return False
 
 def main():
@@ -100,12 +78,7 @@ def main():
     cdn_base = _get_cdn_url(meta)
 
     units = _comlink_data("unitsList")
-    thumb_map = {}
-    for u in units:
-        bid = u.get("baseId")
-        thumb = u.get("thumbnailName")
-        if bid and thumb:
-            thumb_map[bid.upper()] = thumb
+    thumb_map = {u.get("baseId", "").upper(): u.get("thumbnailName") for u in units if u.get("baseId")}
 
     base_ids = list(STATIC_NAMES.keys())
     log.info("Début de la synchronisation pour %d unités...", len(base_ids))
@@ -117,30 +90,40 @@ def main():
             ok += 1
             continue
 
-        thumb = thumb_map.get(bid, f"tex.avatars_{bid.lower()}")
+        thumb = thumb_map.get(bid) or f"tex.avatars_{bid.lower()}"
+        if thumb.startswith("tex.avatars_") and not thumb.endswith(".png"):
+            thumb_file = thumb + ".png"
+        else:
+            thumb_file = thumb if thumb.endswith(".png") else f"{thumb}.png"
 
-        # Liste des URLs à tester
+        # Liste étendue d'URLs
         urls = []
         if cdn_base:
-            urls.append(f"{cdn_base}/{thumb}.png")
-            urls.append(f"{cdn_base}/Android/{thumb}.png")
+            urls.append(f"{cdn_base}/{thumb_file}")
+            urls.append(f"{cdn_base}/Android/{thumb_file}")
 
+        # Patterns swgoh.gg officiels et alternatifs
         urls.extend([
-            f"https://game-assets.swgoh.gg/{thumb}.png",
-            f"https://swgoh.gg/game-asset/u/{bid}/",
+            f"https://game-assets.swgoh.gg/{thumb_file}",
             f"https://static-swgoh.gg/game-asset/u/{bid}/",
+            f"https://swgoh.gg/game-asset/u/{bid}/",
+            f"https://static-swgoh.gg/game-asset/u/{bid.lower()}/",
         ])
 
+        # Test des URLs
+        found = False
         for url in urls:
             if _download(url, dest):
-                log.info("✓ %s téléchargé", bid)
+                log.info("✓ %s trouvé via %s", bid, url.split('/')[2])
                 ok += 1
+                found = True
                 break
             time.sleep(_DELAY)
-        else:
-            log.warning("✗ Impossible de trouver le portrait pour %s", bid)
 
-    log.info("Synchronisation terminée : %d/%d portraits disponibles.", ok, len(base_ids))
+        if not found:
+            log.warning("✗ Impossible de trouver le portrait pour %s (thumb=%s)", bid, thumb)
+
+    log.info("Terminé : %d/%d portraits disponibles.", ok, len(base_ids))
 
 if __name__ == "__main__":
     main()

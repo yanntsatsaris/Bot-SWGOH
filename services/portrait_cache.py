@@ -14,8 +14,9 @@ PORTRAITS_DIR = Path("assets/portraits")
 
 # URLs candidates dans l'ordre de priorité
 _PORTRAIT_URL_TEMPLATES = [
-    "https://swgoh.gg/game-asset/u/{base_id}.png",
-    "https://swgoh.gg/static/img/assets/tex.avatars_{base_id_lower}.png",
+    "https://game-assets.swgoh.gg/tex.avatars_{base_id_lower}.png",
+    "https://swgoh.gg/game-asset/u/{base_id}/",
+    "https://static-swgoh.gg/game-asset/u/{base_id}/",
 ]
 
 _TIMEOUT = 15

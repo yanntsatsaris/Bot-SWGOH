@@ -99,3 +99,18 @@ async def get_metadata() -> dict:
                 return {"status": "ok"}
             resp.raise_for_status()
             return await resp.json()
+
+async def get_player_gac_history(ally_code: str) -> dict:
+    """
+    Récupère l'historique GAC détaillé d'un joueur.
+    Note: Nécessite généralement un endpoint spécifique sur Comlink.
+    """
+    clean = ally_code.replace("-", "")
+    # Tente d'appeler l'endpoint playerGac s'il existe
+    try:
+        data = await _post("playerGac", {"allyCode": clean})
+        log.debug("Comlink /playerGac reçu pour %s", ally_code)
+        return data
+    except Exception:
+        # Fallback sur les données du joueur si playerGac n'est pas dispo
+        return await get_player(clean)

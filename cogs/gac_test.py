@@ -1,5 +1,5 @@
 """
-cogs/gac_test.py — Commande /gac_test avec interface interactive (boutons)
+cogs/gac_test.py — Commande /gac_test avec interface interactive (boutons + portraits)
 """
 from __future__ import annotations
 
@@ -15,8 +15,86 @@ from database.db import get_db
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Portraits — URL directes vers les assets SWGOH.GG
+# Format : https://swgoh.gg/static/img/assets/tex.avatars_<base_id>.png
+# ---------------------------------------------------------------------------
+_PORTRAIT_BASE = "https://swgoh.gg/static/img/assets/tex.avatars_{}.png"
+
+CHARACTER_IDS: dict[str, str] = {
+    # Sith / Empire
+    "Sith Eternal Emperor":         "sithpalpatine",
+    "Darth Vader":                  "darthvader",
+    "Lord Vader":                   "lordvader",
+    "Mara Jade":                    "marajade",
+    "Darth Nihilus":                "darthnihilus",
+    "Royal Guard":                  "royalguard",
+    "Emperor Palpatine":            "palpatine",
+    "Grand Admiral Thrawn":         "thrawn",
+    # Jabba
+    "Jabba the Hutt":               "jabbathehutt",
+    "Boba Fett (Scion)":            "bobafettscion",
+    "Krrsantan":                    "krrsantan",
+    "Gamorrean Guard":              "gamorreanguard",
+    "Skiff Guard":                  "skiffguard",
+    # Jedi / République
+    "Jedi Master Kenobi":           "jedimasterkenobi",
+    "Padmé Amidala":                "padmeamidala",
+    "General Skywalker":            "generalskywalker",
+    "Jedi Master Luke Skywalker":   "jedimasterluke",
+    "Ahsoka Tano":                  "ahsokatano",
+    "Shaak Ti":                     "shaakti",
+    # First Order
+    "Supreme Leader Kylo Ren":      "supremeleaderkylo",
+    "Hux":                          "generalhux",
+    "First Order SF TIE Pilot":     "firstordersftfighter",
+    # Rebels
+    "Commander Luke Skywalker":     "commanderlukeskywalker",
+    "Han Solo":                     "hansolo",
+    "Chewbacca":                    "chewbacca",
+    # Autres
+    "Darth Revan":                  "darthrevan",
+    "Jedi Knight Revan":            "jediknightrevan",
+    "Mother Talzin":                "mothertalzin",
+    "The Mandalorian (Beskar)":     "themandalorian_beskar",
+    "Moff Gideon":                  "moffgideon",
+}
+
+
+def get_portrait_url(name: str) -> str:
+    """
+    Retourne l'URL du portrait d'un personnage.
+    Si le nom n'est pas dans le mapping, tente une dérivation automatique.
+    """
+    base_id = CHARACTER_IDS.get(name)
+    if not base_id:
+        # Dérivation : minuscules, sans espaces ni caractères spéciaux
+        base_id = (
+            name.lower()
+            .replace(" ", "")
+            .replace("(", "").replace(")", "")
+            .replace("'", "").replace("-", "")
+            .replace("é", "e").replace("è", "e").replace("ê", "e")
+        )
+    return _PORTRAIT_BASE.format(base_id)
+
+
+# ---------------------------------------------------------------------------
+# Médailles et emojis
+# ---------------------------------------------------------------------------
+_MEDALS = ["🥇", "🥈", "🥉"]
+
+_E = {
+    "sword":   "⚔️",
+    "shield":  "🛡️",
+    "chart":   "📊",
+    "warning": "⚠️",
+    "arrow":   "➤",
+    "members": "👥",
+    "counter": "🔄",
+}
+
+# ---------------------------------------------------------------------------
 # Données de démo (utilisées si la base est vide)
-# Elles simulent ce que sync_meta.py injecterait en production.
 # ---------------------------------------------------------------------------
 _DEMO_TEAMS: dict[str, list[dict]] = {
     "5v5": [
@@ -61,39 +139,11 @@ _DEMO_TEAMS: dict[str, list[dict]] = {
     ],
 }
 
-# Couleurs de l'embed selon le format sélectionné
+# Couleurs selon le format
 _COLORS = {
     "5v5": discord.Color.from_rgb(30, 120, 220),   # bleu
     "3v3": discord.Color.from_rgb(180, 40, 40),    # rouge
 }
-
-# Emojis décoratifs
-_E = {
-    "sword":    "⚔️",
-    "shield":   "🛡️",
-    "star":     "⭐",
-    "chart":    "📊",
-    "players":  "👥",
-    "warning":  "⚠️",
-    "check":    "✅",
-    "arrow":    "➤",
-}
-
-
-# ---------------------------------------------------------------------------
-# Helpers de formatage
-# ---------------------------------------------------------------------------
-def _format_team_block(team: dict) -> str:
-    """Formate une équipe en bloc texte compact pour un embed Field."""
-    members = " · ".join(team["members"])
-    win_pct = f"{team['win_rate'] * 100:.0f}%" if team.get("win_rate") else "N/A"
-    return f"{_E['star']} **{team['leader']}**\n`{members}`\n{_E['chart']} Win rate : **{win_pct}**"
-
-
-def _format_counters(counters: list[str]) -> str:
-    if not counters:
-        return "_Aucun contre répertorié_"
-    return "\n".join(f"{_E['arrow']} {c}" for c in counters[:3])
 
 
 async def _load_teams_from_db(fmt: str) -> list[dict]:
@@ -141,51 +191,84 @@ async def _get_teams(fmt: str) -> tuple[list[dict], bool]:
 
 
 # ---------------------------------------------------------------------------
-# Construction de l'embed
+# Construction des embeds (header + 1 par équipe)
 # ---------------------------------------------------------------------------
-def _build_embed(fmt: str, teams: list[dict], is_live: bool) -> discord.Embed:
-    """Construit l'embed principal pour un format donné."""
+def _build_header_embed(fmt: str, nb_teams: int, is_live: bool) -> discord.Embed:
+    """Embed d'en-tête affiché au-dessus des équipes."""
     label = "5 contre 5" if fmt == "5v5" else "3 contre 3"
-    color = _COLORS[fmt]
+    src   = "SWGOH.GG (live)" if is_live else "Démonstration"
+    embed = discord.Embed(
+        title=f"{_E['sword']}  Méta GAC — Format **{label}**",
+        description=(
+            f"Top **{nb_teams}** compositions les plus efficaces en Grande Arène.\n"
+            f"-# Source : {src}"
+        ),
+        color=_COLORS[fmt],
+    )
+    return embed
+
+
+def _build_team_embed(rank: int, team: dict, fmt: str) -> discord.Embed:
+    """
+    Construit un embed pour une équipe.
+    Le portrait du leader apparaît en thumbnail (haut droite).
+    """
+    medal   = _MEDALS[rank - 1] if rank <= len(_MEDALS) else f"#{rank}"
+    win_pct = f"{team['win_rate'] * 100:.0f}%" if team.get("win_rate") else "N/A"
+    leader  = team["leader"]
 
     embed = discord.Embed(
-        title=f"{_E['sword']} Méta GAC — Format {label}",
-        description=(
-            f"Top **{len(teams)}** compositions méta en Grande Arène "
-            f"{'*(données en direct)*' if is_live else '*(données de démonstration)*'}"
-        ),
-        color=color,
-    )
-    embed.set_thumbnail(
-        url="https://swgoh.gg/static/img/assets/tex.avatars_guild_icon_heroic.png"
+        title=f"{medal}  {leader}",
+        color=_COLORS[fmt],
     )
 
-    if not teams:
-        embed.add_field(
-            name=f"{_E['warning']} Aucune donnée",
-            value="Lance `sync_meta.py` pour synchroniser les équipes méta.",
-            inline=False,
-        )
-        return embed
+    # Portrait du leader en thumbnail
+    embed.set_thumbnail(url=get_portrait_url(leader))
 
-    # --- Top équipes ---
-    for i, team in enumerate(teams, start=1):
+    # Membres (leader en gras)
+    members_text = "  ·  ".join(
+        f"**{m}**" if m == leader else m
+        for m in team["members"]
+    )
+    embed.add_field(
+        name=f"{_E['members']}  Composition",
+        value=members_text or "_Inconnue_",
+        inline=False,
+    )
+
+    # Contres
+    if team["counters"]:
         embed.add_field(
-            name=f"{_E['players']} #{i} — Composition",
-            value=_format_team_block(team),
+            name=f"{_E['counter']}  Contres",
+            value="\n".join(f"{_E['arrow']}  {c}" for c in team["counters"][:4]),
             inline=True,
         )
-        embed.add_field(
-            name=f"{_E['shield']} Contres",
-            value=_format_counters(team["counters"]),
-            inline=True,
-        )
-        embed.add_field(name="\u200b", value="\u200b", inline=False)  # séparateur
 
-    data_src = "SWGOH.GG (live)" if is_live else "Données de démonstration"
-    embed.set_footer(text=f"Source : {data_src} · /sync pour rafraîchir")
+    # Win rate
+    embed.add_field(
+        name=f"{_E['chart']}  Win rate",
+        value=f"**{win_pct}**",
+        inline=True,
+    )
 
     return embed
+
+
+def _build_all_embeds(fmt: str, teams: list[dict], is_live: bool) -> list[discord.Embed]:
+    """Retourne : 1 embed header + 1 embed par équipe."""
+    embeds = [_build_header_embed(fmt, len(teams), is_live)]
+
+    if not teams:
+        embeds.append(discord.Embed(
+            description=f"{_E['warning']} Aucune donnée — lance `sync_meta.py`.",
+            color=_COLORS[fmt],
+        ))
+        return embeds
+
+    for i, team in enumerate(teams, start=1):
+        embeds.append(_build_team_embed(i, team, fmt))
+
+    return embeds
 
 
 # ---------------------------------------------------------------------------
@@ -221,10 +304,10 @@ class GacFormatView(discord.ui.View):
         self._refresh_button_styles()
 
         teams, is_live = await _get_teams(fmt)
-        embed = _build_embed(fmt, teams, is_live)
+        embeds = _build_all_embeds(fmt, teams, is_live)
 
-        # Mise à jour de l'embed existant (sans nouveau message)
-        await interaction.response.edit_message(embed=embed, view=self)
+        # Mise à jour du message existant (sans nouveau message)
+        await interaction.response.edit_message(embeds=embeds, view=self)
 
     # --- Bouton 5c5 ---
     @discord.ui.button(
@@ -273,12 +356,12 @@ class GacTestCog(commands.Cog, name="GacTest"):
     async def gac_test(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        fmt = "5v5"
+        fmt            = "5v5"
         teams, is_live = await _get_teams(fmt)
-        embed = _build_embed(fmt, teams, is_live)
-        view  = GacFormatView(active_fmt=fmt)
+        embeds         = _build_all_embeds(fmt, teams, is_live)
+        view           = GacFormatView(active_fmt=fmt)
 
-        await interaction.followup.send(embed=embed, view=view)
+        await interaction.followup.send(embeds=embeds, view=view)
 
 
 async def setup(bot: commands.Bot) -> None:

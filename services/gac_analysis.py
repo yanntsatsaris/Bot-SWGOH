@@ -52,16 +52,13 @@ def _parse_season_status(season_list: list[dict]) -> dict:
     if not season_list:
         return {}
 
-    # La saison active est celle avec remove=False et la joinTime la plus récente
     active = [s for s in season_list if not s.get("remove", True)]
     if not active:
         active = season_list
 
     current = max(active, key=lambda s: int(s.get("joinTime", 0)))
-
     season_id = current.get("seasonId", "")
     fmt = "3v3" if "3v3" in season_id else "5v5"
-
     league_id   = current.get("league", "")
     division_id = current.get("division")
 
@@ -75,6 +72,34 @@ def _parse_season_status(season_list: list[dict]) -> dict:
         "losses":        current.get("losses", 0),
         "season_points": current.get("seasonPoints", 0),
     }
+
+
+def _parse_all_seasons(season_list: list[dict]) -> list[dict]:
+    """
+    Retourne toutes les saisons triées de la plus récente à la plus ancienne.
+    """
+    sorted_seasons = sorted(
+        season_list,
+        key=lambda s: int(s.get("joinTime", 0)),
+        reverse=True,
+    )
+    result = []
+    for s in sorted_seasons:
+        season_id   = s.get("seasonId", "")
+        fmt         = "3v3" if "3v3" in season_id else "5v5"
+        league_id   = s.get("league", "")
+        division_id = s.get("division")
+        result.append({
+            "season_id":     season_id,
+            "format":        fmt,
+            "league":        _LEAGUE_NAMES.get(league_id, league_id),
+            "division":      _DIVISION_LABELS.get(division_id, str(division_id)),
+            "rank":          s.get("rank"),
+            "wins":          s.get("wins", 0),
+            "losses":        s.get("losses", 0),
+            "season_points": s.get("seasonPoints", 0),
+        })
+    return result
 
 
 async def get_player_gac_stats(ally_code: str) -> dict:
@@ -127,6 +152,8 @@ async def get_player_gac_stats(ally_code: str) -> dict:
         "losses":        season_info.get("losses", 0),
         "season_points": season_info.get("season_points", 0),
         "format":        season_info.get("format", "?"),
+        # Historique toutes saisons
+        "seasons":       _parse_all_seasons(player_raw.get("seasonStatus", [])),
         # Arène
         "arena_rank":    arena_rank,
         "arena_squad":   arena_squad,

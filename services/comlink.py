@@ -62,6 +62,33 @@ async def get_guild(guild_id: str) -> dict:
     return data
 
 
+async def get_player_roster(ally_code: str) -> list[dict]:
+    """
+    Retourne le roster complet d'un joueur sous forme de liste normalisée.
+    Chaque entrée contient : base_id, rarity, level, relic_tier, gear_tier.
+
+    Args:
+        ally_code: Code allié sans tirets.
+    """
+    clean = ally_code.replace("-", "")
+    data  = await get_player(clean)
+
+    roster = []
+    for unit in data.get("rosterUnit", []):
+        def_id = unit.get("definitionId", "")
+        base_id = def_id.split(":")[0] if ":" in def_id else def_id
+        if not base_id:
+            continue
+        roster.append({
+            "base_id":   base_id,
+            "rarity":    unit.get("currentRarity", 0),
+            "level":     unit.get("currentLevel", 0),
+            "gear_tier": unit.get("currentTier", 0),
+            "relic_tier": unit.get("relic", {}).get("currentTier", 0),
+        })
+    return roster
+
+
 async def get_metadata() -> dict:
     """Vérifie que Comlink est joignable via l'endpoint localization."""
     url = f"{COMLINK_URL}/version"

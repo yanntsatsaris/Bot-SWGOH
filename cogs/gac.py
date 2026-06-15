@@ -85,29 +85,41 @@ class GacCog(commands.Cog, name="GAC"):
             return
 
         embed = discord.Embed(
-            title=f"Statistiques GAC — {stats['username']}",
+            title=f"⚔️ Grande Arène — {stats['username']}",
             color=discord.Color.gold(),
         )
 
         fmt = stats.get("format", "?").upper()
 
-        embed.add_field(name="🏆 Ligue",        value=stats.get("league", "N/A"),          inline=True)
-        embed.add_field(name="📊 Division",      value=stats.get("division", "N/A"),         inline=True)
-        embed.add_field(name="🎯 Classement",    value=f"#{stats['rank']}" if stats.get("rank") else "N/A", inline=True)
-        embed.add_field(name="✅ Victoires",      value=str(stats.get("wins", 0)),            inline=True)
-        embed.add_field(name="❌ Défaites",       value=str(stats.get("losses", 0)),           inline=True)
-        embed.add_field(name="⭐ Points saison",  value=str(stats.get("season_points", 0)),   inline=True)
-        embed.add_field(name="⚔️ Format",         value=fmt,                                  inline=True)
-        embed.add_field(name="🛡️ Arène rank",    value=f"#{stats['arena_rank']}" if stats.get("arena_rank") else "N/A", inline=True)
+        # --- Saison en cours ---
+        embed.add_field(name="🏆 Ligue",         value=stats.get("league", "N/A"),   inline=True)
+        embed.add_field(name="📊 Division",       value=stats.get("division", "N/A"), inline=True)
+        embed.add_field(name="⚔️ Format",          value=fmt,                          inline=True)
+        embed.add_field(name="🎯 Classement",     value=f"#{stats['rank']}" if stats.get("rank") else "N/A", inline=True)
+        embed.add_field(name="✅ Victoires",       value=str(stats.get("wins", 0)),    inline=True)
+        embed.add_field(name="❌ Défaites",        value=str(stats.get("losses", 0)),  inline=True)
+        embed.add_field(name="⭐ Points saison",  value=str(stats.get("season_points", 0)), inline=True)
         embed.add_field(name="\u200b", value="\u200b", inline=False)
 
-        arena_squad = stats.get("arena_squad", [])
-        if arena_squad:
-            leader = arena_squad[0]
-            members_text = "  ·  ".join(
-                f"**{m}**" if m == leader else m for m in arena_squad
+        # --- Historique saisons ---
+        seasons = stats.get("seasons", [])
+        if len(seasons) > 1:
+            history_lines = []
+            for s in seasons[1:5]:   # Saisons précédentes (max 4)
+                wins   = s.get("wins", 0)
+                losses = s.get("losses", 0)
+                league = s.get("league", "?")
+                div    = s.get("division", "?")
+                fmt_s  = s.get("format", "?").upper()
+                rank   = s.get("rank", "?")
+                history_lines.append(
+                    f"`{fmt_s}` {league} {div} — #{rank} — {wins}W / {losses}L"
+                )
+            embed.add_field(
+                name="📜 Historique saisons",
+                value="\n".join(history_lines),
+                inline=False,
             )
-            embed.add_field(name="👥 Équipe Arène", value=members_text, inline=False)
 
         embed.set_footer(text="Source : SWGOH Comlink")
 

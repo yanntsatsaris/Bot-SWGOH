@@ -3,38 +3,51 @@ services/comlink.py — Client HTTP vers SWGOH Comlink (Format POST + Payload)
 """
 import logging
 import aiohttp
+import time
 from config import COMLINK_URL
 
 log = logging.getLogger(__name__)
 _TIMEOUT = aiohttp.ClientTimeout(total=30)
 
-# Cache pour la version du jeu
-_version_cache = {
+# Cache pour la version et les données de base
+_cache = {
     "version": None,
+    "metadata": None,
     "last_check": 0
 }
 
-async def _get_game_version() -> str:
-    """Récupère la latestGamedataVersion via /metadata."""
-    if _version_cache["version"]:
-        return _version_cache["version"]
+async def get_metadata_raw() -> dict:
+    """Appel direct à /metadata via POST."""
+    # On rafraîchit toutes les heures ou si vide
+    if _cache["metadata"] and (time.time() - _cache["last_check"] < 3600):
+        return _cache["metadata"]
 
     url = f"{COMLINK_URL}/metadata"
     async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-        # Comme tu l'as précisé : POST avec payload vide
         async with session.post(url, json={"payload": {}}, headers={"Content-Type": "application/json"}) as resp:
             if resp.status == 200:
                 data = await resp.json()
-                v = data.get("latestGamedataVersion", "")
-                _version_cache["version"] = v
-                return v
-    return ""
+                _cache["metadata"] = data
+                _cache["version"] = data.get("latestGamedataVersion")
+                _cache["last_check"] = time.time()
+                return data
+    return {}
+
+async def _get_game_version() -> str:
+    if _cache["version"]:
+        return _cache["version"]
+    meta = await get_metadata_raw()
+    return meta.get("latestGamedataVersion", "")
 
 async def _post(endpoint: str, payload_data: dict) -> dict:
-    """Effectue un POST vers Comlink avec le wrapper 'payload' et la version."""
+    """Effectue un POST vers Comlink avec le wrapper 'payload'."""
+    # metadata est un cas à part car il fournit la version
+    if endpoint.strip("/") == "metadata":
+        return await get_metadata_raw()
+
     version = await _get_game_version()
 
-    # Injection de la version si non présente
+    # On ne rajoute la version que si elle n'y est pas déjà
     if version and "version" not in payload_data:
         payload_data["version"] = version
 

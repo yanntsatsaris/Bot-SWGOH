@@ -50,7 +50,7 @@ def get_portrait_path(base_id: str) -> Path:
         "OLDREPUBLICGUARD": "vanguardtempleguard",
     }
 
-    # 2. Mappings spécifiques Vaisseaux (basés sur ta liste ll)
+    # 2. Mappings spécifiques Vaisseaux
     SHIP_OVERRIDES = {
         "MILLENNIUMFALCON": "mfalcon",
         "HANSOLO_MILLENNIUMFALCON": "mfalcon",
@@ -82,14 +82,12 @@ def get_portrait_path(base_id: str) -> Path:
     if official_thumb:
         targets.append(official_thumb)
 
-    # 4. Dérivations (avec et sans préfixes)
+    # 4. Dérivations
     targets.append(bid_lower)
-    # Pour les vaisseaux, on teste sans le préfixe common "capitalship_" ou "ship_"
     if unit_type == "ship":
         targets.append(bid_lower.replace("capitalship_", "").replace("ship_", ""))
 
-    # On teste les variations dans le bon dossier
-    prefixes = ["charui_", ""] if unit_type == "character" else [""] # Tes vaisseaux n'ont pas l'air d'avoir de préfixe charui_
+    prefixes = ["charui_", ""] if unit_type == "character" else [""]
 
     for t in targets:
         clean = t.replace(".png", "").replace("tex.avatars_", "")
@@ -97,7 +95,7 @@ def get_portrait_path(base_id: str) -> Path:
             path = target_dir / f"{pref}{clean}.png"
             if path.exists(): return path
 
-    # 5. Recherche floue finale (inclusion)
+    # 5. Recherche floue
     if target_dir.exists():
         search = bid_lower.replace("_", "")
         for p in target_dir.glob("*.png"):
@@ -105,8 +103,8 @@ def get_portrait_path(base_id: str) -> Path:
             if search in fname or fname in search:
                 return p
 
-    # Fallback par défaut (visuel manquant)
-    return target_dir / f"{bid_lower}.png"
+    return target_dir / f"charui_{bid_lower}.png"
 
 def download_portrait(base_id: str) -> bool:
+    """Les portraits sont gérés manuellement."""
     return get_portrait_path(base_id).exists()

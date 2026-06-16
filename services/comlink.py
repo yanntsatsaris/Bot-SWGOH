@@ -5,6 +5,9 @@ services/comlink.py — Client HTTP vers SWGOH Comlink (Protocoles Stricts et Op
 import logging
 import aiohttp
 import json
+import base64
+import zipfile
+import io
 from config import COMLINK_URL
 
 log = logging.getLogger(__name__)
@@ -63,6 +66,31 @@ def _find_loc_id(obj, target_locale: str | None = None, min_len=20) -> str | Non
             if res: return res
     return None
 
+def _decode_bundle(bundle: str) -> str:
+    if not bundle:
+        return ""
+    
+    # Si c'est déjà du texte brut (non base64)
+    if "UNIT_" in bundle and "_NAME" in bundle:
+        return bundle
+        
+    try:
+        # Décodage base64
+        decoded = base64.b64decode(bundle)
+        
+        # Tentative d'ouverture comme un ZIP
+        try:
+            with zipfile.ZipFile(io.BytesIO(decoded)) as z:
+                for name in z.namelist():
+                    return z.read(name).decode("utf-8")
+        except zipfile.BadZipFile:
+            # Texte brut encodé en base64
+            return decoded.decode("utf-8")
+    except Exception as e:
+        log.warning("Erreur lors du décodage du bundle de localisation : %s", e)
+        
+    return bundle
+
 async def get_localization() -> str:
     meta = await _post_raw("metadata", {})
 
@@ -77,7 +105,7 @@ async def get_localization() -> str:
                 bundle = data.get("localizationBundle", "")
                 if bundle:
                     log.info("✓ Localisation %s récupérée avec succès.", locale)
-                    return bundle
+                    return _decode_bundle(bundle)
             except Exception as e:
                 log.warning("Échec de récupération de la locale %s (ID: %s) : %s", locale, loc_id, e)
 
@@ -90,7 +118,7 @@ async def get_localization() -> str:
             bundle = data.get("localizationBundle", "")
             if bundle:
                 log.info("✓ Localisation par version globale récupérée avec succès.")
-                return bundle
+                return _decode_bundle(bundle)
         except Exception as e:
             log.warning("Échec de récupération de la version globale %s : %s", loc_id, e)
 
@@ -100,7 +128,8 @@ async def get_localization() -> str:
         try:
             log.info("Tentative finale de récupération avec l'ID générique : %s", loc_id)
             data = await _post_raw("localization", {"id": loc_id})
-            return data.get("localizationBundle", "")
+            bundle = data.get("localizationBundle", "")
+            return _decode_bundle(bundle)
         except Exception as e:
             log.warning("Erreur localization finale avec ID %s : %s", loc_id, e)
 

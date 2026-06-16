@@ -66,75 +66,46 @@ def _find_loc_id(obj, target_locale: str | None = None, min_len=20) -> str | Non
 async def get_localization() -> str:
     meta = await _post_raw("metadata", {})
 
-    # 1. Extraction directe via latestLocalizationBundleVersion (méthode officielle recommandée)
-    loc_id = meta.get("latestLocalizationBundleVersion")
-    if not loc_id:
-        loc_id = meta.get("latestLocalizationRevision")
-
-    # 2. Recherche ciblée dans les listes structurées de metadata
-    if not loc_id:
-        target_locales = ["FRE_FR", "ENG_US"]
-        for key in ["localization", "strings", "localizationBundle"]:
-            items = meta.get(key, [])
-            if isinstance(items, list):
-                # Chercher d'abord FRE_FR, puis ENG_US
-                for target_loc in target_locales:
-                    for item in items:
-                        if isinstance(item, dict):
-                            curr_locale = item.get("locale") or item.get("language")
-                            curr_id = item.get("id", "")
-                            if (curr_locale == target_loc) or (target_loc in curr_id):
-                                loc_id = curr_id
-                                break
-                    if loc_id:
-                        break
-                if loc_id:
-                    break
-                
-                # Fallback sur n'importe quel ID ayant un format valide dans la liste
-                for item in items:
-                    if isinstance(item, dict):
-                        curr_id = item.get("id", "")
-                        if curr_id and len(curr_id) >= 15:
-                            loc_id = curr_id
-                            break
-                if loc_id:
-                    break
-
-    # 3. Recherche récursive ciblée si non trouvé dans les clés standard
-    if not loc_id:
-        for target_loc in ["FRE_FR", "ENG_US"]:
-            loc_id = _find_loc_id(meta, target_loc)
-            if loc_id:
-                break
-
-    # 4. Dernier recours : recherche récursive générique
-    if not loc_id:
-        loc_id = _find_loc_id(meta)
-
-    if not loc_id:
-        log.warning("Aucun ID de localisation trouvé. Clés meta : %s", list(meta.keys()))
-        return ""
-
-    # Tente d'abord de récupérer en français (FRE_FR) puis en anglais (ENG_US)
+    # 1. Recherche d'abord d'un fichier de localisation spécifique dans les métadonnées (ex: Loc_FRE_FR.json)
     for locale in ["FRE_FR", "ENG_US"]:
+        loc_id = _find_loc_id(meta, locale)
+        if loc_id:
+            try:
+                log.info("Tentative de récupération de la locale %s avec ID : %s", locale, loc_id)
+                # Note: On n'envoie pas le paramètre 'locale' dans le payload car Comlink refuse les propriétés additionnelles
+                data = await _post_raw("localization", {"id": loc_id})
+                bundle = data.get("localizationBundle", "")
+                if bundle:
+                    log.info("✓ Localisation %s récupérée avec succès.", locale)
+                    return bundle
+            except Exception as e:
+                log.warning("Échec de récupération de la locale %s (ID: %s) : %s", locale, loc_id, e)
+
+    # 2. Extraction directe via latestLocalizationBundleVersion (version globale)
+    loc_id = meta.get("latestLocalizationBundleVersion") or meta.get("latestLocalizationRevision")
+    if loc_id:
         try:
-            log.info("Tentative de récupération de la locale %s (ID: %s)...", locale, loc_id)
-            data = await _post_raw("localization", {"id": loc_id, "locale": locale})
+            log.info("Tentative de récupération via la version de bundle globale : %s", loc_id)
+            data = await _post_raw("localization", {"id": loc_id})
             bundle = data.get("localizationBundle", "")
             if bundle:
-                log.info("✓ Locale %s récupérée avec succès.", locale)
+                log.info("✓ Localisation par version globale récupérée avec succès.")
                 return bundle
         except Exception as e:
-            log.warning("Échec de récupération pour la locale %s : %s", locale, e)
+            log.warning("Échec de récupération de la version globale %s : %s", loc_id, e)
 
-    # Dernier recours sans spécifier de locale
-    try:
-        data = await _post_raw("localization", {"id": loc_id})
-        return data.get("localizationBundle", "")
-    except Exception as e:
-        log.warning("Erreur localization finale avec ID %s : %s", loc_id, e)
-        return ""
+    # 3. Dernier recours : recherche récursive générique
+    loc_id = _find_loc_id(meta)
+    if loc_id:
+        try:
+            log.info("Tentative finale de récupération avec l'ID générique : %s", loc_id)
+            data = await _post_raw("localization", {"id": loc_id})
+            return data.get("localizationBundle", "")
+        except Exception as e:
+            log.warning("Erreur localization finale avec ID %s : %s", loc_id, e)
+
+    log.warning("Aucun ID de localisation fonctionnel trouvé.")
+    return ""
 
 async def get_player_roster(ally_code: str) -> list[dict]:
     clean = str(ally_code).replace("-", "")

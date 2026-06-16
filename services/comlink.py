@@ -34,11 +34,15 @@ async def get_game_data() -> list[dict]:
     return data.get("units", [])
 
 def _find_loc_id(obj, min_len=22):
-    """Cherche récursivement un ID de localisation long dans un objet JSON."""
+    """Recherche récursive exhaustive pour trouver un ID de localisation valide."""
     if isinstance(obj, str):
-        if len(obj) >= min_len and ("Loc_ENG" in obj or "ENG_TXT" in obj):
+        # On cherche un ID long qui contient Loc ou json
+        if len(obj) >= min_len and ("Loc_" in obj or ".json" in obj):
             return obj
     elif isinstance(obj, dict):
+        # Priorité aux clés 'id'
+        if "id" in obj and isinstance(obj["id"], str) and len(obj["id"]) >= min_len:
+            return obj["id"]
         for v in obj.values():
             res = _find_loc_id(v, min_len)
             if res: return res
@@ -50,21 +54,10 @@ def _find_loc_id(obj, min_len=22):
 
 async def get_localization() -> str:
     meta = await _post_raw("metadata", {})
-
-    # 1. Recherche récursive de l'ID long
     loc_id = _find_loc_id(meta)
 
-    # 2. Fallback sur les listes connues
     if not loc_id:
-        for item in meta.get("localization", []) + meta.get("strings", []):
-            if isinstance(item, dict):
-                curr = item.get("id", "")
-                if len(curr) >= 22:
-                    loc_id = curr
-                    break
-
-    if not loc_id:
-        log.warning("ID de localisation introuvable dans les metadata.")
+        log.warning("Aucun ID de localisation valide trouvé dans les metadata.")
         return ""
 
     try:

@@ -28,7 +28,7 @@ def _load_data():
 
 def get_portrait_path(base_id: str) -> Path:
     """
-    Retourne le chemin local du portrait (personnage ou vaisseau).
+    Retourne le chemin local du portrait.
     """
     if not _unit_data:
         _load_data()
@@ -40,48 +40,57 @@ def get_portrait_path(base_id: str) -> Path:
 
     target_dir = SHIPS_DIR if unit_type == "ship" else PORTRAITS_DIR
 
-    # Mappings manuels exhaustifs basés sur les fichiers réels
+    # MAPPINGS MANUELS EXHAUSTIFS (Basés sur ton ll assets/)
     MANUAL_MAPPING = {
-        # GLs
+        # --- Personnages ---
         "SITHPALPATINE": "espalpatine_pre",
+        "EMPERORPALPATINE": "palpatineemperor",
+        "DARTHREVAN": "sithrevan",
+        "JEDIKNIGHTREVAN": "jedirevan",
+        "GENERALKENOBI": "obiwangeneral",
         "JEDIMASTERKENOBI": "globiwan",
         "GENERALSKYWALKER": "generalanakin",
+        "COMMANDERLUKESKYWALKER": "lukebespin",
+        "JEDIKNIGHTLUKE": "luke_jediknight",
         "JEDIMASTERLUKE": "luke_jml",
         "SUPREMELEADERKYLOREN": "kyloren_tros",
+        "KYLORENUNMASKED": "kylo_unmasked",
         "REYJEDITRAINING": "rey_tlj",
-
-        # Bad Batch
-        "BADBATCHECHO": "bb_echo",
-        "BADBATCHHUNTER": "bb_hunter",
-        "BADBATCHTECH": "bb_tech",
-        "BADBATCHWRECKER": "bb_wrecker",
-        "BADBATCHOMEGA": "badbatchomega",
-
-        # Clones / Republic
+        "C3POLEGENDARY": "c3p0",
+        "R2D2_LEGENDARY": "astromech_r2d2",
+        "BARRISSOFFEE": "barriss_light",
+        "CHIEFCHIRPA": "ewok_chirpa",
+        "CHIEFNEBIT": "jawa_nebit",
+        "COLONELSTARCK": "colonel_stark",
+        "ADMINISTRATORLANDO": "landobespin",
+        "ADMIRALACKBAR": "ackbaradmiral",
+        "BIGGSDARKLIGHTER": "rebelpilot_biggs",
+        "WEDGEANTILLES": "rebelpilot_wedge",
         "ARCTROOPER501ST": "trooperclone_arc",
         "CC2224": "trooperclone_cody",
         "CT7567": "trooperclone_rex",
         "CT5555": "trooperclone_fives",
         "CT210408": "trooperclone_echo",
-        "BARRISSOFFEE": "barriss_light",
-
-        # Rebels / Empire
-        "ADMINISTRATORLANDO": "landobespin",
-        "ADMIRALACKBAR": "ackbaradmiral",
-        "BIGGSDARKLIGHTER": "rebelpilot_biggs",
-        "WEDGEANTILLES": "rebelpilot_wedge",
-        "PRINCESSLEIA": "leia_princess",
-        "HANSOLO": "han",
-        "C3POLEGENDARY": "c3p0",
-        "R2D2_LEGENDARY": "astromech_r2d2",
-        "CHIEFCHIRPA": "ewok_chirpa",
-
-        # Jabba / Bounty Hunters
+        "BADBATCHECHO": "bb_echo",
+        "BADBATCHHUNTER": "bb_hunter",
+        "BADBATCHTECH": "bb_tech",
+        "BADBATCHWRECKER": "bb_wrecker",
+        "BADBATCHOMEGA": "badbatchomega",
+        "EZRABRIDGERS3": "ezra_s3",
+        "CROSSHAIRS3": "crosshair_scarred",
+        "CLONESERGEANTPHASEI": "trooperclonegreen",
+        "CORUSCANTUNDERWORLDPOLICE": "coruscantpolice",
+        "EWOKELDER": "ewok_chief",
+        "FIRSTORDERSPECIALFORCESPILOT": "firstorder_pilot",
         "SKIFFGUARD": "undercoverlando",
         "BOBAFETTSCION": "bobafettold",
-        "GREEFKARGA": "greefkarga",
+        "OLDREPUBLICGUARD": "vanguardtempleguard",
+        "DAKA": "daka",
+        "TALIA": "nightsister_talia",
+        "NIGHTSISTERINIT": "nightsister_initiate",
+        "ACOLYTE": "nightsister_acolyte",
 
-        # Vaisseaux (Basés sur ton ll)
+        # --- Vaisseaux ---
         "CAPITALMONCALAMARICRUISER": "moncalamarilibertycruiser",
         "CAPITALJEDICRUISER": "negotiator",
         "CAPITALSTARDESTROYER": "stardestroyer",
@@ -90,10 +99,13 @@ def get_portrait_path(base_id: str) -> Path:
         "CAPITALMALEVOLENCE": "malevolence",
         "CAPITALPROFUNDITY": "profundity",
         "CAPITALVICTORYSTARDESTROYER": "stardestroyer",
+        "COMMANDSHUTTLE": "upsilon_shuttle_kylo",
+        "EMPERORSSHUTTLE": "imperialshuttle",
         "MILLENNIUMFALCON": "mfalcon",
         "HANSOLO_MILLENNIUMFALCON": "mfalcon",
         "EBONHAWK": "ebonhawk",
         "SLAVE1": "slave1",
+        "TIEADVANCED": "tieadvanced",
     }
 
     targets = []
@@ -111,7 +123,7 @@ def get_portrait_path(base_id: str) -> Path:
     prefixes = ["charui_", ""]
 
     for t in targets:
-        clean = t.replace(".png", "").replace("tex.avatars_", "")
+        clean = str(t).replace(".png", "").replace("tex.avatars_", "")
         for pref in prefixes:
             path = target_dir / f"{pref}{clean}.png"
             if path.exists(): return path

@@ -27,9 +27,6 @@ def _load_data():
             pass
 
 def get_portrait_path(base_id: str) -> Path:
-    """
-    Retourne le chemin local du portrait.
-    """
     if not _unit_data:
         _load_data()
 
@@ -40,37 +37,32 @@ def get_portrait_path(base_id: str) -> Path:
 
     target_dir = SHIPS_DIR if unit_type == "ship" else PORTRAITS_DIR
 
-    # MAPPINGS MANUELS EXHAUSTIFS (Basés sur ton ll assets/)
+    # MAPPINGS MANUELS EXHAUSTIFS (Mis à jour le 16/06)
     MANUAL_MAPPING = {
-        # --- Personnages ---
+        # --- GLs / Persos Clés ---
         "SITHPALPATINE": "espalpatine_pre",
         "EMPERORPALPATINE": "palpatineemperor",
-        "DARTHREVAN": "sithrevan",
-        "JEDIKNIGHTREVAN": "jedirevan",
+        "GLLEIA": "leiaendor",
+        "GLREY": "rey_tros",
+        "GRANDMASTERLUKE": "luke_jml",
+        "JEDIMASTERLUKE": "luke_jml",
+        "GRANDMASTERYODA": "yodagrandmaster",
+        "HERMITYODA": "yodahermit",
         "GENERALKENOBI": "obiwangeneral",
         "JEDIMASTERKENOBI": "globiwan",
         "GENERALSKYWALKER": "generalanakin",
         "COMMANDERLUKESKYWALKER": "lukebespin",
-        "JEDIKNIGHTLUKE": "luke_jediknight",
-        "JEDIMASTERLUKE": "luke_jml",
-        "SUPREMELEADERKYLOREN": "kyloren_tros",
-        "KYLORENUNMASKED": "kylo_unmasked",
-        "REYJEDITRAINING": "rey_tlj",
-        "C3POLEGENDARY": "c3p0",
-        "R2D2_LEGENDARY": "astromech_r2d2",
-        "BARRISSOFFEE": "barriss_light",
-        "CHIEFCHIRPA": "ewok_chirpa",
+        "GRANDMOFFTARKIN": "tarkinadmiral",
+
+        # --- Autres Persos ---
+        "BISHOP": "captainenoch",
+        "GOPHERANTS": "groguanz",
+        "HERASYNDULLAS3": "hera_s3",
+        "HOTHLEIA": "leiahoth",
+        "HOTHREBELSCOUT": "rebelhothscout",
+        "HOTHREBELSOLDIER": "rebelhoth",
         "CHIEFNEBIT": "jawa_nebit",
-        "COLONELSTARCK": "colonel_stark",
-        "ADMINISTRATORLANDO": "landobespin",
-        "ADMIRALACKBAR": "ackbaradmiral",
-        "BIGGSDARKLIGHTER": "rebelpilot_biggs",
-        "WEDGEANTILLES": "rebelpilot_wedge",
-        "ARCTROOPER501ST": "trooperclone_arc",
-        "CC2224": "trooperclone_cody",
-        "CT7567": "trooperclone_rex",
-        "CT5555": "trooperclone_fives",
-        "CT210408": "trooperclone_echo",
+        "CLONESERGEANTPHASEI": "trooperclonegreen",
         "BADBATCHECHO": "bb_echo",
         "BADBATCHHUNTER": "bb_hunter",
         "BADBATCHTECH": "bb_tech",
@@ -78,47 +70,31 @@ def get_portrait_path(base_id: str) -> Path:
         "BADBATCHOMEGA": "badbatchomega",
         "EZRABRIDGERS3": "ezra_s3",
         "CROSSHAIRS3": "crosshair_scarred",
-        "CLONESERGEANTPHASEI": "trooperclonegreen",
         "CORUSCANTUNDERWORLDPOLICE": "coruscantpolice",
         "EWOKELDER": "ewok_chief",
-        "FIRSTORDERSPECIALFORCESPILOT": "firstorder_pilot",
+        "C3POLEGENDARY": "c3p0",
+        "R2D2_LEGENDARY": "astromech_r2d2",
         "SKIFFGUARD": "undercoverlando",
-        "BOBAFETTSCION": "bobafettold",
-        "OLDREPUBLICGUARD": "vanguardtempleguard",
-        "DAKA": "daka",
-        "TALIA": "nightsister_talia",
-        "NIGHTSISTERINIT": "nightsister_initiate",
-        "ACOLYTE": "nightsister_acolyte",
 
         # --- Vaisseaux ---
+        "GEONOSIANSTARFIGHTER1": "geonosis_fighter_sunfac",
+        "GEONOSIANSTARFIGHTER2": "geonosis_fighter_spy",
+        "GEONOSIANSTARFIGHTER3": "geonosis_fighter_soldier",
         "CAPITALMONCALAMARICRUISER": "moncalamarilibertycruiser",
         "CAPITALJEDICRUISER": "negotiator",
-        "CAPITALSTARDESTROYER": "stardestroyer",
-        "CAPITALCHIMAERA": "chimaera",
-        "CAPITALFINALIZER": "finalizer",
-        "CAPITALMALEVOLENCE": "malevolence",
-        "CAPITALPROFUNDITY": "profundity",
-        "CAPITALVICTORYSTARDESTROYER": "stardestroyer",
         "COMMANDSHUTTLE": "upsilon_shuttle_kylo",
         "EMPERORSSHUTTLE": "imperialshuttle",
-        "MILLENNIUMFALCON": "mfalcon",
-        "HANSOLO_MILLENNIUMFALCON": "mfalcon",
-        "EBONHAWK": "ebonhawk",
-        "SLAVE1": "slave1",
-        "TIEADVANCED": "tieadvanced",
     }
 
     targets = []
     if bid_upper in MANUAL_MAPPING:
         targets.append(MANUAL_MAPPING[bid_upper])
 
-    # thumbnail_name officiel
     if unit.get("thumbnail_name"):
         targets.append(unit["thumbnail_name"])
 
-    # Dérivations
     targets.append(bid_lower)
-    targets.append(bid_lower.replace("capital", "").replace("ship_", ""))
+    targets.append(bid_lower.replace("capital", "").replace("ship_", "").replace("gl", ""))
 
     prefixes = ["charui_", ""]
 
@@ -128,7 +104,7 @@ def get_portrait_path(base_id: str) -> Path:
             path = target_dir / f"{pref}{clean}.png"
             if path.exists(): return path
 
-    # Recherche floue finale
+    # Recherche floue
     if target_dir.exists():
         search = bid_lower.replace("_", "")
         for p in target_dir.glob("*.png"):

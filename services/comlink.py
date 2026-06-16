@@ -33,46 +33,81 @@ async def get_game_data() -> list[dict]:
     data = await _post_raw("data", payload, top_level_params={"enums": False})
     return data.get("units", [])
 
-def _find_loc_id(obj, min_len=20):
+def _find_loc_id(obj, target_locale: str | None = None, min_len=20) -> str | None:
     """Recherche récursive exhaustive pour trouver un ID de localisation valide."""
     if isinstance(obj, str):
-        # On cherche un ID qui contient Loc, json ou ENG
-        if len(obj) >= min_len and ("Loc_" in obj or ".json" in obj or "ENG" in obj):
-            return obj
+        if len(obj) >= min_len:
+            # Suffixes de locale valides
+            locales = [target_locale] if target_locale else [
+                "ENG_US", "FRE_FR", "GER_DE", "SPA_ES", "ITA_IT", 
+                "CHS_CN", "CHT_CN", "DAN_DK", "DUT_NL", "FIN_FI", 
+                "JPN_JP", "KOR_KR", "NOR_NO", "POR_BR", "RUS_RU", 
+                "SPA_MX", "SWE_SE"
+            ]
+            # On cherche un ID qui contient "Loc_" ou ".json" ET une locale valide
+            if ("Loc_" in obj or ".json" in obj) and any(loc in obj for loc in locales):
+                return obj
     elif isinstance(obj, dict):
         # Priorité aux clés 'id' ou 'bundle'
         for k in ["id", "bundle", "localizationId"]:
             if k in obj and isinstance(obj[k], str) and len(obj[k]) >= min_len:
-                return obj[k]
+                locales = [target_locale] if target_locale else ["ENG_US", "FRE_FR"]
+                if any(loc in obj[k] for loc in locales):
+                    return obj[k]
         for v in obj.values():
-            res = _find_loc_id(v, min_len)
+            res = _find_loc_id(v, target_locale, min_len)
             if res: return res
     elif isinstance(obj, list):
         for v in obj:
-            res = _find_loc_id(v, min_len)
+            res = _find_loc_id(v, target_locale, min_len)
             if res: return res
     return None
 
 async def get_localization() -> str:
     meta = await _post_raw("metadata", {})
 
-    # Tentative 1 : Recherche récursive
-    loc_id = _find_loc_id(meta)
+    # Priorité : FRE_FR (Français), puis ENG_US (Anglais)
+    target_locales = ["FRE_FR", "ENG_US"]
+    loc_id = None
 
-    # Tentative 2 : Patterns standards si la récursion échoue
-    if not loc_id:
-        for key in ["localization", "strings", "localizationBundle"]:
-            items = meta.get(key, [])
-            if isinstance(items, list):
+    # 1. Recherche ciblée dans les listes structurées de metadata
+    for key in ["localization", "strings", "localizationBundle"]:
+        items = meta.get(key, [])
+        if isinstance(items, list):
+            # Chercher d'abord FRE_FR, puis ENG_US
+            for target_loc in target_locales:
                 for item in items:
                     if isinstance(item, dict):
-                        curr = item.get("id", "")
-                        if len(curr) >= 15: # On baisse la garde sur la longueur
-                            loc_id = curr
+                        curr_locale = item.get("locale") or item.get("language")
+                        curr_id = item.get("id", "")
+                        if (curr_locale == target_loc) or (target_loc in curr_id):
+                            loc_id = curr_id
                             break
-            elif isinstance(items, dict):
-                loc_id = items.get("id")
-            if loc_id: break
+                if loc_id:
+                    break
+            if loc_id:
+                break
+            
+            # Fallback sur n'importe quel ID ayant un format valide dans la liste
+            for item in items:
+                if isinstance(item, dict):
+                    curr_id = item.get("id", "")
+                    if curr_id and len(curr_id) >= 15:
+                        loc_id = curr_id
+                        break
+            if loc_id:
+                break
+
+    # 2. Recherche récursive ciblée si non trouvé dans les clés standard
+    if not loc_id:
+        for target_loc in target_locales:
+            loc_id = _find_loc_id(meta, target_loc)
+            if loc_id:
+                break
+
+    # 3. Dernier recours : recherche récursive générique
+    if not loc_id:
+        loc_id = _find_loc_id(meta)
 
     if not loc_id:
         log.warning("Aucun ID de localisation trouvé. Clés meta : %s", list(meta.keys()))

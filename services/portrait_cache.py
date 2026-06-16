@@ -54,6 +54,14 @@ def get_portrait_path(base_id: str) -> Path:
         "COMMANDERLUKESKYWALKER": "lukebespin",
         "GRANDMOFFTARKIN": "tarkinadmiral",
 
+        # --- Clones ---
+        "CT7567": "trooperclone_rex",
+        "CC2224": "trooperclone_cody",
+        "CT210408": "trooperclone_echo",
+        "CT5555": "trooperclone_fives",
+        "ARCTROOPER501ST": "trooperclone_arc",
+        "CLONESERGEANTPHASEI": "trooperclonegreen",
+
         # --- Autres Persos ---
         "BISHOP": "captainenoch",
         "GOPHERANTS": "groguanz",
@@ -62,7 +70,6 @@ def get_portrait_path(base_id: str) -> Path:
         "HOTHREBELSCOUT": "rebelhothscout",
         "HOTHREBELSOLDIER": "rebelhoth",
         "CHIEFNEBIT": "jawa_nebit",
-        "CLONESERGEANTPHASEI": "trooperclonegreen",
         "BADBATCHECHO": "bb_echo",
         "BADBATCHHUNTER": "bb_hunter",
         "BADBATCHTECH": "bb_tech",
@@ -76,6 +83,18 @@ def get_portrait_path(base_id: str) -> Path:
         "R2D2_LEGENDARY": "astromech_r2d2",
         "SKIFFGUARD": "undercoverlando",
 
+        # --- Nouveaux Overrides Persos ---
+        "ADMINISTRATORLANDO": "landobespin",
+        "ADMIRALACKBAR": "ackbaradmiral",
+        "BARRISSOFFEE": "barriss_light",
+        "BIGGSDARKLIGHTER": "rebelpilot_biggs",
+        "CHIEFCHIRPA": "ewok_chirpa",
+        "COLONELSTARCK": "colonel_stark",
+        "DARTHREVAN": "sithrevan",
+        "FIRSTORDERSPECIALFORCESPILOT": "firstorder_pilot",
+        "HUMANTHUG": "mob_enforcer",
+        "IG90": "ig-90",
+
         # --- Vaisseaux ---
         "GEONOSIANSTARFIGHTER1": "geonosis_fighter_sunfac",
         "GEONOSIANSTARFIGHTER2": "geonosis_fighter_spy",
@@ -84,6 +103,28 @@ def get_portrait_path(base_id: str) -> Path:
         "CAPITALJEDICRUISER": "negotiator",
         "COMMANDSHUTTLE": "upsilon_shuttle_kylo",
         "EMPERORSSHUTTLE": "imperialshuttle",
+
+        # --- Nouveaux Overrides Vaisseaux ---
+        "JEDISTARFIGHTERPLOKOON": "jedi_fighter_bladeofdorin",
+        "JEDISTARFIGHTERANAKIN": "jedi_fighter_anakin",
+        "JEDISTARFIGHTERAHSOKA": "jedi_fighter_ahsoka",
+        "JEDISTARFIGHTERCONSULAR": "jedi_fighter",
+        "CLONESERGEANTARC170": "arc170",
+        "REXARC170": "arc170_02",
+        "MEONECROW": "comeuppance",
+        "SITHBOMBER": "b28extinctionclassbomber",
+        "SITHINFILTRATOR": "sithinfiltrator",
+        "SITHFIGHTER": "sithfighter",
+        "TIEINTERCEPTORPROTOTYPE": "tie_interceptor_prototype",
+        "UWINGHERO": "uwing_hero",
+        "UWING": "uwing",
+        "XWINGBLACKONE": "xwing_blackone",
+        "XWINGRED2": "xwing_red2",
+        "XWINGRED3": "xwing_red3",
+        "XWINGRESISTANCE": "xwing_resistance",
+        "YWINGBTLB": "ywing_btlb",
+        "YWING": "ywing",
+        "BWINGREBEL": "bwingrebel",
     }
 
     targets = []
@@ -99,18 +140,57 @@ def get_portrait_path(base_id: str) -> Path:
     prefixes = ["charui_", ""]
 
     for t in targets:
+        if not t: continue
         clean = str(t).replace(".png", "").replace("tex.avatars_", "")
         for pref in prefixes:
             path = target_dir / f"{pref}{clean}.png"
             if path.exists(): return path
 
-    # Recherche floue
+    # Recherche floue intelligente améliorée
     if target_dir.exists():
-        search = bid_lower.replace("_", "")
+        import difflib
+        best_match = None
+        best_ratio = 0.0
+        search = bid_lower.replace("_", "").replace("charui", "")
+
         for p in target_dir.glob("*.png"):
             fname = p.stem.lower().replace("_", "").replace("charui", "")
+
+            # 1. Correspondance exacte après nettoyage
+            if search == fname:
+                return p
+
+            # 2. Un est sous-chaîne de l'autre
             if search in fname or fname in search:
                 return p
+
+            # 3. Calcul du ratio standard
+            ratio = difflib.SequenceMatcher(None, search, fname).ratio()
+
+            # 4. Détection d'anagrammes (ex: "admiralackbar" et "ackbaradmiral")
+            if sorted(search) == sorted(fname):
+                ratio = max(ratio, 0.95)
+
+            # 5. Détection de jetons communs (ex: "biggs" dans "rebelpilot_biggs")
+            tokens = p.stem.lower().split("_")
+            for token in tokens:
+                if token != "charui" and len(token) >= 4:
+                    if token in search or search in token:
+                        ratio = max(ratio, 0.70)
+
+            # 6. Plus long segment commun
+            if len(search) >= 5 and len(fname) >= 5:
+                match = difflib.SequenceMatcher(None, search, fname).find_longest_match(0, len(search), 0, len(fname))
+                if match.size >= 5:
+                    ratio = max(ratio, match.size / max(len(search), len(fname)))
+
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_match = p
+
+        if best_match and best_ratio >= 0.55:
+            log.info("Fuzzy match trouvé : %s -> %s (ratio: %.2f)", base_id, best_match.name, best_ratio)
+            return best_match
 
     return target_dir / f"charui_{bid_lower}.png"
 

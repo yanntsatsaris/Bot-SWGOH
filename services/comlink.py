@@ -1,6 +1,6 @@
 """
-services/comlink.py — Client HTTP vers SWGOH Comlink (Aligné sur Script Shell)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+services/comlink.py — Client HTTP vers SWGOH Comlink (Protocoles Stricts et Optimisés)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 import logging
 import aiohttp
@@ -10,9 +10,7 @@ log = logging.getLogger(__name__)
 _TIMEOUT = aiohttp.ClientTimeout(total=45)
 
 async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None) -> dict:
-    """
-    Effectue un appel POST avec wrapper 'payload' et paramètres optionnels au top-level (ex: enums).
-    """
+    """Effectue un appel POST brut vers Comlink avec le wrapper 'payload'."""
     url = f"{COMLINK_URL}/{endpoint.lstrip('/')}"
     headers = {"Content-Type": "application/json"}
 
@@ -33,41 +31,56 @@ async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None)
 # ---------------------------------------------------------------------------
 
 async def get_game_data() -> list[dict]:
-    """
-    Récupère la liste brute des unités selon la logique validée par ton script shell.
-    """
-    # 1. Récupérer la version
+    """Récupère la liste brute des unités."""
+    # 1. Metadata
     meta = await _post_raw("metadata", {})
     version = meta.get("latestGamedataVersion")
     if not version:
         raise ValueError("Version du jeu introuvable dans /metadata")
 
-    # 2. Requêter les données (Aligné sur ton curl)
+    # 2. Data
     payload = {
         "version": version,
-        "includePveUnits": True, # On met True car tu filtres ensuite avec jq
+        "includePveUnits": True,
         "requestSegment": 0
     }
-    # Ajout du paramètre "enums": false au top-level
     data = await _post_raw("data", payload, top_level_params={"enums": False})
-
-    # Ton script jq cherche dans .units[]
     return data.get("units", [])
 
 async def get_localization() -> str:
     """Récupère les textes de localisation."""
+    # Note : Le message d'erreur indique que localization ne supporte PAS 'version'
+    # et demande un ID de plus de 22 caractères.
+
+    # On cherche l'ID réel dans les metadata
     meta = await _post_raw("metadata", {})
-    payload = {"id": "Loc_ENG_TXT", "version": meta.get("latestGamedataVersion")}
-    data = await _post_raw("localization", payload)
-    return data.get("localizationBundle", "")
+
+    # On cherche un ID qui ressemble à un bundle (longue chaîne)
+    loc_id = "Loc_ENG_TXT" # Valeur par défaut
+
+    # Comlink renvoie souvent une liste de bundles dans 'localization' ou 'strings'
+    for loc_item in meta.get("localization", []):
+        if loc_item.get("id", "").startswith("Loc_ENG"):
+            loc_id = loc_item["id"]
+            break
+
+    # Payload STRICT : uniquement l'ID
+    try:
+        data = await _post_raw("localization", {"id": loc_id})
+        return data.get("localizationBundle", "")
+    except Exception as e:
+        log.warning("Échec récupération localization avec ID %s : %s", loc_id, e)
+        # On tente un dernier recours sans ID si possible ou avec le défaut court
+        return ""
 
 # ---------------------------------------------------------------------------
 # Roster Joueur
 # ---------------------------------------------------------------------------
 
 async def get_player_roster(ally_code: str) -> list[dict]:
-    """Récupère le roster optimisé."""
+    """Récupère le roster optimisé d'un joueur."""
     clean = str(ally_code).replace("-", "")
+    # Payload STRICT : uniquement allyCode
     data = await _post_raw("player", {"allyCode": clean})
     raw_roster = data.get("rosterUnit", [])
 

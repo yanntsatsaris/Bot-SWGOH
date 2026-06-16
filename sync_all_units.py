@@ -1,15 +1,16 @@
 """
-sync_all_units.py — Récupère l'intégralité des unités via le nouveau service Comlink
+sync_all_units.py — Récupère personnages et vaisseaux via Comlink
 """
 import asyncio
 import json
+import os
 from pathlib import Path
 from services.comlink import _post
 
 OUTPUT_FILE = Path("database/all_units.json")
 
 async def sync():
-    print("🔍 Récupération des personnages via Comlink...")
+    print("🔍 Récupération des unités (persos + vaisseaux) via Comlink...")
 
     # 1. Données brutes
     try:
@@ -39,14 +40,18 @@ async def sync():
     # 3. Structuration
     all_units = []
     for u in units:
-        if u.get("combatType") != 1: continue
         bid = u.get("baseId", "")
-        thumb = u.get("thumbnailName", "")
+        thumb = u.get("thumbnailName", "").replace("tex.avatars_", "")
         name = name_map.get(bid, bid.replace("_", " ").title())
+
+        # Type 1 = Perso, Type 2 = Vaisseau
+        combat_type = u.get("combatType", 1)
+
         all_units.append({
             "base_id": bid,
             "name": name,
-            "thumbnail_name": thumb.replace("tex.avatars_", "")
+            "thumbnail_name": thumb,
+            "type": "character" if combat_type == 1 else "ship"
         })
 
     # 4. Sauvegarde
@@ -54,7 +59,7 @@ async def sync():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(all_units, f, indent=2, ensure_ascii=False)
 
-    print(f"✅ {len(all_units)} personnages enregistrés.")
+    print(f"✅ {len(all_units)} unités enregistrées.")
 
 if __name__ == "__main__":
     asyncio.run(sync())

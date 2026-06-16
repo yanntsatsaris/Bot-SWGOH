@@ -1,54 +1,48 @@
 """
-sync_all_units.py — Récupère l'intégralité des unités depuis Comlink
+sync_all_units.py — Récupère l'intégralité des unités via le nouveau service Comlink
 """
-import requests
+import asyncio
 import json
-import os
 from pathlib import Path
-from dotenv import load_dotenv
+from services.comlink import _post
 
-load_dotenv()
-
-COMLINK_URL = os.getenv("COMLINK_URL", "http://localhost:3000")
 OUTPUT_FILE = Path("database/all_units.json")
 
-def main():
-    print(f"🔍 Interrogation de Comlink sur {COMLINK_URL}...")
+async def sync():
+    print("🔍 Récupération des personnages via Comlink...")
 
-    # 1. Récupération de unitsList
+    # 1. Données brutes
     try:
-        r = requests.post(f"{COMLINK_URL}/data", json={"payload": {"collection": "unitsList"}}, timeout=15)
-        r.raise_for_status()
-        units = r.json()
-        if isinstance(units, dict): units = units.get("unitsList", [])
+        data = await _post("data", {
+            "collection": "unitsList",
+            "includePveUnits": False
+        })
+        units = data if isinstance(data, list) else data.get("unitsList", [])
     except Exception as e:
-        print(f"❌ Erreur lors de la récupération de la liste des unités : {e}")
+        print(f"❌ Erreur : {e}")
         return
 
-    # 2. Récupération des noms (localization)
-    print("🌍 Récupération des traductions...")
+    # 2. Traductions
+    print("🌍 Récupération des noms...")
     name_map = {}
     try:
-        r = requests.post(f"{COMLINK_URL}/localization", json={"id": "Loc_ENG_TXT"}, timeout=20)
-        if r.status_code == 200:
-            bundle = r.json().get("localizationBundle", "")
-            for line in bundle.splitlines():
-                if "_NAME:" in line and "UNIT_" in line:
-                    key, _, value = line.partition(":")
-                    base_id = key.replace("UNIT_", "").replace("_NAME", "")
-                    name_map[base_id] = value.strip()
+        loc = await _post("localization", {"id": "Loc_ENG_TXT"})
+        bundle = loc.get("localizationBundle", "")
+        for line in bundle.splitlines():
+            if "_NAME:" in line and "UNIT_" in line:
+                key, _, value = line.partition(":")
+                base_id = key.replace("UNIT_", "").replace("_NAME", "")
+                name_map[base_id] = value.strip()
     except:
-        print("⚠️  Traductions indisponibles, utilisation des BaseID.")
+        print("⚠️  Traductions indisponibles.")
 
-    # 3. Structuration des données
+    # 3. Structuration
     all_units = []
     for u in units:
-        if u.get("combatType") != 1: continue # On ne garde que les personnages (pas les vaisseaux)
-
+        if u.get("combatType") != 1: continue
         bid = u.get("baseId", "")
         thumb = u.get("thumbnailName", "")
         name = name_map.get(bid, bid.replace("_", " ").title())
-
         all_units.append({
             "base_id": bid,
             "name": name,
@@ -60,7 +54,7 @@ def main():
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         json.dump(all_units, f, indent=2, ensure_ascii=False)
 
-    print(f"✅ Terminé ! {len(all_units)} personnages enregistrés dans {OUTPUT_FILE}")
+    print(f"✅ {len(all_units)} personnages enregistrés.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(sync())

@@ -1,95 +1,97 @@
-"""
-download_portraits.py — Télécharge les portraits SWGOH via swgoh-ae2
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Ce script utilise l'API locale swgoh-ae2 (port 3001) pour extraire
-les textures officielles du jeu.
-
-Usage :
-    python3 download_portraits.py
-"""
 import os
 import sys
 import requests
 import time
 from pathlib import Path
 
-# Tentative de chargement du mapping des noms pour avoir les base_id réels
+# Tentative de chargement du mapping
 try:
     from services.unit_names import STATIC_NAMES
     BASE_IDS = list(STATIC_NAMES.keys())
 except ImportError:
-    # Fallback minimal si les services ne sont pas accessibles
     BASE_IDS = ["SITHPALPATINE", "DARTHVADER", "JEDIMASTERKENOBI"]
 
-# --- Configuration ---
-# L'Asset Extractor tourne sur le port 3001 (Docker)
-AE2_URL = "http://localhost:3001"
+# --- CONFIGURATION ---
+# On va tester ces deux URLs pour voir laquelle répond
+AE2_URLS = ["http://127.0.0.1:3001", "http://localhost:3001"]
 DEST_DIR = Path("assets/portraits")
 
-def download_portrait(base_id):
-    """
-    Télécharge un portrait unique.
-    L'Asset Extractor utilise généralement le préfixe 'charui_' pour les unités.
-    """
-    # Le nom de l'asset dans les fichiers du jeu
-    asset_name = f"charui_{base_id.lower()}"
+def check_ae2():
+    print("🔍 Recherche du conteneur swgoh-ae2 sur le port 3001...")
+    for url in AE2_URLS:
+        try:
+            r = requests.get(url, timeout=3)
+            print(f"✅ AE2 trouvé sur {url} (HTTP {r.status_code})")
+            return url
+        except:
+            continue
+    print("❌ AE2 est introuvable sur le port 3001 (testé localhost et 127.0.0.1).")
+    print("Vérifie que ton Docker run a bien le paramètre -p 3001:8080.")
+    return None
 
-    # Construction de l'URL AE2
-    # On forceReDownload=false pour économiser les ressources si déjà extrait
-    url = f"{AE2_URL}/Asset/single?assetName={asset_name}&forceReDownload=false"
+def download_portrait(ae2_url, base_id):
+    # Variations de noms d'assets possibles dans les fichiers du jeu
+    variations = [
+        f"charui_{base_id.lower()}",
+        f"tex.avatars_{base_id.lower()}",
+        base_id.lower(),
+        f"charui_{base_id.upper()}"
+    ]
 
-    dest_path = DEST_DIR / f"{base_id.lower()}.png"
-
-    try:
-        response = requests.get(url, timeout=45) # Extraction peut être lente
-        if response.status_code == 200:
-            # On vérifie qu'on a bien reçu une image PNG
-            if response.content.startswith(b'\x89PNG'):
-                dest_path.write_bytes(response.content)
-                return True
-            else:
-                # Log d'erreur si AE2 renvoie autre chose (ex: JSON d'erreur)
-                log_msg = response.text[:100]
-                return False
-    except Exception:
-        return False
-    return False
+    for asset_name in variations:
+        url = f"{ae2_url}/Asset/single?assetName={asset_name}&forceReDownload=false"
+        try:
+            # Extraction longue donc timeout élevé
+            response = requests.get(url, timeout=25)
+            if response.status_code == 200:
+                if response.content.startswith(b'\x89PNG'):
+                    dest_path = DEST_DIR / f"{base_id.lower()}.png"
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+                    dest_path.write_bytes(response.content)
+                    return True, asset_name
+        except:
+            continue
+    return False, None
 
 def main():
-    print("🎨 SWGOH Portrait Downloader (via AE2)")
-    print(f"🔗 Connexion à swgoh-ae2 sur {AE2_URL}...")
+    print("🎨 --- DIAGNOSTIC PORTRAITS AE2 ---")
 
-    # 1. Préparation dossier
-    if not DEST_DIR.exists():
-        DEST_DIR.mkdir(parents=True, exist_ok=True)
+    ae2_url = check_ae2()
+    if not ae2_url:
+        return
 
-    # 2. Synchronisation du Manifest (optionnel mais recommandé)
-    print("⏳ Mise à jour du Manifest AE2...")
+    # Création du dossier
+    DEST_DIR.mkdir(parents=True, exist_ok=True)
+
+    print("\n⏳ Mise à jour du Manifest (étape cruciale)...")
     try:
-        requests.get(f"{AE2_URL}/Asset/downloadManifest", timeout=60)
-    except:
-        print("⚠️  Avertissement : Impossible de forcer la mise à jour du manifest.")
+        r = requests.get(f"{ae2_url}/Asset/downloadManifest", timeout=45)
+        print(f"✅ Manifest mis à jour (HTTP {r.status_code})")
+    except Exception as e:
+        print(f"⚠️  Impossible de mettre à jour le manifest : {e}")
 
-    # 3. Boucle de téléchargement
     total = len(BASE_IDS)
-    print(f"📦 {total} personnages à traiter.\n")
+    print(f"\n📦 Analyse de {total} personnages...")
 
-    downloaded = 0
+    ok = 0
     for i, bid in enumerate(BASE_IDS, 1):
-        # Barre de progression
-        percent = (i / total) * 100
-        bar = '█' * int(percent / 4) + '-' * (25 - int(percent / 4))
+        success, found_name = download_portrait(ae2_url, bid)
 
-        sys.stdout.write(f"\r|{bar}| {percent:3.0f}% [{i}/{total}] {bid[:15]:<15}")
-        sys.stdout.flush()
+        if success:
+            print(f"[{i}/{total}] ✓ {bid} trouvé sous le nom '{found_name}'")
+            ok += 1
+        else:
+            print(f"[{i}/{total}] ✗ {bid} : Aucune variation trouvée")
 
-        if download_portrait(bid):
-            downloaded += 1
+        # On s'arrête au bout de 5 échecs pour ne pas polluer ton terminal
+        if i >= 5 and ok == 0:
+            print("\n🛑 Trop d'échecs consécutifs. AE2 ne semble pas avoir ces textures.")
+            print("As-tu bien lancé 'SwgohAssetGetterConsole.exe -downloadManifest' dans le conteneur ?")
+            break
 
-        # Petit temps de pause pour laisser le conteneur respirer
         time.sleep(0.1)
 
-    print(f"\n\n✨ Terminé ! {downloaded}/{total} portraits sont disponibles dans {DEST_DIR}.")
+    print(f"\n✨ Résultat final : {ok}/{i} portraits récupérés.")
 
 if __name__ == "__main__":
     main()

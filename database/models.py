@@ -48,4 +48,20 @@ CREATE_TABLES_SQL: list[str] = [
         updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_history (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        player_id       INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        season_id       TEXT    NOT NULL,
+        enemy_name      TEXT,
+        my_team_leader  TEXT    NOT NULL,
+        my_team_members TEXT    NOT NULL,
+        enemy_team_leader TEXT  NOT NULL,
+        enemy_team_members TEXT NOT NULL,
+        is_attack       BOOLEAN NOT NULL DEFAULT 1,
+        banners         INTEGER,
+        result          TEXT    CHECK(result IN ('WIN', 'LOSS', 'DRAW')),
+        created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
 ]

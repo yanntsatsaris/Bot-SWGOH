@@ -1,96 +1,85 @@
 """
-services/comlink.py — Client HTTP vers SWGOH Comlink (Format POST + Payload)
+services/comlink.py — Client HTTP vers SWGOH Comlink (Aligné sur Script Shell)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 import logging
 import aiohttp
-import time
 from config import COMLINK_URL
 
 log = logging.getLogger(__name__)
-_TIMEOUT = aiohttp.ClientTimeout(total=30)
+_TIMEOUT = aiohttp.ClientTimeout(total=45)
 
-# Cache pour la version et les données de base
-_cache = {
-    "version": None,
-    "metadata": None,
-    "last_check": 0
-}
-
-async def get_metadata_raw() -> dict:
-    """Appel direct à /metadata via POST."""
-    # On rafraîchit toutes les heures ou si vide
-    if _cache["metadata"] and (time.time() - _cache["last_check"] < 3600):
-        return _cache["metadata"]
-
-    url = f"{COMLINK_URL}/metadata"
-    async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-        async with session.post(url, json={"payload": {}}, headers={"Content-Type": "application/json"}) as resp:
-            if resp.status == 200:
-                data = await resp.json()
-                _cache["metadata"] = data
-                _cache["version"] = data.get("latestGamedataVersion")
-                _cache["last_check"] = time.time()
-                return data
-    return {}
-
-async def _get_game_version() -> str:
-    if _cache["version"]:
-        return _cache["version"]
-    meta = await get_metadata_raw()
-    return meta.get("latestGamedataVersion", "")
-
-async def _post(endpoint: str, payload_data: dict) -> dict:
-    """Effectue un POST vers Comlink avec le wrapper 'payload'."""
-    # metadata est un cas à part car il fournit la version
-    if endpoint.strip("/") == "metadata":
-        return await get_metadata_raw()
-
-    version = await _get_game_version()
-
-    # On ne rajoute la version que si elle n'y est pas déjà
-    if version and "version" not in payload_data:
-        payload_data["version"] = version
-
-    full_payload = {"payload": payload_data}
+async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None) -> dict:
+    """
+    Effectue un appel POST avec wrapper 'payload' et paramètres optionnels au top-level (ex: enums).
+    """
     url = f"{COMLINK_URL}/{endpoint.lstrip('/')}"
+    headers = {"Content-Type": "application/json"}
+
+    body = {"payload": payload}
+    if top_level_params:
+        body.update(top_level_params)
 
     async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-        async with session.post(url, json=full_payload, headers={"Content-Type": "application/json"}) as resp:
-            if resp.status == 404:
-                raise ValueError(f"Endpoint introuvable : {endpoint}")
-            resp.raise_for_status()
+        async with session.post(url, json=body, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                log.error("Comlink Error %d sur %s: %s", resp.status, endpoint, text)
+                resp.raise_for_status()
             return await resp.json()
 
-async def get_player(ally_code: str) -> dict:
-    clean = str(ally_code).replace("-", "")
-    return await _post("player", {"allyCode": clean})
+# ---------------------------------------------------------------------------
+# PROTOCOLE : Référentiel Jeu (Metadata -> Data)
+# ---------------------------------------------------------------------------
 
-async def get_player_arena(ally_code: str) -> dict:
-    clean = str(ally_code).replace("-", "")
-    return await _post("playerArena", {"allyCode": clean})
+async def get_game_data() -> list[dict]:
+    """
+    Récupère la liste brute des unités selon la logique validée par ton script shell.
+    """
+    # 1. Récupérer la version
+    meta = await _post_raw("metadata", {})
+    version = meta.get("latestGamedataVersion")
+    if not version:
+        raise ValueError("Version du jeu introuvable dans /metadata")
 
-async def get_guild(guild_id: str) -> dict:
-    return await _post("guild", {"guildId": guild_id, "includeRecentGuildActivityInfo": True})
+    # 2. Requêter les données (Aligné sur ton curl)
+    payload = {
+        "version": version,
+        "includePveUnits": True, # On met True car tu filtres ensuite avec jq
+        "requestSegment": 0
+    }
+    # Ajout du paramètre "enums": false au top-level
+    data = await _post_raw("data", payload, top_level_params={"enums": False})
 
-async def get_player_gac_history(ally_code: str) -> dict:
-    clean = str(ally_code).replace("-", "")
-    try:
-        return await _post("playerGac", {"allyCode": clean})
-    except:
-        return await get_player(clean)
+    # Ton script jq cherche dans .units[]
+    return data.get("units", [])
+
+async def get_localization() -> str:
+    """Récupère les textes de localisation."""
+    meta = await _post_raw("metadata", {})
+    payload = {"id": "Loc_ENG_TXT", "version": meta.get("latestGamedataVersion")}
+    data = await _post_raw("localization", payload)
+    return data.get("localizationBundle", "")
+
+# ---------------------------------------------------------------------------
+# Roster Joueur
+# ---------------------------------------------------------------------------
 
 async def get_player_roster(ally_code: str) -> list[dict]:
-    data = await get_player(ally_code)
+    """Récupère le roster optimisé."""
+    clean = str(ally_code).replace("-", "")
+    data = await _post_raw("player", {"allyCode": clean})
+    raw_roster = data.get("rosterUnit", [])
+
     roster = []
-    for unit in data.get("rosterUnit", []):
+    for unit in raw_roster:
         def_id = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id
-        if not base_id: continue
         roster.append({
-            "base_id":   base_id,
-            "rarity":    unit.get("currentRarity", 0),
-            "level":     unit.get("currentLevel", 0),
-            "gear_tier": unit.get("currentTier", 0),
-            "relic_tier": unit.get("relic", {}).get("currentTier", 0),
+            "base_id":    base_id,
+            "rarity":     unit.get("currentRarity", 0),
+            "level":      unit.get("currentLevel", 0),
+            "gear_tier":  unit.get("currentTier", 0),
+            "relic_tier": (unit.get("relic") or {}).get("currentTier", 0),
         })
     return roster

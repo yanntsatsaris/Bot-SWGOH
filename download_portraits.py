@@ -1,7 +1,12 @@
+"""
+download_portraits.py — Télécharge les portraits SWGOH via swgoh-ae2
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""
 import os
 import sys
 import requests
 import time
+import json
 from pathlib import Path
 
 # Tentative de chargement du mapping
@@ -11,87 +16,99 @@ try:
 except ImportError:
     BASE_IDS = ["SITHPALPATINE", "DARTHVADER", "JEDIMASTERKENOBI"]
 
-# --- CONFIGURATION ---
-# On va tester ces deux URLs pour voir laquelle répond
-AE2_URLS = ["http://127.0.0.1:3001", "http://localhost:3001"]
+AE2_URL = "http://localhost:3001"
+COMLINK_URL = "http://localhost:3000"
 DEST_DIR = Path("assets/portraits")
+THUMB_MAP_FILE = Path("utils/unit_thumbs.json")
 
-def check_ae2():
-    print("🔍 Recherche du conteneur swgoh-ae2 sur le port 3001...")
-    for url in AE2_URLS:
-        try:
-            r = requests.get(url, timeout=3)
-            print(f"✅ AE2 trouvé sur {url} (HTTP {r.status_code})")
-            return url
-        except:
-            continue
-    print("❌ AE2 est introuvable sur le port 3001 (testé localhost et 127.0.0.1).")
-    print("Vérifie que ton Docker run a bien le paramètre -p 3001:8080.")
-    return None
+def get_comlink_thumbs():
+    """Récupère le mapping officiel thumbnailName depuis Comlink."""
+    print(f"🔍 Récupération du mapping Comlink sur {COMLINK_URL}...")
+    try:
+        r = requests.post(f"{COMLINK_URL}/data", json={"payload": {"collection": "unitsList"}}, timeout=10)
+        if r.status_code == 200:
+            units = r.json()
+            if isinstance(units, dict): units = units.get("unitsList", [])
+            mapping = {u["baseId"]: u["thumbnailName"] for u in units if u.get("baseId") and u.get("thumbnailName")}
 
-def download_portrait(ae2_url, base_id):
-    # Variations de noms d'assets possibles dans les fichiers du jeu
-    variations = [
+            # Sauvegarde pour le bot
+            THUMB_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+            with open(THUMB_MAP_FILE, "w", encoding="utf-8") as f:
+                json.dump(mapping, f, indent=2)
+            print(f"✅ Mapping sauvegardé ({len(mapping)} unités)")
+            return mapping
+    except Exception as e:
+        print(f"⚠️ Impossible de contacter Comlink : {e}")
+    return {}
+
+def download_portrait(base_id, thumb_name=None):
+    # Liste des variations de noms d'assets à tester
+    variations = []
+    if thumb_name:
+        variations.append(thumb_name)
+        variations.append(thumb_name.replace("tex.avatars_", "charui_"))
+
+    variations.extend([
         f"charui_{base_id.lower()}",
-        f"tex.avatars_{base_id.lower()}",
+        f"charui_{base_id.upper()}",
         base_id.lower(),
-        f"charui_{base_id.upper()}"
-    ]
+        f"tex.avatars_{base_id.lower()}"
+    ])
+
+    # On retire les doublons tout en gardant l'ordre
+    variations = list(dict.fromkeys(variations))
 
     for asset_name in variations:
-        url = f"{ae2_url}/Asset/single?assetName={asset_name}&forceReDownload=false"
+        # Nettoyage pour AE2
+        lookup = asset_name.replace(".png", "")
+        url = f"{AE2_URL}/Asset/single?assetName={lookup}&forceReDownload=false"
         try:
-            # Extraction longue donc timeout élevé
-            response = requests.get(url, timeout=25)
-            if response.status_code == 200:
-                if response.content.startswith(b'\x89PNG'):
-                    dest_path = DEST_DIR / f"{base_id.lower()}.png"
-                    dest_path.parent.mkdir(parents=True, exist_ok=True)
-                    dest_path.write_bytes(response.content)
-                    return True, asset_name
+            response = requests.get(url, timeout=20)
+            if response.status_code == 200 and response.content.startswith(b'\x89PNG'):
+                # On sauvegarde sous le nom 'charui_xxx.png' pour la cohérence
+                save_name = lookup if lookup.startswith("charui_") else f"charui_{lookup}"
+                if "tex.avatars_" in save_name:
+                    save_name = save_name.replace("tex.avatars_", "charui_")
+
+                dest_path = DEST_DIR / f"{save_name}.png"
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                dest_path.write_bytes(response.content)
+                return True, save_name
         except:
             continue
     return False, None
 
 def main():
-    print("🎨 --- DIAGNOSTIC PORTRAITS AE2 ---")
+    print("🎨 SWGOH Portrait Downloader (AE2 + Comlink Mapping)")
 
-    ae2_url = check_ae2()
-    if not ae2_url:
-        return
+    # 1. Mapping
+    thumb_map = get_comlink_thumbs()
 
-    # Création du dossier
+    # 2. Dossier
     DEST_DIR.mkdir(parents=True, exist_ok=True)
 
-    print("\n⏳ Mise à jour du Manifest (étape cruciale)...")
+    # 3. Manifest
+    print("\n⏳ Mise à jour du Manifest AE2...")
     try:
-        r = requests.get(f"{ae2_url}/Asset/downloadManifest", timeout=45)
-        print(f"✅ Manifest mis à jour (HTTP {r.status_code})")
-    except Exception as e:
-        print(f"⚠️  Impossible de mettre à jour le manifest : {e}")
+        requests.get(f"{AE2_URL}/Asset/downloadManifest", timeout=45)
+    except: pass
 
     total = len(BASE_IDS)
-    print(f"\n📦 Analyse de {total} personnages...")
+    print(f"\n📦 Traitement de {total} personnages...")
 
     ok = 0
     for i, bid in enumerate(BASE_IDS, 1):
-        success, found_name = download_portrait(ae2_url, bid)
+        thumb = thumb_map.get(bid)
+        success, saved_as = download_portrait(bid, thumb)
 
         if success:
-            print(f"[{i}/{total}] ✓ {bid} trouvé sous le nom '{found_name}'")
             ok += 1
+            if i % 10 == 0 or i == total:
+                print(f"[{i}/{total}] ✓ Portraits en cours...")
         else:
-            print(f"[{i}/{total}] ✗ {bid} : Aucune variation trouvée")
+            print(f"[{i}/{total}] ✗ {bid} (non trouvé)")
 
-        # On s'arrête au bout de 5 échecs pour ne pas polluer ton terminal
-        if i >= 5 and ok == 0:
-            print("\n🛑 Trop d'échecs consécutifs. AE2 ne semble pas avoir ces textures.")
-            print("As-tu bien lancé 'SwgohAssetGetterConsole.exe -downloadManifest' dans le conteneur ?")
-            break
-
-        time.sleep(0.1)
-
-    print(f"\n✨ Résultat final : {ok}/{i} portraits récupérés.")
+    print(f"\n✨ Terminé ! {ok}/{total} portraits disponibles dans {DEST_DIR}.")
 
 if __name__ == "__main__":
     main()

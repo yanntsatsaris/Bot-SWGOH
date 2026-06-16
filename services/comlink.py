@@ -66,46 +66,49 @@ def _find_loc_id(obj, target_locale: str | None = None, min_len=20) -> str | Non
 async def get_localization() -> str:
     meta = await _post_raw("metadata", {})
 
-    # Priorité : FRE_FR (Français), puis ENG_US (Anglais)
-    target_locales = ["FRE_FR", "ENG_US"]
-    loc_id = None
+    # 1. Extraction directe via latestLocalizationBundleVersion (méthode officielle recommandée)
+    loc_id = meta.get("latestLocalizationBundleVersion")
+    if not loc_id:
+        loc_id = meta.get("latestLocalizationRevision")
 
-    # 1. Recherche ciblée dans les listes structurées de metadata
-    for key in ["localization", "strings", "localizationBundle"]:
-        items = meta.get(key, [])
-        if isinstance(items, list):
-            # Chercher d'abord FRE_FR, puis ENG_US
-            for target_loc in target_locales:
+    # 2. Recherche ciblée dans les listes structurées de metadata
+    if not loc_id:
+        target_locales = ["FRE_FR", "ENG_US"]
+        for key in ["localization", "strings", "localizationBundle"]:
+            items = meta.get(key, [])
+            if isinstance(items, list):
+                # Chercher d'abord FRE_FR, puis ENG_US
+                for target_loc in target_locales:
+                    for item in items:
+                        if isinstance(item, dict):
+                            curr_locale = item.get("locale") or item.get("language")
+                            curr_id = item.get("id", "")
+                            if (curr_locale == target_loc) or (target_loc in curr_id):
+                                loc_id = curr_id
+                                break
+                    if loc_id:
+                        break
+                if loc_id:
+                    break
+                
+                # Fallback sur n'importe quel ID ayant un format valide dans la liste
                 for item in items:
                     if isinstance(item, dict):
-                        curr_locale = item.get("locale") or item.get("language")
                         curr_id = item.get("id", "")
-                        if (curr_locale == target_loc) or (target_loc in curr_id):
+                        if curr_id and len(curr_id) >= 15:
                             loc_id = curr_id
                             break
                 if loc_id:
                     break
-            if loc_id:
-                break
-            
-            # Fallback sur n'importe quel ID ayant un format valide dans la liste
-            for item in items:
-                if isinstance(item, dict):
-                    curr_id = item.get("id", "")
-                    if curr_id and len(curr_id) >= 15:
-                        loc_id = curr_id
-                        break
-            if loc_id:
-                break
 
-    # 2. Recherche récursive ciblée si non trouvé dans les clés standard
+    # 3. Recherche récursive ciblée si non trouvé dans les clés standard
     if not loc_id:
-        for target_loc in target_locales:
+        for target_loc in ["FRE_FR", "ENG_US"]:
             loc_id = _find_loc_id(meta, target_loc)
             if loc_id:
                 break
 
-    # 3. Dernier recours : recherche récursive générique
+    # 4. Dernier recours : recherche récursive générique
     if not loc_id:
         loc_id = _find_loc_id(meta)
 
@@ -113,11 +116,24 @@ async def get_localization() -> str:
         log.warning("Aucun ID de localisation trouvé. Clés meta : %s", list(meta.keys()))
         return ""
 
+    # Tente d'abord de récupérer en français (FRE_FR) puis en anglais (ENG_US)
+    for locale in ["FRE_FR", "ENG_US"]:
+        try:
+            log.info("Tentative de récupération de la locale %s (ID: %s)...", locale, loc_id)
+            data = await _post_raw("localization", {"id": loc_id, "locale": locale})
+            bundle = data.get("localizationBundle", "")
+            if bundle:
+                log.info("✓ Locale %s récupérée avec succès.", locale)
+                return bundle
+        except Exception as e:
+            log.warning("Échec de récupération pour la locale %s : %s", locale, e)
+
+    # Dernier recours sans spécifier de locale
     try:
         data = await _post_raw("localization", {"id": loc_id})
         return data.get("localizationBundle", "")
     except Exception as e:
-        log.warning("Erreur localization avec ID %s : %s", loc_id, e)
+        log.warning("Erreur localization finale avec ID %s : %s", loc_id, e)
         return ""
 
 async def get_player_roster(ally_code: str) -> list[dict]:

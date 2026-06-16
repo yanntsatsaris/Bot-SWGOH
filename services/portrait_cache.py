@@ -94,6 +94,8 @@ def get_portrait_path(base_id: str) -> Path:
         "FIRSTORDERSPECIALFORCESPILOT": "firstorder_pilot",
         "HUMANTHUG": "mob_enforcer",
         "IG90": "ig-90",
+        "OLDBENKENOBI": "obiwanep4",
+        "RACCOON": "rotta",
 
         # --- Vaisseaux ---
         "GEONOSIANSTARFIGHTER1": "geonosis_fighter_sunfac",

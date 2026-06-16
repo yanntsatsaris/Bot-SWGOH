@@ -1,45 +1,46 @@
 """
-debug_portraits.py — Diagnostic des portraits manquants
+debug_portraits.py — Diagnostic global des portraits (tous les persos)
 """
 import os
+import json
 from pathlib import Path
-from services.unit_names import STATIC_NAMES
 from services.portrait_cache import get_portrait_path, PORTRAITS_DIR
 
-def main():
-    print("🔍 Diagnostic des portraits...")
-    print(f"Dossier : {PORTRAITS_DIR.absolute()}")
+UNITS_DATA_FILE = Path("database/all_units.json")
 
-    if not PORTRAITS_DIR.exists():
-        print("❌ Le dossier des portraits n'existe pas !")
+def main():
+    print("🔍 Diagnostic global des portraits...")
+
+    if not UNITS_DATA_FILE.exists():
+        print("❌ Fichier database/all_units.json introuvable. Lance 'python3 sync_all_units.py' d'abord.")
         return
 
-    files = list(PORTRAITS_DIR.glob("*.png"))
-    print(f"Nombre de fichiers .png trouvés : {len(files)}")
+    with open(UNITS_DATA_FILE, "r", encoding="utf-8") as f:
+        units = json.load(f)
+
+    print(f"Persos connus en BDD : {len(units)}")
+    print(f"Fichiers en local : {len(list(PORTRAITS_DIR.glob('*.png')))}")
 
     missing = []
     found = 0
 
-    for bid, name in STATIC_NAMES.items():
+    for u in units:
+        bid = u["base_id"]
         path = get_portrait_path(bid)
         if path.exists():
             found += 1
         else:
-            missing.append((bid, name))
+            missing.append((bid, u["name"]))
 
-    print(f"✅ Portraits liés avec succès : {found}")
-    print(f"❌ Portraits manquants ou non liés : {len(missing)}")
+    print(f"✅ Liés avec succès : {found}")
+    print(f"❌ Non liés : {len(missing)}")
 
     if missing:
-        print("\nListe des manquants :")
-        for bid, name in missing[:20]:
+        print("\nExemples de personnages sans image :")
+        for bid, name in missing[:15]:
             print(f"- {bid:.<25} ({name})")
-        if len(missing) > 20:
-            print(f"... et {len(missing)-20} autres.")
-
-    print("\nExemples de fichiers présents pour comparaison :")
-    for f in files[:10]:
-        print(f"  {f.name}")
+        if len(missing) > 15:
+            print(f"... et {len(missing)-15} autres.")
 
 if __name__ == "__main__":
     main()

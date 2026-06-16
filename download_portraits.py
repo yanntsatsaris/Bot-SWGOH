@@ -8,107 +8,76 @@ import requests
 import time
 import json
 from pathlib import Path
+from dotenv import load_dotenv
 
-# Tentative de chargement du mapping
-try:
-    from services.unit_names import STATIC_NAMES
-    BASE_IDS = list(STATIC_NAMES.keys())
-except ImportError:
-    BASE_IDS = ["SITHPALPATINE", "DARTHVADER", "JEDIMASTERKENOBI"]
+load_dotenv()
 
 AE2_URL = "http://localhost:3001"
-COMLINK_URL = "http://localhost:3000"
+COMLINK_URL = os.getenv("COMLINK_URL", "http://localhost:3000")
 DEST_DIR = Path("assets/portraits")
-THUMB_MAP_FILE = Path("utils/unit_thumbs.json")
+ALL_UNITS_FILE = Path("database/all_units.json")
 
-def get_comlink_thumbs():
-    """Récupère le mapping officiel thumbnailName depuis Comlink."""
-    print(f"🔍 Récupération du mapping Comlink sur {COMLINK_URL}...")
+def get_units_from_comlink():
+    """Récupère la liste complète des unités et leur thumbnailName."""
+    print(f"🔍 Connexion à Comlink ({COMLINK_URL})...")
     try:
-        r = requests.post(f"{COMLINK_URL}/data", json={"payload": {"collection": "unitsList"}}, timeout=10)
-        if r.status_code == 200:
-            units = r.json()
-            if isinstance(units, dict): units = units.get("unitsList", [])
-            mapping = {u["baseId"]: u["thumbnailName"] for u in units if u.get("baseId") and u.get("thumbnailName")}
-
-            # Sauvegarde pour le bot
-            THUMB_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(THUMB_MAP_FILE, "w", encoding="utf-8") as f:
-                json.dump(mapping, f, indent=2)
-            print(f"✅ Mapping sauvegardé ({len(mapping)} unités)")
-            return mapping
+        r = requests.post(f"{COMLINK_URL}/data", json={"payload": {"collection": "unitsList"}}, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        units = data if isinstance(data, list) else data.get("unitsList", [])
+        return {u["baseId"]: u["thumbnailName"] for u in units if u.get("baseId") and u.get("thumbnailName")}
     except Exception as e:
-        print(f"⚠️ Impossible de contacter Comlink : {e}")
-    return {}
+        print(f"❌ Erreur Comlink : {e}")
+        return {}
 
-def download_portrait(base_id, thumb_name=None):
-    # Liste des variations de noms d'assets à tester
-    variations = []
-    if thumb_name:
-        variations.append(thumb_name)
-        variations.append(thumb_name.replace("tex.avatars_", "charui_"))
+def download_portrait(base_id, thumbnail_name):
+    """Tente de télécharger un portrait via AE2."""
+    # On teste le thumbnail officiel puis des variantes
+    variations = [thumbnail_name, thumbnail_name.replace("tex.avatars_", "charui_"), f"charui_{base_id.lower()}"]
 
-    variations.extend([
-        f"charui_{base_id.lower()}",
-        f"charui_{base_id.upper()}",
-        base_id.lower(),
-        f"tex.avatars_{base_id.lower()}"
-    ])
-
-    # On retire les doublons tout en gardant l'ordre
-    variations = list(dict.fromkeys(variations))
-
-    for asset_name in variations:
-        # Nettoyage pour AE2
-        lookup = asset_name.replace(".png", "")
-        url = f"{AE2_URL}/Asset/single?assetName={lookup}&forceReDownload=false"
+    for asset in variations:
+        clean_asset = asset.replace(".png", "")
+        url = f"{AE2_URL}/Asset/single?assetName={clean_asset}&forceReDownload=false"
         try:
-            response = requests.get(url, timeout=20)
-            if response.status_code == 200 and response.content.startswith(b'\x89PNG'):
-                # On sauvegarde sous le nom 'charui_xxx.png' pour la cohérence
-                save_name = lookup if lookup.startswith("charui_") else f"charui_{lookup}"
-                if "tex.avatars_" in save_name:
-                    save_name = save_name.replace("tex.avatars_", "charui_")
-
-                dest_path = DEST_DIR / f"{save_name}.png"
-                dest_path.parent.mkdir(parents=True, exist_ok=True)
-                dest_path.write_bytes(response.content)
-                return True, save_name
+            resp = requests.get(url, timeout=20)
+            if resp.status_code == 200 and resp.content.startswith(b'\x89PNG'):
+                # Sauvegarde normalisée charui_xxx.png
+                save_name = clean_asset if clean_asset.startswith("charui_") else f"charui_{clean_asset}"
+                dest = DEST_DIR / f"{save_name}.png"
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(resp.content)
+                return True
         except:
             continue
-    return False, None
+    return False
 
 def main():
-    print("🎨 SWGOH Portrait Downloader (AE2 + Comlink Mapping)")
+    print("🎨 SWGOH Portrait Downloader (Full Sync)")
 
-    # 1. Mapping
-    thumb_map = get_comlink_thumbs()
+    # 1. Liste des persos
+    thumb_map = get_units_from_comlink()
+    if not thumb_map:
+        print("Abandon : impossible de récupérer la liste des unités.")
+        return
 
-    # 2. Dossier
-    DEST_DIR.mkdir(parents=True, exist_ok=True)
-
-    # 3. Manifest
-    print("\n⏳ Mise à jour du Manifest AE2...")
-    try:
-        requests.get(f"{AE2_URL}/Asset/downloadManifest", timeout=45)
+    # 2. Manifest
+    print("⏳ Mise à jour du Manifest AE2...")
+    try: requests.get(f"{AE2_URL}/Asset/downloadManifest", timeout=45)
     except: pass
 
-    total = len(BASE_IDS)
-    print(f"\n📦 Traitement de {total} personnages...")
+    # 3. Boucle de téléchargement sur TOUS les persos trouvés
+    total = len(thumb_map)
+    print(f"📦 {total} unités à traiter...")
 
     ok = 0
-    for i, bid in enumerate(BASE_IDS, 1):
-        thumb = thumb_map.get(bid)
-        success, saved_as = download_portrait(bid, thumb)
-
-        if success:
+    for i, (bid, thumb) in enumerate(thumb_map.items(), 1):
+        if download_portrait(bid, thumb):
             ok += 1
-            if i % 10 == 0 or i == total:
-                print(f"[{i}/{total}] ✓ Portraits en cours...")
-        else:
-            print(f"[{i}/{total}] ✗ {bid} (non trouvé)")
 
-    print(f"\n✨ Terminé ! {ok}/{total} portraits disponibles dans {DEST_DIR}.")
+        if i % 20 == 0 or i == total:
+            print(f"[{i}/{total}] Portraits en cours...")
+
+    print(f"\n✨ Terminé ! {ok}/{total} portraits récupérés.")
 
 if __name__ == "__main__":
     main()

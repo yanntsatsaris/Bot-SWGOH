@@ -38,56 +38,77 @@ def get_portrait_path(base_id: str) -> Path:
     unit = _unit_data.get(bid_upper, {})
     unit_type = unit.get("type", "character")
 
-    # Choix du dossier racine
     target_dir = SHIPS_DIR if unit_type == "ship" else PORTRAITS_DIR
 
-    # 1. Overrides manuels (Personnages)
-    MANUAL_OVERRIDES = {
+    # Mappings manuels exhaustifs basés sur les fichiers réels
+    MANUAL_MAPPING = {
+        # GLs
         "SITHPALPATINE": "espalpatine_pre",
         "JEDIMASTERKENOBI": "globiwan",
         "GENERALSKYWALKER": "generalanakin",
-        "SKIFFGUARD": "undercoverlando",
-        "OLDREPUBLICGUARD": "vanguardtempleguard",
-    }
+        "JEDIMASTERLUKE": "luke_jml",
+        "SUPREMELEADERKYLOREN": "kyloren_tros",
+        "REYJEDITRAINING": "rey_tlj",
 
-    # 2. Mappings spécifiques Vaisseaux
-    SHIP_OVERRIDES = {
+        # Bad Batch
+        "BADBATCHECHO": "bb_echo",
+        "BADBATCHHUNTER": "bb_hunter",
+        "BADBATCHTECH": "bb_tech",
+        "BADBATCHWRECKER": "bb_wrecker",
+        "BADBATCHOMEGA": "badbatchomega",
+
+        # Clones / Republic
+        "ARCTROOPER501ST": "trooperclone_arc",
+        "CC2224": "trooperclone_cody",
+        "CT7567": "trooperclone_rex",
+        "CT5555": "trooperclone_fives",
+        "CT210408": "trooperclone_echo",
+        "BARRISSOFFEE": "barriss_light",
+
+        # Rebels / Empire
+        "ADMINISTRATORLANDO": "landobespin",
+        "ADMIRALACKBAR": "ackbaradmiral",
+        "BIGGSDARKLIGHTER": "rebelpilot_biggs",
+        "WEDGEANTILLES": "rebelpilot_wedge",
+        "PRINCESSLEIA": "leia_princess",
+        "HANSOLO": "han",
+        "C3POLEGENDARY": "c3p0",
+        "R2D2_LEGENDARY": "astromech_r2d2",
+        "CHIEFCHIRPA": "ewok_chirpa",
+
+        # Jabba / Bounty Hunters
+        "SKIFFGUARD": "undercoverlando",
+        "BOBAFETTSCION": "bobafettold",
+        "GREEFKARGA": "greefkarga",
+
+        # Vaisseaux (Basés sur ton ll)
+        "CAPITALMONCALAMARICRUISER": "moncalamarilibertycruiser",
+        "CAPITALJEDICRUISER": "negotiator",
+        "CAPITALSTARDESTROYER": "stardestroyer",
+        "CAPITALCHIMAERA": "chimaera",
+        "CAPITALFINALIZER": "finalizer",
+        "CAPITALMALEVOLENCE": "malevolence",
+        "CAPITALPROFUNDITY": "profundity",
+        "CAPITALVICTORYSTARDESTROYER": "stardestroyer",
         "MILLENNIUMFALCON": "mfalcon",
         "HANSOLO_MILLENNIUMFALCON": "mfalcon",
-        "MILLENNIUMFALCONPRISTINE": "mil_fal_pristine",
         "EBONHAWK": "ebonhawk",
         "SLAVE1": "slave1",
-        "EXECUTOR": "executor",
-        "CHIMAERA": "chimaera",
-        "FINALIZER": "finalizer",
-        "MALEVOLENCE": "malevolence",
-        "NEGOTIATOR": "negotiator",
-        "PROFUNDITY": "profundity",
-        "LEVIATHAN": "leviathan",
-        "RAZORCREST": "razorcrest",
-        "TIEADVANCED": "tieadvanced",
-        "TIE_INTERCEPTOR_PROTOTYPE": "tie_interceptor_prototype",
-        "SCYTHE": "scythe",
-        "OUTRIDER": "outrider",
     }
 
     targets = []
-    if unit_type == "character" and bid_upper in MANUAL_OVERRIDES:
-        targets.append(MANUAL_OVERRIDES[bid_upper])
-    elif unit_type == "ship" and bid_upper in SHIP_OVERRIDES:
-        targets.append(SHIP_OVERRIDES[bid_upper])
+    if bid_upper in MANUAL_MAPPING:
+        targets.append(MANUAL_MAPPING[bid_upper])
 
-    # 3. Mapping officiel thumbnail_name
-    official_thumb = unit.get("thumbnail_name")
-    if official_thumb:
-        targets.append(official_thumb)
+    # thumbnail_name officiel
+    if unit.get("thumbnail_name"):
+        targets.append(unit["thumbnail_name"])
 
-    # 4. Dérivations
+    # Dérivations
     targets.append(bid_lower)
-    if unit_type == "ship":
-        targets.append(bid_lower.replace("capitalship_", "").replace("ship_", ""))
+    targets.append(bid_lower.replace("capital", "").replace("ship_", ""))
 
-    prefixes = ["charui_", ""] if unit_type == "character" else [""]
+    prefixes = ["charui_", ""]
 
     for t in targets:
         clean = t.replace(".png", "").replace("tex.avatars_", "")
@@ -95,7 +116,7 @@ def get_portrait_path(base_id: str) -> Path:
             path = target_dir / f"{pref}{clean}.png"
             if path.exists(): return path
 
-    # 5. Recherche floue
+    # Recherche floue finale
     if target_dir.exists():
         search = bid_lower.replace("_", "")
         for p in target_dir.glob("*.png"):
@@ -106,5 +127,4 @@ def get_portrait_path(base_id: str) -> Path:
     return target_dir / f"charui_{bid_lower}.png"
 
 def download_portrait(base_id: str) -> bool:
-    """Les portraits sont gérés manuellement."""
     return get_portrait_path(base_id).exists()

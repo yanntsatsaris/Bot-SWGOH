@@ -4,19 +4,17 @@ services/comlink.py — Client HTTP vers SWGOH Comlink (Protocoles Stricts et Op
 """
 import logging
 import aiohttp
+import json
 from config import COMLINK_URL
 
 log = logging.getLogger(__name__)
 _TIMEOUT = aiohttp.ClientTimeout(total=45)
 
 async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None) -> dict:
-    """Effectue un appel POST brut vers Comlink avec le wrapper 'payload'."""
     url = f"{COMLINK_URL}/{endpoint.lstrip('/')}"
     headers = {"Content-Type": "application/json"}
-
     body = {"payload": payload}
-    if top_level_params:
-        body.update(top_level_params)
+    if top_level_params: body.update(top_level_params)
 
     async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
         async with session.post(url, json=body, headers=headers) as resp:
@@ -26,67 +24,57 @@ async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None)
                 resp.raise_for_status()
             return await resp.json()
 
-# ---------------------------------------------------------------------------
-# PROTOCOLE : Référentiel Jeu (Metadata -> Data)
-# ---------------------------------------------------------------------------
-
 async def get_game_data() -> list[dict]:
-    """Récupère la liste brute des unités."""
-    # 1. Metadata
     meta = await _post_raw("metadata", {})
     version = meta.get("latestGamedataVersion")
-    if not version:
-        raise ValueError("Version du jeu introuvable dans /metadata")
+    if not version: raise ValueError("Version du jeu introuvable")
 
-    # 2. Data
-    payload = {
-        "version": version,
-        "includePveUnits": True,
-        "requestSegment": 0
-    }
+    payload = {"version": version, "includePveUnits": True, "requestSegment": 0}
     data = await _post_raw("data", payload, top_level_params={"enums": False})
     return data.get("units", [])
 
+def _find_loc_id(obj, min_len=22):
+    """Cherche récursivement un ID de localisation long dans un objet JSON."""
+    if isinstance(obj, str):
+        if len(obj) >= min_len and ("Loc_ENG" in obj or "ENG_TXT" in obj):
+            return obj
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            res = _find_loc_id(v, min_len)
+            if res: return res
+    elif isinstance(obj, list):
+        for v in obj:
+            res = _find_loc_id(v, min_len)
+            if res: return res
+    return None
+
 async def get_localization() -> str:
-    """Récupère les textes de localisation en cherchant l'ID long requis."""
     meta = await _post_raw("metadata", {})
 
-    # On cherche l'ID de plus de 22 caractères dans la section localization
-    loc_id = None
+    # 1. Recherche récursive de l'ID long
+    loc_id = _find_loc_id(meta)
 
-    # Comlink renvoie une liste de dictionnaires dans 'localization'
-    # Chaque dictionnaire a 'id' et 'language' (ex: 'Loc_ENG_TXT.json_vX.Y.Z')
-    for loc_item in meta.get("localization", []):
-        curr_id = loc_item.get("id", "")
-        if "ENG" in curr_id and len(curr_id) >= 22:
-            loc_id = curr_id
-            break
+    # 2. Fallback sur les listes connues
+    if not loc_id:
+        for item in meta.get("localization", []) + meta.get("strings", []):
+            if isinstance(item, dict):
+                curr = item.get("id", "")
+                if len(curr) >= 22:
+                    loc_id = curr
+                    break
 
     if not loc_id:
-        # Fallback : on cherche n'importe quel ID assez long si l'anglais n'est pas trouvé
-        for loc_item in meta.get("localization", []):
-            curr_id = loc_item.get("id", "")
-            if len(curr_id) >= 22:
-                loc_id = curr_id
-                break
-
-    if not loc_id:
-        log.warning("Aucun ID de localisation de plus de 22 caractères trouvé dans /metadata")
+        log.warning("ID de localisation introuvable dans les metadata.")
         return ""
 
     try:
         data = await _post_raw("localization", {"id": loc_id})
         return data.get("localizationBundle", "")
     except Exception as e:
-        log.warning("Échec récupération localization avec ID %s : %s", loc_id, e)
+        log.warning("Erreur localization avec ID %s : %s", loc_id, e)
         return ""
 
-# ---------------------------------------------------------------------------
-# Roster Joueur
-# ---------------------------------------------------------------------------
-
 async def get_player_roster(ally_code: str) -> list[dict]:
-    """Récupère le roster optimisé d'un joueur."""
     clean = str(ally_code).replace("-", "")
     data = await _post_raw("player", {"allyCode": clean})
     raw_roster = data.get("rosterUnit", [])

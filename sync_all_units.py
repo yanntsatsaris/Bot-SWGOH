@@ -1,5 +1,5 @@
 """
-sync_all_units.py — Récupère et filtre les unités avec gestion d'erreurs localization
+sync_all_units.py — Récupère et filtre les unités avec dédoublonnage strict
 """
 import asyncio
 import json
@@ -18,9 +18,9 @@ async def sync():
         if not raw_units:
             print("❌ Aucune unité reçue.")
             return
-        print(f"✅ {len(raw_units)} unités reçues.")
+        print(f"✅ {len(raw_units)} unités brutes reçues.")
 
-        # 2. Récupération des traductions (Optionnel)
+        # 2. Récupération des traductions
         print("🌍 Récupération des noms...")
         name_map = {}
         try:
@@ -33,19 +33,25 @@ async def sync():
                         name_map[base_id] = value.strip()
                 print(f"✅ {len(name_map)} noms traduits.")
             else:
-                print("⚠️  Traductions vides ou indisponibles.")
+                print("⚠️  Traductions indisponibles.")
         except Exception as e:
-            print(f"⚠️  Erreur localization (ignorée) : {e}")
-            print("Le bot continuera avec les BaseID.")
+            print(f"⚠️  Erreur localization : {e}")
 
-        # 3. Filtrage et Structuration
+        # 3. Filtrage, Structuration et Dédoublonnage
+        # Logique : baseId unique + obtainable
+        processed_ids = set()
         all_units = []
+
         for u in raw_units:
+            bid = u.get("baseId", "")
+            if not bid or bid in processed_ids:
+                continue
+
             # Filtrage selon ta logique shell
+            # obtainable == True ET obtainableTime == "0"
             if not (u.get("obtainable") is True and u.get("obtainableTime") == "0"):
                 continue
 
-            bid = u.get("baseId", "")
             thumb = u.get("thumbnailName", "").replace("tex.avatars_", "")
             name = name_map.get(bid, bid.replace("_", " ").title())
             combat_type = u.get("combatType", 1)
@@ -56,14 +62,16 @@ async def sync():
                 "thumbnail_name": thumb,
                 "type": "character" if combat_type == 1 else "ship"
             })
+            processed_ids.add(bid)
 
+        # 4. Tri final
         all_units.sort(key=lambda x: x["name"])
 
         OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
             json.dump(all_units, f, indent=2, ensure_ascii=False)
 
-        print(f"\n✨ Terminé ! {len(all_units)} unités filtrées et enregistrées.")
+        print(f"\n✨ Terminé ! {len(all_units)} unités uniques filtrées et enregistrées.")
 
     except Exception as e:
         print(f"\n❌ Erreur fatale : {e}")

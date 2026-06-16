@@ -48,29 +48,37 @@ async def get_game_data() -> list[dict]:
     return data.get("units", [])
 
 async def get_localization() -> str:
-    """Récupère les textes de localisation."""
-    # Note : Le message d'erreur indique que localization ne supporte PAS 'version'
-    # et demande un ID de plus de 22 caractères.
-
-    # On cherche l'ID réel dans les metadata
+    """Récupère les textes de localisation en cherchant l'ID long requis."""
     meta = await _post_raw("metadata", {})
 
-    # On cherche un ID qui ressemble à un bundle (longue chaîne)
-    loc_id = "Loc_ENG_TXT" # Valeur par défaut
+    # On cherche l'ID de plus de 22 caractères dans la section localization
+    loc_id = None
 
-    # Comlink renvoie souvent une liste de bundles dans 'localization' ou 'strings'
+    # Comlink renvoie une liste de dictionnaires dans 'localization'
+    # Chaque dictionnaire a 'id' et 'language' (ex: 'Loc_ENG_TXT.json_vX.Y.Z')
     for loc_item in meta.get("localization", []):
-        if loc_item.get("id", "").startswith("Loc_ENG"):
-            loc_id = loc_item["id"]
+        curr_id = loc_item.get("id", "")
+        if "ENG" in curr_id and len(curr_id) >= 22:
+            loc_id = curr_id
             break
 
-    # Payload STRICT : uniquement l'ID
+    if not loc_id:
+        # Fallback : on cherche n'importe quel ID assez long si l'anglais n'est pas trouvé
+        for loc_item in meta.get("localization", []):
+            curr_id = loc_item.get("id", "")
+            if len(curr_id) >= 22:
+                loc_id = curr_id
+                break
+
+    if not loc_id:
+        log.warning("Aucun ID de localisation de plus de 22 caractères trouvé dans /metadata")
+        return ""
+
     try:
         data = await _post_raw("localization", {"id": loc_id})
         return data.get("localizationBundle", "")
     except Exception as e:
         log.warning("Échec récupération localization avec ID %s : %s", loc_id, e)
-        # On tente un dernier recours sans ID si possible ou avec le défaut court
         return ""
 
 # ---------------------------------------------------------------------------
@@ -80,7 +88,6 @@ async def get_localization() -> str:
 async def get_player_roster(ally_code: str) -> list[dict]:
     """Récupère le roster optimisé d'un joueur."""
     clean = str(ally_code).replace("-", "")
-    # Payload STRICT : uniquement allyCode
     data = await _post_raw("player", {"allyCode": clean})
     raw_roster = data.get("rosterUnit", [])
 

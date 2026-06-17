@@ -24,7 +24,14 @@ async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None)
             if resp.status != 200:
                 text = await resp.text()
                 log.error("Comlink Error %d sur %s: %s", resp.status, endpoint, text)
-                resp.raise_for_status()
+                # On inclut le détail de l'erreur dans l'exception pour le debug
+                raise aiohttp.ClientResponseError(
+                    resp.request_info,
+                    resp.history,
+                    status=resp.status,
+                    message=f"{resp.reason} — {text[:300]}",
+                    headers=resp.headers,
+                )
             return await resp.json()
 
 async def get_game_data() -> list[dict]:
@@ -140,14 +147,14 @@ async def get_player(ally_code: str) -> dict:
     """
     Retourne le profil brut complet d'un joueur depuis Comlink.
     Inclut : name, allyCode, rosterUnit (liste brute), etc.
-    L'API Comlink attend allyCode comme entier (pas une chaîne).
+    allyCode est envoyé en string (format standard Comlink).
     """
-    clean = int(str(ally_code).replace("-", ""))
+    clean = str(ally_code).replace("-", "")
     return await _post_raw("player", {"allyCode": clean})
 
 
 async def get_player_roster(ally_code: str) -> list[dict]:
-    clean = int(str(ally_code).replace("-", ""))
+    clean = str(ally_code).replace("-", "")
     data = await _post_raw("player", {"allyCode": clean})
     raw_roster = data.get("rosterUnit", [])
 

@@ -197,4 +197,39 @@ def get_portrait_path(base_id: str) -> Path:
     return target_dir / f"charui_{bid_lower}.png"
 
 def download_portrait(base_id: str) -> bool:
-    return get_portrait_path(base_id).exists()
+    """
+    Tente de télécharger le portrait depuis swgoh.gg si absent du cache local.
+    Retourne True si le fichier existe après la tentative.
+    """
+    import urllib.request
+
+    bid_lower = base_id.lower()
+
+    # Vérifie si un fichier existe déjà dans le cache (via la logique fuzzy)
+    existing = get_portrait_path(base_id)
+    if existing.exists():
+        return True
+
+    # URLs candidates à essayer dans l'ordre
+    urls_to_try = [
+        f"https://swgoh.gg/static/img/assets/tex.avatars_{bid_lower}.png",
+        f"https://game-assets.swgoh.gg/textures/tex.avatars_{bid_lower}.png",
+    ]
+
+    PORTRAITS_DIR.mkdir(parents=True, exist_ok=True)
+    dest = PORTRAITS_DIR / f"{bid_lower}.png"
+
+    for url in urls_to_try:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    dest.write_bytes(resp.read())
+                    log.info("Portrait téléchargé : %s -> %s", base_id, dest.name)
+                    return True
+        except Exception as e:
+            log.debug("Échec téléchargement portrait %s depuis %s : %s", base_id, url, e)
+
+    log.warning("Portrait introuvable pour %s", base_id)
+    return False
+

@@ -178,9 +178,13 @@ def _filter_owned_counters(
     Filtre les contres que le joueur possède et qui sont prêts GAC.
     Retourne des dicts {name, relic_tier, gear_tier, ready}.
     """
+    from services.unit_names import _cache as _full_cache
+
     result = []
-    # Construire le reverse mapping nom → base_id une seule fois
-    name_to_id: dict[str, str] = {v: k for k, v in STATIC_NAMES.items()}
+    # Reverse mapping COMPLET nom → base_id depuis tout le cache (all_units.json)
+    # STATIC_NAMES sert de fallback si le cache n'est pas encore chargé
+    full_map = _full_cache if _full_cache else STATIC_NAMES
+    name_to_id: dict[str, str] = {v: k for k, v in full_map.items()}
 
     for name in counter_names:
         base_id = name_to_id.get(name)

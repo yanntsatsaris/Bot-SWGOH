@@ -121,7 +121,8 @@ def _load_portrait(base_id: str | None) -> Image.Image:
     if base_id:
         path = get_portrait_path(base_id)
         if not path.exists():
-            download_portrait(base_id)   # tentative silencieuse
+            download_portrait(base_id)   # tentative de téléchargement
+            path = get_portrait_path(base_id)  # re-calcule après DL
         if path.exists():
             try:
                 return Image.open(path).convert("RGBA").resize(

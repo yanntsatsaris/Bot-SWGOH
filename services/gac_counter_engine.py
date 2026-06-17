@@ -67,19 +67,27 @@ def _build_roster_index(roster: list[dict]) -> dict[str, dict]:
 
 async def _get_roster_and_profile(ally_code: str) -> tuple[list[dict], dict]:
     """Récupère roster + profil en un seul appel (réutilise get_player)."""
+    log.debug("Récupération du profil Comlink pour le code allié : %s", ally_code)
     profile = await get_player(ally_code)
+    if not profile:
+        raise ValueError(f"Profil introuvable pour le code allié {ally_code} (réponse vide)")
     roster: list[dict] = []
     for unit in profile.get("rosterUnit", []):
         def_id  = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id
         if not base_id:
             continue
+        # L'API Comlink encode le relic tier avec un décalage de +2
+        # (currentTier 1 = pas de relic, 3 = R1, 9 = R7)
+        # On soustrait 2 pour obtenir le tier réel (0 = sans relic, 1 = R1...)
+        raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
+        relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
         roster.append({
             "base_id":    base_id,
             "rarity":     unit.get("currentRarity", 0),
             "level":      unit.get("currentLevel", 0),
             "gear_tier":  unit.get("currentTier", 0),
-            "relic_tier": (unit.get("relic") or {}).get("currentTier", 0),
+            "relic_tier": relic_tier,
         })
     return roster, profile
 
@@ -93,7 +101,7 @@ def _detect_enemy_meta_teams(
     Vérifie que le leader ET au moins 60% des membres sont prêts GAC.
 
     Returns:
-        Liste de dicts {leader_name, members, source}.
+        Liste de dicts {leader_name, members, source, units_data}.
     """
     detected: list[dict] = []
 
@@ -114,10 +122,19 @@ def _detect_enemy_meta_teams(
 
         # Au moins 60% des membres prêts
         if ready_members / len(members_ids) >= 0.6:
+            # Collecte les vraies données relic/gear des membres ennemis
+            units_data = {
+                mid: {
+                    "relic_tier": enemy_index[mid]["relic_tier"] if enemy_index.get(mid) else None,
+                    "gear_tier":  enemy_index[mid]["gear_tier"]  if enemy_index.get(mid) else None,
+                }
+                for mid in members_ids
+            }
             detected.append({
                 "leader_id":   leader_id,
                 "leader_name": get_name(leader_id),
                 "members":     [get_name(mid) for mid in members_ids],
+                "units_data":  units_data,
                 "ready_count": ready_members,
                 "total":       len(members_ids),
             })

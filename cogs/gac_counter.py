@@ -166,10 +166,11 @@ class GacCounterCog(commands.Cog, name="GacCounter"):
 
         except ValueError as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
-        except Exception:
+        except Exception as exc:
             log.exception("Erreur /gac-counter")
             await interaction.followup.send(
-                "Erreur lors de l'analyse. Vérifie les codes alliés et réessaie.",
+                f"Erreur lors de l'analyse : `{type(exc).__name__}: {exc}`\n"
+                "Vérifie les codes alliés et réessaie.",
                 ephemeral=True,
             )
 

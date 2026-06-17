@@ -136,8 +136,18 @@ async def get_localization() -> str:
     log.warning("Aucun ID de localisation fonctionnel trouvé.")
     return ""
 
+async def get_player(ally_code: str) -> dict:
+    """
+    Retourne le profil brut complet d'un joueur depuis Comlink.
+    Inclut : name, allyCode, rosterUnit (liste brute), etc.
+    L'API Comlink attend allyCode comme entier (pas une chaîne).
+    """
+    clean = int(str(ally_code).replace("-", ""))
+    return await _post_raw("player", {"allyCode": clean})
+
+
 async def get_player_roster(ally_code: str) -> list[dict]:
-    clean = str(ally_code).replace("-", "")
+    clean = int(str(ally_code).replace("-", ""))
     data = await _post_raw("player", {"allyCode": clean})
     raw_roster = data.get("rosterUnit", [])
 
@@ -145,11 +155,16 @@ async def get_player_roster(ally_code: str) -> list[dict]:
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id
+        # L'API Comlink encode le relic tier avec un décalage de +2
+        # (currentTier 1 = pas de relic, 3 = R1, 9 = R7)
+        # On soustrait 2 pour obtenir le tier réel (0 = pas de relic, 1 = R1...)
+        raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
+        relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
         roster.append({
             "base_id":    base_id,
             "rarity":     unit.get("currentRarity", 0),
             "level":      unit.get("currentLevel", 0),
             "gear_tier":  unit.get("currentTier", 0),
-            "relic_tier": (unit.get("relic") or {}).get("currentTier", 0),
+            "relic_tier": relic_tier,
         })
     return roster

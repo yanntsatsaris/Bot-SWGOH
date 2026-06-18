@@ -36,13 +36,13 @@ GAC_TEAMS = {
     
     "SLKR_5V5": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "5v5", "offense": 10, "defense": 9,
-        "core": ["SUPREMELEADERKYLOREN", "GENERALHUX", "KYLORENUNMASKED"],
-        "subs": ["FIRSTORDERTIEPILOT", "SITHTROOPER", "FIRSTORDERSTORMTROOPER"]
+        "core": ["SUPREMELEADERKYLOREN"],
+        "subs": ["GENERALHUX", "KYLORENUNMASKED", "FIRSTORDERTIEPILOT", "SITHTROOPER", "FIRSTORDERSTORMTROOPER", "KYLOREN", "FIRSTORDEREXECUTIONER", "FIRSTORDERSPECIALFORCES", "CAPTAINPHASMA", "FIRSTORDEROFFICER"]
     },
     "SLKR_DSREY_3V3": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "3v3", "offense": 10, "defense": 9,
-        "core": ["SUPREMELEADERKYLOREN", "DARKREVISION", "KYLORENUNMASKED"], # Placeholder for DS Rey if added later
-        "subs": ["SITHTROOPER", "FIRSTORDERTIEPILOT"] # Fallback if DS Rey missing
+        "core": ["SUPREMELEADERKYLOREN"], 
+        "subs": ["DARKREVISION", "KYLORENUNMASKED", "SITHTROOPER", "FIRSTORDERTIEPILOT", "GENERALHUX"]
     },
     "SLKR_HUX_3V3": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "3v3", "offense": 8, "defense": 7,
@@ -68,12 +68,12 @@ GAC_TEAMS = {
     "SEE_5V5": {
         "leader_id": "SITHPALPATINE", "format": "5v5", "offense": 8, "defense": 7,
         "core": ["SITHPALPATINE"],
-        "subs": ["DARTHREVAN", "DARTHMALAK", "SAVAGEOPRESS", "DARTHTALON"]
+        "subs": ["DARTHREVAN", "DARTHMALAK", "SAVAGEOPRESS", "DARTHTALON", "SITHASSASSIN", "COUNTDOOKU", "SITHMARAUDER", "SITHTROOPER", "DARTHSION", "DARTHNIHILUS"]
     },
     "SEE_3V3": {
         "leader_id": "SITHPALPATINE", "format": "3v3", "offense": 7, "defense": 7,
-        "core": ["SITHPALPATINE", "DARTHMALAK", "DARTHTALON"],
-        "subs": []
+        "core": ["SITHPALPATINE"],
+        "subs": ["DARTHMALAK", "DARTHTALON", "SAVAGEOPRESS", "DARTHREVAN", "SITHASSASSIN"]
     },
 
     "JMK_5V5": {
@@ -169,7 +169,7 @@ GAC_TEAMS = {
     "BAYLANSKOLL_5V5": {
         "leader_id": "BAYLANSKOLL", "format": "5v5", "offense": 8, "defense": 7,
         "core": ["BAYLANSKOLL", "SHIN_HATI", "MARROK"],
-        "subs": []
+        "subs": ["VANDORCHEWBACCA", "L3_37", "ENFYSNEST", "IG11", "KUIIL", "HONDOHNAKA", "DASHRENDAR", "BAM", "FULCRUMAHSOKA", "KYLORENUNMASKED"]
     },
     "BAYLANSKOLL_3V3": {
         "leader_id": "BAYLANSKOLL", "format": "3v3", "offense": 8, "defense": 7,
@@ -289,34 +289,38 @@ GAC_TEAMS = {
     
     "GENERALSKYWALKER_5V5": {
         "leader_id": "GENERALSKYWALKER", "format": "5v5", "offense": 6, "defense": 6,
-        "core": ["GENERALSKYWALKER", "CT7567", "CT5555"],
-        "subs": ["ARCTROOPER501ST", "CT210408"]
+        "core": ["GENERALSKYWALKER"],
+        "subs": ["CT7567", "CT5555", "ARCTROOPER501ST", "CT210408", "CLONESERGEANTPHASEII", "CC2224"]
     },
     "GENERALSKYWALKER_3V3": {
         "leader_id": "GENERALSKYWALKER", "format": "3v3", "offense": 6, "defense": 6,
-        "core": ["GENERALSKYWALKER", "CT210408", "ARCTROOPER501ST"],
-        "subs": []
+        "core": ["GENERALSKYWALKER"],
+        "subs": ["CT210408", "ARCTROOPER501ST", "CT7567", "CT5555"]
     },
     
     "WAMPA_SOLO": {
         "leader_id": "WAMPA", "format": "5v5", "offense": 5, "defense": 1,
         "core": ["WAMPA"], "subs": [],
+        "min_size": 1,
         "requires_omicron": ["WAMPA"]
     },
     "WAMPA_SOLO_3V3": {
         "leader_id": "WAMPA", "format": "3v3", "offense": 5, "defense": 1,
         "core": ["WAMPA"], "subs": [],
+        "min_size": 1,
         "requires_omicron": ["WAMPA"]
     },
     
     "SAVAGEOPRESS_SOLO": {
         "leader_id": "SAVAGEOPRESS", "format": "5v5", "offense": 5, "defense": 1,
         "core": ["SAVAGEOPRESS"], "subs": [],
+        "min_size": 1,
         "requires_omicron": ["SAVAGEOPRESS"]
     },
     "SAVAGEOPRESS_SOLO_3V3": {
         "leader_id": "SAVAGEOPRESS", "format": "3v3", "offense": 5, "defense": 1,
         "core": ["SAVAGEOPRESS"], "subs": [],
+        "min_size": 1,
         "requires_omicron": ["SAVAGEOPRESS"]
     },
     
@@ -426,7 +430,7 @@ GAC_FLEETS = {
     "CAPITALLEVIATHAN": {"members": ["CAPITALLEVIATHAN", "SITHFIGHTER", "SITHBOMBER", "FURYCLASSINTERCEPTOR", "MKVIINTERCEPTOR", "SITHASSASSIN", "TIEDAGGER", "EBONHAWK"], "defense": 10},
     "CAPITALEXECUTOR": {"members": ["CAPITALEXECUTOR", "HOUNDSTOOTH", "RAZORCREST", "XANADUBLOOD", "IG2000", "SLAVE1", "EBONHAWK", "TIEFIGHTER"], "defense": 10},
     "CAPITALPROFUNDITY": {"members": ["CAPITALPROFUNDITY", "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "GHOST", "PHANTOM2", "CASSIANSUWING", "BISTANSUWING"], "defense": 8},
-    "CAPITALNEGOTIATOR": {"members": ["CAPITALNEGOTIATOR", "JEDISTARFIGHTERANAKIN", "UMBARANSTARFIGHTER", "JEDISTARFIGHTERAHSOKATANO", "YWINGCLONEWARS", "JEDISTARFIGHTERPLOKOON", "ARC170CLONESERGEANT", "ARC170REX"], "defense": 8},
+    "CAPITALNEGOTIATOR": {"members": ["CAPITALNEGOTIATOR", "JEDISTARFIGHTERANAKIN", "UMBARANSTARFIGHTER", "JEDISTARFIGHTERAHSOKATANO", "YWINGCLONEWARS", "BLADEOFDORIN", "ARC170CLONESERGEANT", "ARC170REX"], "defense": 8},
     "CAPITALMALEVOLENCE": {"members": ["CAPITALMALEVOLENCE", "VULTUREDROID", "HYENABOMBER", "GEONOSIANSTARFIGHTERSUNFAC", "GEONOSIANSTARFIGHTERSPY", "GEONOSIANSTARFIGHTER", "IG2000", "EBONHAWK"], "defense": 7},
     "CAPITALCHIMAERA": {"members": ["CAPITALCHIMAERA", "TIEADVANCED", "TIEBOMBER", "TIEDEFENDER", "TIEINTERCEPTOR", "TIEFIGHTER", "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE"], "defense": 6},
     "CAPITALSTARDESTROYER": {"members": ["CAPITALSTARDESTROYER", "TIEADVANCED", "TIEBOMBER", "TIEDEFENDER", "TIEINTERCEPTOR", "TIEFIGHTER", "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE"], "defense": 5},

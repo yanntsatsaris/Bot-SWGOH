@@ -93,6 +93,7 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
             continue
             
         expected_size = 3 if fmt == "3v3" else 5
+        min_size = team_data.get("min_size", expected_size)
         slots_left = expected_size - len(core_ready)
         
         assembled_members = list(core_ready)
@@ -105,8 +106,8 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
             # Prendre les meilleurs subs pour remplir l'équipe
             assembled_members.extend(ready_subs[:slots_left])
             
-        # On valide si on a au moins 60% de l'équipe attendue
-        if len(assembled_members) / expected_size >= 0.6 or len(assembled_members) == expected_size or ("SOLO" in team_id):
+        # On valide si on a atteint au moins la taille minimale (ex: 5 membres, sauf pour les solos où min_size=1)
+        if len(assembled_members) >= min_size:
             score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in assembled_members])
             available_teams.append({
                 "leader_id": leader_id,

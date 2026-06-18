@@ -18,6 +18,18 @@ LEAGUE_MAP = {
     5: "KYBER"
 }
 
+_HARDCODED_FLEETS = {
+    "CAPITALLEVIATHAN": ["CAPITALLEVIATHAN", "SITHFIGHTER", "SITHBOMBER", "FURYCLASSINTERCEPTOR", "MKVIINTERCEPTOR", "EBONHAWK", "SITHASSASSIN"],
+    "CAPITALEXECUTOR": ["CAPITALEXECUTOR", "HOUNDSTOOTH", "RAZORCREST", "XANADUBLOOD", "IG2000", "SLAVE1", "EBONHAWK", "TIEFIGHTER"],
+    "CAPITALPROFUNDITY": ["CAPITALPROFUNDITY", "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "GHOST", "PHANTOM2", "CASSIANSUWING", "BISTANSUEING"],
+    "CAPITALNEGOTIATOR": ["CAPITALNEGOTIATOR", "ANAKINSJETAIRSTARFIGHTER", "UMBARANSTARFIGHTER", "AHSOKATANOSJEDIEXOCRAFT", "BTLBXYWING", "PLOKOONSJEDISTARFIGHTER", "CLONESERGEANTSARC170", "REXARC170"],
+    "CAPITALMALEVOLENCE": ["CAPITALMALEVOLENCE", "VULTUREDROID", "HYENABOMBER", "SUNFACGEONOSIANSTARFIGHTER", "GEONOSIANSPYSTARFIGHTER", "GEONOSIANSTARFIGHTER", "IG2000"],
+    "CAPITALCHIMAERA": ["CAPITALCHIMAERA", "TIEADVANCED", "TIEBOMBER", "TIEDEFENDER", "TIEINTERCEPTOR", "TIEFIGHTER", "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE"],
+    "CAPITALSTARDESTROYER": ["CAPITALSTARDESTROYER", "TIEADVANCED", "TIEBOMBER", "TIEDEFENDER", "TIEINTERCEPTOR", "TIEFIGHTER", "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE"],
+    "CAPITALFINALIZER": ["CAPITALFINALIZER", "KYLORENSCOMMANDSHUTTLE", "TIESILENCER", "FIRSTORDERSPECIALFORCESTIEFIGHTER", "FIRSTORDERTIEFIGHTER", "HOUNDSTOOTH"],
+    "CAPITALRADDUS": ["CAPITALRADDUS", "REYSMILLENNIUMFALCON", "RESISTANCEYWING", "POE_XWING", "RESISTANCE_XWING", "EBOE_XWING"],
+}
+
 async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
     """
     Récupère ou génère les données de défense d'un ennemi pour le scouting.
@@ -35,8 +47,15 @@ async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
     season_status = profile.get("seasonStatus", [])
     if season_status:
         last_season = season_status[-1]
-        league_id = last_season.get("league", 1)
-        league_name = LEAGUE_MAP.get(league_id, "CARBONITE")
+        league_val = last_season.get("league", "CARBONITE")
+        if isinstance(league_val, str):
+            league_name = league_val.split("_")[-1].upper()
+        else:
+            league_name = LEAGUE_MAP.get(league_val, "CARBONITE")
+            
+    # Fallback propre si la ligue est inconnue
+    if league_name not in ["CARBONITE", "BRONZIUM", "CHROMIUM", "AURODIUM", "KYBER"]:
+        league_name = "CARBONITE"
         
     quotas = get_gac_quotas(league_name, fmt)
     
@@ -65,7 +84,6 @@ async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
                 })
     else:
         # 2. Prédiction basée sur le roster
-        # Convertir raw roster en index pour detect_meta_teams
         raw_roster = profile.get("rosterUnit", [])
         roster = []
         for unit in raw_roster:
@@ -77,6 +95,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
                 "base_id": base_id,
                 "gear_tier": unit.get("currentTier", 0),
                 "relic_tier": relic_tier,
+                "rarity": unit.get("currentRarity", 0),
             })
             
         enemy_index = _build_roster_index(roster)
@@ -98,11 +117,30 @@ async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
                 else:
                     zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty"})
                     
-        # TODO: Flottes (Fleet) - pour l'instant on laisse vide ou on met l'Executor si possédé
+        # Flottes
         fleet_quota = quotas.get("Fleet", 1)
-        # On va chercher les vaisseaux meta plus tard, on met juste un slot vide
+        detected_fleets = []
+        for cap_id, ships in _HARDCODED_FLEETS.items():
+            if enemy_index.get(cap_id):
+                cap = enemy_index[cap_id]
+                if cap.get("rarity", 0) >= 5: # Vaisseau mère au moins 5 étoiles
+                    detected_fleets.append({
+                        "leader_id": cap_id,
+                        "members_ids": ships
+                    })
+                    
+        # On remplit les slots de flotte
+        fleet_idx = 0
         for _ in range(fleet_quota):
-            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty"})
+            if fleet_idx < len(detected_fleets):
+                zones["Fleet"].append({
+                    "leader_id": detected_fleets[fleet_idx]["leader_id"],
+                    "members_ids": detected_fleets[fleet_idx]["members_ids"],
+                    "source": "predictive"
+                })
+                fleet_idx += 1
+            else:
+                zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty"})
 
     return {
         "enemy_name": enemy_name,

@@ -59,17 +59,44 @@ def generate_scout_map(scout_data: dict) -> io.BytesIO:
             
             x = PADDING + 20
             
-            # Dessiner le leader
-            if leader_id:
+            if zname == "Fleet":
+                # Dessine 1 capital, espace, 3 ligne de front, espace, 4 renforts (total 8 max)
+                slots = 8
+                # Capital
+                _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)
+                x += PORTRAIT_CELL + PORTRAIT_GAP * 3
+                
+                # Membres
+                for i in range(1, slots): # skip leader (index 0 if it was in members, but actually members includes leader in our fleet list)
+                    member_id = members[i] if i < len(members) else None
+                    if member_id == leader_id and member_id is not None:
+                        continue # Evite le doublon si le leader est déjà dans la liste
+                        
+                    _draw_portrait_cell(canvas, x, y, member_id, None, None, True, True, True)
+                    x += PORTRAIT_CELL + PORTRAIT_GAP
+                    if i == 3: # Espace après les 3 fronts
+                        x += PORTRAIT_GAP * 2
+            else:
+                slots = 3 if scout_data["format"] == "3v3" else 5
+                
+                # Leader
                 _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)
                 x += PORTRAIT_CELL + PORTRAIT_GAP
-            
-            # Dessiner les membres
-            for m in members:
-                if m != leader_id:
-                    _draw_portrait_cell(canvas, x, y, m, None, None, True, True, True)
+                
+                # Autres membres
+                drawn = 1
+                for m in members:
+                    if m != leader_id and drawn < slots:
+                        _draw_portrait_cell(canvas, x, y, m, None, None, True, True, True)
+                        x += PORTRAIT_CELL + PORTRAIT_GAP
+                        drawn += 1
+                        
+                # Compléter avec des vides
+                while drawn < slots:
+                    _draw_portrait_cell(canvas, x, y, None, None, None, True, True, True)
                     x += PORTRAIT_CELL + PORTRAIT_GAP
-                    
+                    drawn += 1
+
             y += PORTRAIT_CELL + 10
             
         y += PADDING

@@ -195,7 +195,7 @@ GAC_TEAMS = {
     "BOSSNASS_5V5": {
         "leader_id": "BOSSNASS", "format": "5v5", "offense": 7, "defense": 7,
         "core": ["BOSSNASS", "JARJARBINKS", "CAPTAINTARPALS", "GUNGANPHALANX"],
-        "subs": ["GUNGANBOOMBARDIER"]
+        "subs": ["BOOMADIER"]
     },
     "BOSSNASS_3V3": {
         "leader_id": "BOSSNASS", "format": "3v3", "offense": 7, "defense": 7,

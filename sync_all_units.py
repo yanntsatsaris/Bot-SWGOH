@@ -27,11 +27,14 @@ async def sync():
             bundle = await get_localization()
             if bundle:
                 for line in bundle.splitlines():
-                    if "_NAME:" in line and "UNIT_" in line:
+                    # Le séparateur standard de SWGOH est "|"
+                    if "|" in line:
+                        key, _, value = line.partition("|")
+                        name_map[key] = value.strip()
+                    elif ":" in line:
                         key, _, value = line.partition(":")
-                        base_id = key.replace("UNIT_", "").replace("_NAME", "")
-                        name_map[base_id] = value.strip()
-                print(f"✅ {len(name_map)} noms traduits.")
+                        name_map[key] = value.strip()
+                print(f"✅ {len(name_map)} clés de traduction trouvées.")
             else:
                 print("⚠️  Traductions indisponibles.")
         except Exception as e:
@@ -53,7 +56,11 @@ async def sync():
                 continue
 
             thumb = u.get("thumbnailName", "").replace("tex.avatars_", "")
-            name = name_map.get(bid, bid.replace("_", " ").title())
+            
+            # Utilisation directe du nameKey fourni par l'API
+            name_key = u.get("nameKey", "")
+            name = name_map.get(name_key, bid.replace("_", " ").title())
+            
             combat_type = u.get("combatType", 1)
 
             all_units.append({

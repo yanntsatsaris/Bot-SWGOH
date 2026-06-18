@@ -37,12 +37,14 @@ GAC_TEAMS = {
     "SLKR_5V5": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "5v5", "offense": 10, "defense": 9,
         "core": ["SUPREMELEADERKYLOREN"],
-        "subs": ["GENERALHUX", "KYLORENUNMASKED", "FIRSTORDERTIEPILOT", "SITHTROOPER", "FIRSTORDERSTORMTROOPER", "KYLOREN", "FIRSTORDEREXECUTIONER", "FIRSTORDERSPECIALFORCES", "CAPTAINPHASMA", "FIRSTORDEROFFICER"]
+        "subs": ["GENERALHUX", "KYLORENUNMASKED", "FIRSTORDERTIEPILOT", "SITHTROOPER", "FIRSTORDERSTORMTROOPER", "KYLOREN", "FIRSTORDEREXECUTIONER", "FIRSTORDERSPECIALFORCES", "CAPTAINPHASMA", "FIRSTORDEROFFICER"],
+        "role": "offense"
     },
     "SLKR_DSREY_3V3": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "3v3", "offense": 10, "defense": 9,
         "core": ["SUPREMELEADERKYLOREN"], 
-        "subs": ["DARKREVISION", "KYLORENUNMASKED", "SITHTROOPER", "FIRSTORDERTIEPILOT", "GENERALHUX"]
+        "subs": ["DARKREVISION", "KYLORENUNMASKED", "SITHTROOPER", "FIRSTORDERTIEPILOT", "GENERALHUX"],
+        "role": "offense"
     },
     "SLKR_HUX_3V3": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "3v3", "offense": 8, "defense": 7,
@@ -68,12 +70,14 @@ GAC_TEAMS = {
     "SEE_5V5": {
         "leader_id": "SITHPALPATINE", "format": "5v5", "offense": 8, "defense": 7,
         "core": ["SITHPALPATINE"],
-        "subs": ["DARTHREVAN", "DARTHMALAK", "SAVAGEOPRESS", "DARTHTALON", "SITHASSASSIN", "COUNTDOOKU", "SITHMARAUDER", "SITHTROOPER", "DARTHSION", "DARTHNIHILUS"]
+        "subs": ["DARTHREVAN", "DARTHMALAK", "SAVAGEOPRESS", "DARTHTALON", "SITHASSASSIN", "COUNTDOOKU", "SITHMARAUDER", "SITHTROOPER", "DARTHSION", "DARTHNIHILUS"],
+        "role": "offense"
     },
     "SEE_3V3": {
         "leader_id": "SITHPALPATINE", "format": "3v3", "offense": 7, "defense": 7,
         "core": ["SITHPALPATINE"],
-        "subs": ["DARTHMALAK", "DARTHTALON", "SAVAGEOPRESS", "DARTHREVAN", "SITHASSASSIN"]
+        "subs": ["DARTHMALAK", "DARTHTALON", "SAVAGEOPRESS", "DARTHREVAN", "SITHASSASSIN"],
+        "role": "offense"
     },
 
     "JMK_5V5": {
@@ -255,14 +259,16 @@ GAC_TEAMS = {
     },
     
     "DARTHTRAYA_5V5": {
-        "leader_id": "DARTHTRAYA", "format": "5v5", "offense": 6, "defense": 6,
+        "leader_id": "DARTHTRAYA", "format": "5v5", "offense": 6, "defense": 5,
         "core": ["DARTHTRAYA", "DARTHNIHILUS", "DARTHSION"],
-        "subs": ["SAVAGEOPRESS", "DARTHTALON"]
+        "subs": ["SITHTROOPER", "SITHEMPIRE", "SAVAGEOPRESS"],
+        "role": "offense"
     },
     "DARTHTRAYA_3V3": {
-        "leader_id": "DARTHTRAYA", "format": "3v3", "offense": 7, "defense": 7,
-        "core": ["DARTHTRAYA", "DARTHNIHILUS", "SAVAGEOPRESS"],
-        "subs": ["DARTHSION"]
+        "leader_id": "DARTHTRAYA", "format": "3v3", "offense": 6, "defense": 5,
+        "core": ["DARTHTRAYA", "DARTHNIHILUS", "DARTHSION"],
+        "subs": [],
+        "role": "offense"
     },
 
     "DOCTORAPHRA_5V5": {

@@ -8,41 +8,31 @@ log = logging.getLogger("FixPortraits")
 # Dictionnaire de correction des personnages (Base ID -> Chemin d'image supposé correct)
 # Si tu vois une erreur de nom de fichier ici, tu pourras la modifier plus tard ou utiliser /fix-portrait
 CORRECTIONS = {
-    "AHSOKATANO": "assets/portraits/charui_ahsoka.png",
-    "ARC170REX": "assets/vaisseaux/arc170_02.png",
-    "BISHOP": "assets/portraits/charui_crosshair.png",  # Hunter, Tech, etc. ont leurs noms, Crosshair est souvent décalé
-    "BOBAFETTSCION": "assets/portraits/charui_bobafett_scion.png",
-    "C3POCHEWBACCA": "assets/portraits/charui_chewbacca_c3po.png",
-    "CHEWBACCALEGENDARY": "assets/portraits/charui_chewbacca_ot.png",
-    "DEATHTROOPER": "assets/portraits/charui_deathtrooper.png",
-    "EPIXPOE": "assets/portraits/charui_poe_tros.png",
-    "FINN": "assets/portraits/charui_finn.png", # Probablement une erreur de clic lors de la revue
-    "FOSITHTROOPER": "assets/portraits/charui_firstorder_sithtrooper.png",
-    "FULCRUMAHSOKA": "assets/portraits/charui_ahsokaadult.png",
-    "GLAHSOKATANO": "assets/portraits/charui_glahsoka.png", 
-    "HONDO": "assets/portraits/charui_hondo.png",
-    "JEDIKNIGHTCONSULAR": "assets/portraits/charui_jedi_consular.png",
-    "JEDIKNIGHTREVAN": "assets/portraits/charui_revan_jedi.png",
-    "LUKESKYWALKER": "assets/portraits/charui_luke_farmboy.png",
-    "MAULS7": "assets/portraits/charui_maul_s7.png",
-    "MILLENNIUMFALCONEP7": "assets/vaisseaux/mfalcon_ep7.png",
-    "MILLENNIUMFALCONPRISTINE": "assets/vaisseaux/mfalcon_pristine.png",
-    "MISSIONVAO": "assets/portraits/charui_mission.png",
-    "RACCOON": "assets/portraits/charui_krrsantan.png", # Souvent un nom de code pour Krrsantan ou similaire
-    "REY": "assets/portraits/charui_rey.png", # Rey Pillard
-    "REYJEDITRAINING": "assets/portraits/charui_rey_tlj.png",
-    "SCOUTTROOPER_V3": "assets/portraits/charui_scouttrooper.png",
-    "SMUGGLERCHEWBACCA": "assets/portraits/charui_chewbacca_vandor.png",
-    "SMUGGLERHAN": "assets/portraits/charui_han_young.png",
-    "STORMTROOPER": "assets/portraits/charui_stormtrooper.png",
-    "STORMTROOPERHAN": "assets/portraits/charui_han_stormtrooper.png",
-    "THEMANDALORIANBESKARARMOR": "assets/portraits/charui_mandalorian_beskar.png",
-    "TIEFIGHTERFIRSTORDER": "assets/vaisseaux/tiefighter_firstorder.png",
-    "TIEFIGHTERFOSF": "assets/vaisseaux/tiefighter_fosf.png",
-    "TIEFIGHTERPILOT": "assets/portraits/charui_tiepilot.png",
-    "UWINGROGUEONE": "assets/vaisseaux/uwing_cassian.png",
-    "YOUNGCHEWBACCA": "assets/portraits/charui_chewbacca_young.png",
-    "YOUNGHAN": "assets/portraits/charui_han_young.png",
+    "BISHOP": "assets/portraits/charui_colonelward.png", # Pas de Crosshair dispo, Colonel Ward en substitution ?
+    "BOBAFETTSCION": "assets/portraits/charui_bobafettold.png", # Boba Fett Old = Scion
+    "CAPITALJEDICRUISER": "assets/vaisseaux/venator.png", # Endurance = Venator
+    "DEATHTROOPER": "assets/portraits/charui_trooperdeath.png",
+    "FINN": "assets/portraits/charui_finnjakku.png", # Finn classique = Jakku (EPIXFINN utilise l'autre)
+    "GLAHSOKATANO": "assets/portraits/charui_ahsokatanogray.png",
+    "HONDO": "assets/portraits/charui_hondoohnaka.png",
+    "JEDIKNIGHTCONSULAR": "assets/portraits/charui_jedi_consular_03.png",
+    "JEDIKNIGHTREVAN": "assets/portraits/charui_jedirevan.png",
+    "LUKESKYWALKER": "assets/portraits/charui_luke_ep4.png", # Farmboy = ep4
+    "MAULS7": "assets/portraits/charui_maul_cyborg.png",
+    "MILLENNIUMFALCONPRISTINE": "assets/vaisseaux/mil_fal_pristine.png",
+    "RACCOON": "assets/portraits/charui_rotta.png", # Raccoon est le nom de code de Rotta le Hutt !
+    "REY": "assets/portraits/charui_reyjakku.png", # Rey pillard = Jakku
+    "SCOUTTROOPER_V3": "assets/portraits/charui_trooperscout.png",
+    "SMUGGLERCHEWBACCA": "assets/portraits/charui_tfa_chewbacca.png", # Veteran = TFA
+    "SMUGGLERHAN": "assets/portraits/charui_tfa_han.png", # Veteran = TFA
+    "STORMTROOPER": "assets/portraits/charui_trooperstorm.png",
+    "STORMTROOPERHAN": "assets/portraits/charui_trooperstorm_han.png",
+    "THEMANDALORIANBESKARARMOR": "assets/portraits/charui_mandobeskar.png",
+    "TIEFIGHTERFIRSTORDER": "assets/vaisseaux/firstorder_tiefighter.png",
+    "TIEFIGHTERFOSF": "assets/vaisseaux/fosf_tie_fighter.png",
+    "UWINGROGUEONE": "assets/vaisseaux/uwing_hero.png", # Uwing de Cassian
+    "YOUNGCHEWBACCA": "assets/portraits/charui_chewbacca_vandor.png", # Vandor = Young
+    "YWINGCLONEWARS": "assets/vaisseaux/ywing_btlb.png",
 }
 
 async def fix_portraits():

@@ -46,25 +46,25 @@ CORRECTIONS = {
 }
 
 async def fix_portraits():
-    print("🚀 Début de la correction automatique des portraits...")
+    print("🚀 Remise en file d'attente pour vérification manuelle...")
     updated = 0
     
     async with get_db() as db:
         for base_id, image_path in CORRECTIONS.items():
-            # Met à jour la base de données et valide l'image (is_image_valid = 1)
+            # Met à jour le chemin d'image mais remet is_image_valid à NULL pour forcer la vérification
             cursor = await db.execute(
-                "UPDATE units_directory SET image_path = ?, is_image_valid = 1 WHERE base_id = ?",
+                "UPDATE units_directory SET image_path = ?, is_image_valid = NULL WHERE base_id = ?",
                 (image_path, base_id)
             )
             if cursor.rowcount > 0:
-                print(f"✅ Corrigé : {base_id} -> {image_path}")
+                print(f"🔄 À vérifier : {base_id} -> {image_path}")
                 updated += 1
             else:
                 print(f"⚠️ Non trouvé dans la base : {base_id}")
                 
         await db.commit()
         
-    print(f"\n✨ Terminé ! {updated} portraits ont été corrigés et validés automatiquement.")
+    print(f"\n✨ Terminé ! {updated} portraits ont été mis à jour et replacés dans la file de vérification (/review-portraits).")
 
 if __name__ == "__main__":
     asyncio.run(fix_portraits())

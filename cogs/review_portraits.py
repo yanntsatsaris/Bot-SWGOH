@@ -103,5 +103,40 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             
         await self.send_next_review(interaction)
 
+    @app_commands.command(
+        name="reset-portrait",
+        description="Réinitialise le statut de validation d'un personnage (pour qu'il repasse en revue)."
+    )
+    @app_commands.describe(recherche="Nom ou ID du personnage à réinitialiser (ex: Kylo)")
+    async def reset_portrait(self, interaction: discord.Interaction, recherche: str) -> None:
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
+            return
+            
+        async with get_db() as db:
+            cursor = await db.execute(
+                "SELECT base_id, name FROM units_directory WHERE name LIKE ? OR base_id LIKE ?",
+                (f"%{recherche}%", f"%{recherche}%")
+            )
+            rows = await cursor.fetchall()
+            
+            if not rows:
+                await interaction.response.send_message(f"⚠️ Aucun personnage trouvé pour `{recherche}`.", ephemeral=True)
+                return
+                
+            updated = 0
+            names = []
+            for row in rows:
+                await db.execute("UPDATE units_directory SET is_image_valid = NULL WHERE base_id = ?", (row["base_id"],))
+                names.append(row["name"])
+                updated += 1
+                
+            await db.commit()
+            
+        await interaction.response.send_message(
+            f"🔄 **{updated}** personnage(s) réinitialisé(s) et remis dans la file de validation :\n" + "\n".join([f"- {n}" for n in names]), 
+            ephemeral=True
+        )
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ReviewPortraitsCog(bot))

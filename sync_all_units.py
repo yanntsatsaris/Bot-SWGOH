@@ -14,7 +14,14 @@ async def sync():
     timeout = aiohttp.ClientTimeout(total=300)
 
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
+        # On désactive la compression (Accept-Encoding: identity) et on force Connection: close
+        # C'est LA différence avec curl qui faisait crasher Comlink (Node.js manquait de RAM pour GZIP)
+        headers = {
+            "Content-Type": "application/json",
+            "Accept-Encoding": "identity",
+            "Connection": "close"
+        }
+        async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             # ÉTAPE 1 : EXTRACTION DES VERSIONS (POST /metadata)
             print("1️⃣ Récupération des versions (metadata)...")
             async with session.post(f"{base_url}/metadata", json={"payload": {}}) as resp:

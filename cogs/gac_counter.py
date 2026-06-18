@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 class CounterFormatView(discord.ui.View):
     def __init__(self, my_code: str, enemy_code: str, my_name: str, active_fmt: str = "5v5") -> None:
-        super().__init__(timeout=180)
+        super().__init__(timeout=None)
         self.my_code    = my_code
         self.enemy_code = enemy_code
         self.my_name    = my_name

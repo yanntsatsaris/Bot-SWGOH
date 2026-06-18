@@ -343,8 +343,9 @@ def generate_gac_report(
 
         # --- Portraits ennemis (avec vrais tiers relic/gear si disponibles) ---
         enemy_units = []
-        for m in team["members"]:
-            bid = base_id_from_name(m)
+        members_ids = team.get("members_base_ids", [])
+        for i, m in enumerate(team["members"]):
+            bid = members_ids[i] if i < len(members_ids) else base_id_from_name(m)
             unit_data = team.get("units_data", {}).get(bid.upper() if bid else "", {})
             enemy_units.append({
                 "base_id":    bid,

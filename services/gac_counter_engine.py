@@ -134,6 +134,7 @@ def _detect_enemy_meta_teams(
                 "leader_id":   leader_id,
                 "leader_name": get_name(leader_id),
                 "members":     [get_name(mid) for mid in members_ids],
+                "members_base_ids": members_ids,
                 "units_data":  units_data,
                 "ready_count": ready_members,
                 "total":       len(members_ids),

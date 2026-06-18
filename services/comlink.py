@@ -99,48 +99,25 @@ def _decode_bundle(bundle: str) -> str:
     return bundle
 
 async def get_localization() -> str:
-    meta = await _post_raw("metadata", {})
+    # On ajoute clientSpecs pour forcer la locale FR auprès des serveurs SWGOH
+    client_specs = {"clientSpecs": {"locale": "FRE_FR"}}
+    meta = await _post_raw("metadata", {}, top_level_params=client_specs)
 
-    # 1. Recherche d'abord d'un fichier de localisation spécifique dans les métadonnées (ex: Loc_FRE_FR.json)
-    for locale in ["FRE_FR", "ENG_US"]:
-        loc_id = _find_loc_id(meta, locale)
-        if loc_id:
-            try:
-                log.info("Tentative de récupération de la locale %s avec ID : %s", locale, loc_id)
-                # Note: On n'envoie pas le paramètre 'locale' dans le payload car Comlink refuse les propriétés additionnelles
-                data = await _post_raw("localization", {"id": loc_id})
-                bundle = data.get("localizationBundle", "")
-                if bundle:
-                    log.info("✓ Localisation %s récupérée avec succès.", locale)
-                    return _decode_bundle(bundle)
-            except Exception as e:
-                log.warning("Échec de récupération de la locale %s (ID: %s) : %s", locale, loc_id, e)
-
-    # 2. Extraction directe via latestLocalizationBundleVersion (version globale)
+    # L'ID de localisation global est suffisant si on force la locale dans les specs
     loc_id = meta.get("latestLocalizationBundleVersion") or meta.get("latestLocalizationRevision")
     if loc_id:
         try:
             log.info("Tentative de récupération via la version de bundle globale : %s", loc_id)
-            data = await _post_raw("localization", {"id": loc_id})
+            # On renvoie clientSpecs ici aussi pour que le serveur sache quelle langue extraire
+            data = await _post_raw("localization", {"id": loc_id, "unzip": True}, top_level_params=client_specs)
             bundle = data.get("localizationBundle", "")
             if bundle:
-                log.info("✓ Localisation par version globale récupérée avec succès.")
+                log.info("✓ Localisation par version globale récupérée avec succès (Français).")
                 return _decode_bundle(bundle)
         except Exception as e:
             log.warning("Échec de récupération de la version globale %s : %s", loc_id, e)
 
-    # 3. Dernier recours : recherche récursive générique
-    loc_id = _find_loc_id(meta)
-    if loc_id:
-        try:
-            log.info("Tentative finale de récupération avec l'ID générique : %s", loc_id)
-            data = await _post_raw("localization", {"id": loc_id})
-            bundle = data.get("localizationBundle", "")
-            return _decode_bundle(bundle)
-        except Exception as e:
-            log.warning("Erreur localization finale avec ID %s : %s", loc_id, e)
-
-    log.warning("Aucun ID de localisation fonctionnel trouvé.")
+    log.warning("Aucun bundle de localisation valide trouvé.")
     return ""
 
 async def get_player(ally_code: str) -> dict:

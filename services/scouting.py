@@ -107,16 +107,22 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
             # Prendre les meilleurs subs pour remplir l'équipe
             assembled_members.extend(ready_subs[:slots_left])
             
-        # On valide si on a atteint au moins la taille minimale (ex: 5 membres, sauf pour les solos où min_size=1)
-        if len(assembled_members) >= min_size:
-            score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in assembled_members])
-            available_teams.append({
-                "leader_id": leader_id,
-                "members": assembled_members,
-                "defense": team_data.get("defense", 5),
-                "offense": team_data.get("offense", 5),
-                "score": score
-            })
+        # On accepte l'équipe telle quelle (même si incomplète), on la remplira à la fin
+        score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in assembled_members])
+        
+        def_score = team_data.get("defense", 5)
+        off_score = team_data.get("offense", 5)
+        if team_data.get("role") == "offense":
+            def_score -= 100 # Pénalité extrême pour ne l'utiliser qu'en dernier recours
+            
+        available_teams.append({
+            "leader_id": leader_id,
+            "members": assembled_members,
+            "defense": def_score,
+            "offense": off_score,
+            "score": score,
+            "target_size": team_data.get("min_size", expected_size)
+        })
                 
     # Trier par "Biais Défensif" (defense - offense), puis par défense absolue, puis puissance
     available_teams.sort(key=lambda x: (x["defense"] - x["offense"], x["defense"], x["score"]), reverse=True)
@@ -130,27 +136,30 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
                     zones[zone].append({
                         "leader_id": t["leader_id"],
                         "members_ids": t["members"],
-                        "source": "predictive"
+                        "source": "predictive",
+                        "target_size": t["target_size"]
                     })
                     used_base_ids.update(t["members"])
                     placed = True
                     break
             if not placed:
-                # Création d'une équipe bouche-trou (Leftovers)
-                expected_size = 3 if fmt == "3v3" else 5
-                leftovers = [m for m, data in enemy_index.items() if m not in used_base_ids and _is_gac_ready(data) and data.get("combat_type", 1) == 1]
-                leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+                zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
+
+    # 1.5 BOUCHAGE DE TROUS (Hole-Filling)
+    leftovers = [m for m, data in enemy_index.items() if m not in used_base_ids and _is_gac_ready(data) and data.get("combat_type", 1) == 1]
+    leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    
+    for zone in ["North", "South", "Back"]:
+        for t in zones[zone]:
+            target = t.get("target_size", expected_size)
+            while len(t["members_ids"]) < target and leftovers:
+                filler = leftovers.pop(0)
+                t["members_ids"].append(filler)
+                used_base_ids.add(filler)
                 
-                if len(leftovers) >= expected_size:
-                    members = leftovers[:expected_size]
-                    zones[zone].append({
-                        "leader_id": members[0], # Le plus fort devient leader par défaut
-                        "members_ids": members,
-                        "source": "leftover"
-                    })
-                    used_base_ids.update(members)
-                else:
-                    zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty"})
+            if t["source"] == "empty" and t["members_ids"]:
+                t["leader_id"] = t["members_ids"][0]
+                t["source"] = "leftover"
 
     # 2. FLOTTES
     available_fleets = []
@@ -174,30 +183,34 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
                 zones["Fleet"].append({
                     "leader_id": f["leader_id"],
                     "members_ids": f["members"],
-                    "source": "predictive"
+                    "source": "predictive",
+                    "target_size": 5
                 })
                 used_base_ids.add(f["leader_id"])
                 placed = True
                 break
         if not placed:
-            # Création d'une flotte bouche-trou (Leftovers)
-            leftover_capitals = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
-            leftover_ships = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" not in m]
+            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 5})
+
+    # 2.5 BOUCHAGE FLOTTES
+    leftover_capitals = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
+    leftover_ships = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" not in m]
+    
+    leftover_capitals.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    leftover_ships.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    
+    for f in zones["Fleet"]:
+        if f["source"] == "empty" and leftover_capitals:
+            cap = leftover_capitals.pop(0)
+            f["leader_id"] = cap
+            f["members_ids"].append(cap)
+            used_base_ids.add(cap)
+            f["source"] = "leftover"
             
-            leftover_capitals.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-            leftover_ships.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-            
-            if leftover_capitals and len(leftover_ships) >= 4:
-                cap = leftover_capitals[0]
-                members = [cap] + leftover_ships[:4]
-                zones["Fleet"].append({
-                    "leader_id": cap,
-                    "members_ids": members,
-                    "source": "leftover"
-                })
-                used_base_ids.update(members)
-            else:
-                zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty"})
+        while len(f["members_ids"]) < f.get("target_size", 5) and leftover_ships:
+            filler = leftover_ships.pop(0)
+            f["members_ids"].append(filler)
+            used_base_ids.add(filler)
 
     return zones
 

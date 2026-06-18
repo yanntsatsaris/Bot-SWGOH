@@ -138,5 +138,35 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             ephemeral=True
         )
 
+    @app_commands.command(
+        name="list-incorrect-portraits",
+        description="Génère un fichier texte avec la liste de tous les personnages marqués comme incorrects."
+    )
+    async def list_incorrect_portraits(self, interaction: discord.Interaction) -> None:
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
+            return
+
+        async with get_db() as db:
+            cursor = await db.execute("SELECT base_id, name FROM units_directory WHERE is_image_valid = 0")
+            rows = await cursor.fetchall()
+
+        if not rows:
+            await interaction.response.send_message("✅ Aucun portrait n'est marqué comme incorrect pour le moment !", ephemeral=True)
+            return
+
+        import io
+        content = "Liste des personnages dont le portrait est à refaire :\n"
+        content += "="*55 + "\n\n"
+        for row in rows:
+            content += f"- Nom : {row['name']}\n  ID  : {row['base_id']}\n\n"
+
+        file = discord.File(io.BytesIO(content.encode('utf-8')), filename="portraits_incorrects.txt")
+        await interaction.response.send_message(
+            f"Voici la liste des **{len(rows)}** portrait(s) incorrect(s). Tu peux me donner ce fichier !",
+            file=file,
+            ephemeral=True
+        )
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ReviewPortraitsCog(bot))

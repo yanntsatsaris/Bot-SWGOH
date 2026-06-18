@@ -20,35 +20,25 @@ async def sync():
             return
         print(f"✅ {len(raw_units)} unités brutes reçues.")
 
-        # 2. Récupération des traductions via swgoh.gg (Noms propres garantis)
-        print("🌍 Récupération des noms depuis swgoh.gg...")
+        # 2. Récupération des traductions via Comlink (Noms en Français)
+        print("🌍 Récupération des noms...")
         name_map = {}
-        import aiohttp
         try:
-            # On ajoute un faux User-Agent de navigateur pour contourner Cloudflare
-            headers = {
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"
-            }
-            async with aiohttp.ClientSession(headers=headers) as session:
-                async with session.get("https://swgoh.gg/api/characters/") as resp:
-                    if resp.status == 200:
-                        chars = await resp.json()
-                        for c in chars:
-                            name_map[c["base_id"]] = c["name"]
-                    else:
-                        print(f"⚠️  Erreur HTTP swgoh.gg caractères : {resp.status}")
-                        
-                async with session.get("https://swgoh.gg/api/ships/") as resp:
-                    if resp.status == 200:
-                        ships = await resp.json()
-                        for s in ships:
-                            name_map[s["base_id"]] = s["name"]
-                    else:
-                        print(f"⚠️  Erreur HTTP swgoh.gg vaisseaux : {resp.status}")
-                        
-            print(f"✅ {len(name_map)} noms récupérés depuis swgoh.gg.")
+            bundle = await get_localization()
+            if bundle:
+                for line in bundle.splitlines():
+                    # Le séparateur standard de SWGOH est "|"
+                    if "|" in line:
+                        key, _, value = line.partition("|")
+                        name_map[key] = value.strip()
+                    elif ":" in line:
+                        key, _, value = line.partition(":")
+                        name_map[key] = value.strip()
+                print(f"✅ {len(name_map)} clés de traduction trouvées.")
+            else:
+                print("⚠️  Traductions indisponibles.")
         except Exception as e:
-            print(f"⚠️  Erreur swgoh.gg : {e}")
+            print(f"⚠️  Erreur localization : {e}")
 
         # 3. Filtrage, Structuration et Dédoublonnage
         # Logique : baseId unique + obtainable
@@ -67,8 +57,9 @@ async def sync():
 
             thumb = u.get("thumbnailName", "").replace("tex.avatars_", "")
             
-            # SWGOH.gg mappe directement le baseId au vrai nom
-            name = name_map.get(bid, bid.replace("_", " ").title())
+            # Utilisation directe du nameKey fourni par l'API
+            name_key = u.get("nameKey", "")
+            name = name_map.get(name_key, bid.replace("_", " ").title())
             
             combat_type = u.get("combatType", 1)
 

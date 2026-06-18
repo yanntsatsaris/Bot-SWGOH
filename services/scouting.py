@@ -53,7 +53,8 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
-            "has_omicron": has_omicron
+            "has_omicron": has_omicron,
+            "combat_type": unit.get("combatType", 1)
         }
     return roster
 
@@ -113,11 +114,12 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
                 "leader_id": leader_id,
                 "members": assembled_members,
                 "defense": team_data.get("defense", 5),
+                "offense": team_data.get("offense", 5),
                 "score": score
             })
                 
-    # Trier par score défensif, puis puissance
-    available_teams.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
+    # Trier par "Biais Défensif" (defense - offense), puis par défense absolue, puis puissance
+    available_teams.sort(key=lambda x: (x["defense"] - x["offense"], x["defense"], x["score"]), reverse=True)
     
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
@@ -134,7 +136,21 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
                     placed = True
                     break
             if not placed:
-                zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty"})
+                # Création d'une équipe bouche-trou (Leftovers)
+                expected_size = 3 if fmt == "3v3" else 5
+                leftovers = [m for m, data in enemy_index.items() if m not in used_base_ids and _is_gac_ready(data) and data.get("combat_type", 1) == 1]
+                leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+                
+                if len(leftovers) >= expected_size:
+                    members = leftovers[:expected_size]
+                    zones[zone].append({
+                        "leader_id": members[0], # Le plus fort devient leader par défaut
+                        "members_ids": members,
+                        "source": "leftover"
+                    })
+                    used_base_ids.update(members)
+                else:
+                    zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty"})
 
     # 2. FLOTTES
     available_fleets = []
@@ -164,7 +180,24 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
                 placed = True
                 break
         if not placed:
-            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty"})
+            # Création d'une flotte bouche-trou (Leftovers)
+            leftover_capitals = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
+            leftover_ships = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" not in m]
+            
+            leftover_capitals.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+            leftover_ships.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+            
+            if leftover_capitals and len(leftover_ships) >= 4:
+                cap = leftover_capitals[0]
+                members = [cap] + leftover_ships[:4]
+                zones["Fleet"].append({
+                    "leader_id": cap,
+                    "members_ids": members,
+                    "source": "leftover"
+                })
+                used_base_ids.update(members)
+            else:
+                zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty"})
 
     return zones
 

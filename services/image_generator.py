@@ -59,15 +59,25 @@ C_READY       = (63, 185, 80)       # vert prêt
 C_WARN        = (255, 196, 0)       # jaune avertissement
 C_MISSING     = (100, 100, 100)     # gris non possédé
 
-# Polices candidates (Debian 12)
+# Polices candidates (Windows en priorité, puis Linux/Debian)
 _FONT_CANDIDATES = {
     "bold": [
+        # Windows
+        "C:/Windows/Fonts/arialbd.ttf",
+        "C:/Windows/Fonts/calibrib.ttf",
+        "C:/Windows/Fonts/verdanab.ttf",
+        # Linux/Debian
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
         "/usr/share/fonts/truetype/ubuntu/Ubuntu-B.ttf",
         "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
     ],
     "regular": [
+        # Windows
+        "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/calibri.ttf",
+        "C:/Windows/Fonts/verdana.ttf",
+        # Linux/Debian
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
         "/usr/share/fonts/truetype/ubuntu/Ubuntu-R.ttf",
@@ -111,7 +121,8 @@ def _load_portrait(base_id: str | None) -> Image.Image:
     if base_id:
         path = get_portrait_path(base_id)
         if not path.exists():
-            download_portrait(base_id)   # tentative silencieuse
+            download_portrait(base_id)   # tentative de téléchargement
+            path = get_portrait_path(base_id)  # re-calcule après DL
         if path.exists():
             try:
                 return Image.open(path).convert("RGBA").resize(
@@ -330,17 +341,19 @@ def generate_gac_report(
         )
         y += H_TEAM_LABEL
 
-        # --- Portraits ennemis ---
-        enemy_units = [
-            {
-                "base_id":    base_id_from_name(m),
-                "relic_tier": None,
-                "gear_tier":  None,
+        # --- Portraits ennemis (avec vrais tiers relic/gear si disponibles) ---
+        enemy_units = []
+        members_ids = team.get("members_base_ids", [])
+        for i, m in enumerate(team["members"]):
+            bid = members_ids[i] if i < len(members_ids) else base_id_from_name(m)
+            unit_data = team.get("units_data", {}).get(bid.upper() if bid else "", {})
+            enemy_units.append({
+                "base_id":    bid,
+                "relic_tier": unit_data.get("relic_tier"),
+                "gear_tier":  unit_data.get("gear_tier"),
                 "ready":      True,
                 "owned":      True,
-            }
-            for m in team["members"]
-        ]
+            })
         _draw_portrait_row(canvas, enemy_units, y, is_enemy=True)
 
         # Noms sous les portraits ennemis

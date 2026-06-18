@@ -32,6 +32,8 @@ INITIAL_EXTENSIONS = [
     "cogs.admin",
     "cogs.gac_test",
     "cogs.gac_counter",
+    "cogs.gac_history",
+    "cogs.review_portraits",
 ]
 
 

@@ -1,101 +1,158 @@
 """
-services/comlink.py — Client HTTP asynchrone vers SWGOH Comlink (auto-hébergé)
-
-Endpoints principaux :
-    POST /player          → données complètes d'un joueur
-    POST /playerArena     → données d'arène + GAC
-    POST /guild           → données d'une guilde
-    GET  /metadata        → version du jeu / statut
+services/comlink.py — Client HTTP vers SWGOH Comlink (Protocoles Stricts et Optimisés)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 import logging
-
 import aiohttp
-
+import json
+import base64
+import zipfile
+import io
 from config import COMLINK_URL
 
 log = logging.getLogger(__name__)
+_TIMEOUT = aiohttp.ClientTimeout(total=45)
 
-_TIMEOUT = aiohttp.ClientTimeout(total=30)
-
-
-async def _post(endpoint: str, payload: dict) -> dict:
-    """Effectue un POST vers Comlink et retourne le JSON."""
+async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None) -> dict:
     url = f"{COMLINK_URL}/{endpoint.lstrip('/')}"
+    headers = {"Content-Type": "application/json"}
+    body = {"payload": payload}
+    if top_level_params: body.update(top_level_params)
+
     async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-        async with session.post(url, json={"payload": payload}) as resp:
-            if resp.status == 404:
-                raise ValueError(f"Endpoint introuvable : {endpoint}")
-            resp.raise_for_status()
+        async with session.post(url, json=body, headers=headers) as resp:
+            if resp.status != 200:
+                text = await resp.text()
+                log.error("Comlink Error %d sur %s: %s", resp.status, endpoint, text)
+                # On inclut le détail de l'erreur dans l'exception pour le debug
+                raise aiohttp.ClientResponseError(
+                    resp.request_info,
+                    resp.history,
+                    status=resp.status,
+                    message=f"{resp.reason} — {text[:300]}",
+                    headers=resp.headers,
+                )
             return await resp.json()
 
+async def get_game_data() -> list[dict]:
+    meta = await _post_raw("metadata", {})
+    version = meta.get("latestGamedataVersion")
+    if not version: raise ValueError("Version du jeu introuvable")
+
+    payload = {"version": version, "includePveUnits": True, "requestSegment": 0}
+    data = await _post_raw("data", payload, top_level_params={"enums": False})
+    return data.get("units", [])
+
+def _find_loc_id(obj, target_locale: str | None = None, min_len=20) -> str | None:
+    """Recherche récursive exhaustive pour trouver un ID de localisation valide."""
+    if isinstance(obj, str):
+        if len(obj) >= min_len:
+            # Suffixes de locale valides
+            locales = [target_locale] if target_locale else [
+                "ENG_US", "FRE_FR", "GER_DE", "SPA_ES", "ITA_IT", 
+                "CHS_CN", "CHT_CN", "DAN_DK", "DUT_NL", "FIN_FI", 
+                "JPN_JP", "KOR_KR", "NOR_NO", "POR_BR", "RUS_RU", 
+                "SPA_MX", "SWE_SE"
+            ]
+            # On cherche un ID qui contient "Loc_" ou ".json" ET une locale valide
+            if ("Loc_" in obj or ".json" in obj) and any(loc in obj for loc in locales):
+                return obj
+    elif isinstance(obj, dict):
+        # Priorité aux clés 'id' ou 'bundle'
+        for k in ["id", "bundle", "localizationId"]:
+            if k in obj and isinstance(obj[k], str) and len(obj[k]) >= min_len:
+                locales = [target_locale] if target_locale else ["ENG_US", "FRE_FR"]
+                if any(loc in obj[k] for loc in locales):
+                    return obj[k]
+        for v in obj.values():
+            res = _find_loc_id(v, target_locale, min_len)
+            if res: return res
+    elif isinstance(obj, list):
+        for v in obj:
+            res = _find_loc_id(v, target_locale, min_len)
+            if res: return res
+    return None
+
+def _decode_bundle(bundle: str) -> str:
+    if not bundle:
+        return ""
+    
+    # Si c'est déjà du texte brut (non base64)
+    if "UNIT_" in bundle and "_NAME" in bundle:
+        return bundle
+        
+    try:
+        # Décodage base64
+        decoded = base64.b64decode(bundle)
+        
+        # Tentative d'ouverture comme un ZIP
+        try:
+            with zipfile.ZipFile(io.BytesIO(decoded)) as z:
+                for name in z.namelist():
+                    return z.read(name).decode("utf-8")
+        except zipfile.BadZipFile:
+            # Texte brut encodé en base64
+            return decoded.decode("utf-8")
+    except Exception as e:
+        log.warning("Erreur lors du décodage du bundle de localisation : %s", e)
+        
+    return bundle
+
+async def get_localization() -> str:
+    # On ajoute les clientSpecs à l'intérieur du payload pour que SWGOH renvoie les métadonnées françaises
+    payload_meta = {
+        "clientSpecs": {
+            "locale": "FRE_FR",
+            "platform": "Android"
+        }
+    }
+    meta = await _post_raw("metadata", payload_meta)
+
+    # 1. Extraction directe via latestLocalizationBundleVersion (qui sera maintenant en Français !)
+    loc_id = meta.get("latestLocalizationBundleVersion") or meta.get("latestLocalizationRevision")
+    if loc_id:
+        try:
+            log.info("Tentative de récupération via la version de bundle FR : %s", loc_id)
+            data = await _post_raw("localization", {"id": loc_id, "unzip": True})
+            bundle = data.get("localizationBundle", "")
+            if bundle:
+                log.info("✓ Localisation Française récupérée avec succès.")
+                return _decode_bundle(bundle)
+        except Exception as e:
+            log.warning("Échec de récupération de la version FR %s : %s", loc_id, e)
+
+    log.warning("Aucun bundle de localisation valide trouvé.")
+    return ""
 
 async def get_player(ally_code: str) -> dict:
     """
-    Récupère les données complètes d'un joueur.
-
-    Args:
-        ally_code: Code allié sans tirets (ex : '123456789').
+    Retourne le profil brut complet d'un joueur depuis Comlink.
+    Inclut : name, allyCode, rosterUnit (liste brute), etc.
+    allyCode est envoyé en string (format standard Comlink).
     """
-    clean = ally_code.replace("-", "")
-    data = await _post("player", {"allyCode": clean})
-    log.debug("Comlink /player reçu pour %s", ally_code)
-    return data
-
-
-async def get_player_arena(ally_code: str) -> dict:
-    """
-    Récupère les données d'arène et de GAC d'un joueur.
-
-    Args:
-        ally_code: Code allié sans tirets.
-    """
-    clean = ally_code.replace("-", "")
-    data = await _post("playerArena", {"allyCode": clean})
-    log.debug("Comlink /playerArena reçu pour %s", ally_code)
-    return data
-
-
-async def get_guild(guild_id: str) -> dict:
-    """Récupère les données d'une guilde par son ID."""
-    data = await _post("guild", {"guildId": guild_id, "includeRecentGuildActivityInfo": True})
-    log.debug("Comlink /guild reçu pour %s", guild_id)
-    return data
+    clean = str(ally_code).replace("-", "")
+    return await _post_raw("player", {"allyCode": clean})
 
 
 async def get_player_roster(ally_code: str) -> list[dict]:
-    """
-    Retourne le roster complet d'un joueur sous forme de liste normalisée.
-    Chaque entrée contient : base_id, rarity, level, relic_tier, gear_tier.
-
-    Args:
-        ally_code: Code allié sans tirets.
-    """
-    clean = ally_code.replace("-", "")
-    data  = await get_player(clean)
+    clean = str(ally_code).replace("-", "")
+    data = await _post_raw("player", {"allyCode": clean})
+    raw_roster = data.get("rosterUnit", [])
 
     roster = []
-    for unit in data.get("rosterUnit", []):
+    for unit in raw_roster:
         def_id = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id
-        if not base_id:
-            continue
+        # L'API Comlink encode le relic tier avec un décalage de +2
+        # (currentTier 1 = pas de relic, 3 = R1, 9 = R7)
+        # On soustrait 2 pour obtenir le tier réel (0 = pas de relic, 1 = R1...)
+        raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
+        relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
         roster.append({
-            "base_id":   base_id,
-            "rarity":    unit.get("currentRarity", 0),
-            "level":     unit.get("currentLevel", 0),
-            "gear_tier": unit.get("currentTier", 0),
-            "relic_tier": unit.get("relic", {}).get("currentTier", 0),
+            "base_id":    base_id,
+            "rarity":     unit.get("currentRarity", 0),
+            "level":      unit.get("currentLevel", 0),
+            "gear_tier":  unit.get("currentTier", 0),
+            "relic_tier": relic_tier,
         })
     return roster
-
-
-async def get_metadata() -> dict:
-    """Vérifie que Comlink est joignable via l'endpoint localization."""
-    url = f"{COMLINK_URL}/version"
-    async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
-        async with session.get(url) as resp:
-            if resp.status == 404:
-                # Pas d'endpoint /version sur certaines versions — fallback
-                return {"status": "ok"}
-            resp.raise_for_status()
-            return await resp.json()

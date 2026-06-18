@@ -26,7 +26,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 class CounterFormatView(discord.ui.View):
     def __init__(self, my_code: str, enemy_code: str, my_name: str, active_fmt: str = "5v5") -> None:
-        super().__init__(timeout=180)
+        super().__init__(timeout=None)
         self.my_code    = my_code
         self.enemy_code = enemy_code
         self.my_name    = my_name
@@ -145,7 +145,9 @@ class GacCounterCog(commands.Cog, name="GacCounter"):
 
         # --- Analyse + génération image ---
         try:
+            from services.portrait_cache import build_portrait_cache
             await build_name_cache()
+            await build_portrait_cache()
             result  = await analyze_matchup(my_clean, enemy_clean, "5v5")
             my_name = interaction.user.display_name
 
@@ -166,10 +168,11 @@ class GacCounterCog(commands.Cog, name="GacCounter"):
 
         except ValueError as exc:
             await interaction.followup.send(str(exc), ephemeral=True)
-        except Exception:
+        except Exception as exc:
             log.exception("Erreur /gac-counter")
             await interaction.followup.send(
-                "Erreur lors de l'analyse. Vérifie les codes alliés et réessaie.",
+                f"Erreur lors de l'analyse : `{type(exc).__name__}: {exc}`\n"
+                "Vérifie les codes alliés et réessaie.",
                 ephemeral=True,
             )
 

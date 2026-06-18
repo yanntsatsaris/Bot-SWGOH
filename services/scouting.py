@@ -137,7 +137,11 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
         for _ in range(q):
             placed = False
             for t in available_teams:
-                # Si le leader est libre, on retient l'équipe, et on écarte juste les membres déjà utilisés (au lieu de rejeter toute l'équipe)
+                # Interdiction de placer une équipe d'Attaque pure (Défense <= 2) en Défense
+                if t["defense"] <= 2:
+                    continue
+                    
+                # Vérifier que le leader et les membres sont dispos
                 if t["leader_id"] not in used_base_ids and t["leader_id"] != "USED":
                     valid_members = [m for m in t["members"] if m not in used_base_ids]
                     

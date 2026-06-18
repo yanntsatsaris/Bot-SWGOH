@@ -140,15 +140,16 @@ async def sync():
                     image_path = path_obj.as_posix() if path_obj else None
                     
                     await db.execute("""
-                        INSERT INTO units_directory (base_id, name, thumbnail_name, image_path)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO game_characters (base_id, name, type, thumbnail_name, image_path)
+                        VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(base_id) DO UPDATE SET
                             name=excluded.name,
+                            type=excluded.type,
                             thumbnail_name=excluded.thumbnail_name,
-                            image_path=CASE WHEN units_directory.is_image_valid IS NOT 1 THEN excluded.image_path ELSE units_directory.image_path END
-                    """, (bid, final_name, thumb, image_path))
+                            image_path=CASE WHEN game_characters.is_image_valid IS NOT 1 THEN excluded.image_path ELSE game_characters.image_path END
+                    """, (bid, final_name, unit_type, thumb, image_path))
                 await db.commit()
-            print("Terminé ! La base de données SQLite (game_characters/units_directory) est sauvegardée et mise à jour.")
+            print("Terminé ! La base de données SQLite (game_characters) est sauvegardée et mise à jour.")
 
     except Exception as e:
         print(f"❌ Erreur lors de la synchronisation : {e}")

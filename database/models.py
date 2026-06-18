@@ -51,23 +51,31 @@ CREATE_TABLES_SQL: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS gac_history (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        player_id       INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-        season_id       TEXT    NOT NULL,
-        enemy_name      TEXT,
-        my_team_leader  TEXT    NOT NULL,
-        my_team_members TEXT    NOT NULL,
-        enemy_team_leader TEXT  NOT NULL,
-        enemy_team_members TEXT NOT NULL,
-        is_attack       BOOLEAN NOT NULL DEFAULT 1,
-        banners         INTEGER,
-        result          TEXT    CHECK(result IN ('WIN', 'LOSS', 'DRAW')),
-        created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        enemy_id        TEXT    NOT NULL,
+        format          TEXT    NOT NULL CHECK(format IN ('3v3', '5v5', 'fleet')),
+        zone            TEXT    NOT NULL CHECK(zone IN ('North', 'South', 'Back', 'Fleet')),
+        leader_id       TEXT    NOT NULL,
+        members_ids     TEXT    NOT NULL,
+        date_scanned    TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS units_directory (
+    CREATE TABLE IF NOT EXISTS counter_performance (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        enemy_leader    TEXT    NOT NULL,
+        enemy_members   TEXT    NOT NULL,
+        player_leader   TEXT    NOT NULL,
+        player_members  TEXT    NOT NULL,
+        wins            INTEGER NOT NULL DEFAULT 0,
+        losses          INTEGER NOT NULL DEFAULT 0,
+        target_enemy_id TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS game_characters (
         base_id        TEXT    PRIMARY KEY,
         name           TEXT    NOT NULL,
+        type           TEXT    NOT NULL CHECK(type IN ('character', 'ship')),
         thumbnail_name TEXT,
         image_path     TEXT,
         is_image_valid BOOLEAN

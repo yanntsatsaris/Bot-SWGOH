@@ -24,7 +24,7 @@ async def build_portrait_cache() -> None:
     try:
         from database.db import get_db
         async with get_db() as db:
-            cursor = await db.execute("SELECT base_id, image_path, is_image_valid FROM units_directory WHERE image_path IS NOT NULL")
+            cursor = await db.execute("SELECT base_id, image_path, is_image_valid FROM game_characters WHERE image_path IS NOT NULL")
             rows = await cursor.fetchall()
             if rows:
                 _db_image_paths = {

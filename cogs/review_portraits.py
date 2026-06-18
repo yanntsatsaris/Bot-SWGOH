@@ -21,7 +21,7 @@ class PortraitReviewView(discord.ui.View):
     async def update_status(self, interaction: discord.Interaction, is_valid: bool):
         async with get_db() as db:
             await db.execute(
-                "UPDATE units_directory SET is_image_valid = ? WHERE base_id = ?",
+                "UPDATE game_characters SET is_image_valid = ? WHERE base_id = ?",
                 (1 if is_valid else 0, self.base_id)
             )
         
@@ -45,7 +45,7 @@ async def unit_autocomplete(interaction: discord.Interaction, current: str) -> l
     async with get_db() as db:
         # Recherche par nom OU par base_id, insensible à la casse
         cursor = await db.execute(
-            "SELECT base_id, name FROM units_directory WHERE name LIKE ? OR base_id LIKE ? LIMIT 25",
+            "SELECT base_id, name FROM game_characters WHERE name LIKE ? OR base_id LIKE ? LIMIT 25",
             (f"%{current}%", f"%{current}%")
         )
         rows = await cursor.fetchall()
@@ -75,7 +75,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
     async def send_next_review(self, interaction: discord.Interaction):
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid IS NULL LIMIT 1"
+                "SELECT base_id, name, image_path FROM game_characters WHERE is_image_valid IS NULL LIMIT 1"
             )
             row = await cursor.fetchone()
 
@@ -143,7 +143,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT base_id, name FROM units_directory WHERE name LIKE ? OR base_id LIKE ?",
+                "SELECT base_id, name FROM game_characters WHERE name LIKE ? OR base_id LIKE ?",
                 (f"%{recherche}%", f"%{recherche}%")
             )
             rows = await cursor.fetchall()
@@ -155,7 +155,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             updated = 0
             names = []
             for row in rows:
-                await db.execute("UPDATE units_directory SET is_image_valid = NULL WHERE base_id = ?", (row["base_id"],))
+                await db.execute("UPDATE game_characters SET is_image_valid = NULL WHERE base_id = ?", (row["base_id"],))
                 names.append(row["name"])
                 updated += 1
                 
@@ -177,11 +177,11 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
 
         async with get_db() as db:
             # Récupère les validés
-            cursor_valid = await db.execute("SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid = 1 ORDER BY name")
+            cursor_valid = await db.execute("SELECT base_id, name, image_path FROM game_characters WHERE is_image_valid = 1 ORDER BY name")
             rows_valid = await cursor_valid.fetchall()
             
             # Récupère les invalides
-            cursor_invalid = await db.execute("SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid = 0 ORDER BY name")
+            cursor_invalid = await db.execute("SELECT base_id, name, image_path FROM game_characters WHERE is_image_valid = 0 ORDER BY name")
             rows_invalid = await cursor_invalid.fetchall()
 
         import io
@@ -226,7 +226,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
         
         # Vérifie si l'unité existe en BDD
         async with get_db() as db:
-            cursor = await db.execute("SELECT name FROM units_directory WHERE base_id = ?", (base_id,))
+            cursor = await db.execute("SELECT name FROM game_characters WHERE base_id = ?", (base_id,))
             row = await cursor.fetchone()
             
             if not row:
@@ -235,7 +235,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
                 
             # Mise à jour en base de données
             await db.execute(
-                "UPDATE units_directory SET image_path = ?, is_image_valid = 1 WHERE base_id = ?",
+                "UPDATE game_characters SET image_path = ?, is_image_valid = 1 WHERE base_id = ?",
                 (image_path, base_id)
             )
             await db.commit()

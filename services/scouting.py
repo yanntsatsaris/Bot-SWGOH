@@ -97,15 +97,20 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
         min_size = team_data.get("min_size", expected_size)
         slots_left = expected_size - len(core_ready)
         
-        assembled_members = list(core_ready)
+        # Récupérer les subs dispos et les trier par puissance
+        ready_subs = [m for m in subs if m in enemy_index and _is_gac_ready(enemy_index[m])]
+        ready_subs.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
         
-        if slots_left > 0:
-            # Récupérer les subs dispos et les trier par puissance
-            ready_subs = [m for m in subs if m in enemy_index and _is_gac_ready(enemy_index[m])]
-            ready_subs.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-            
-            # Prendre les meilleurs subs pour remplir l'équipe
-            assembled_members.extend(ready_subs[:slots_left])
+        # Prendre les meilleurs subs pour remplir l'équipe
+        assembled_members = list(core_ready)
+        assembled_members.extend(ready_subs[:slots_left])
+        
+        # RÈGLE D'OR STRATÉGIQUE : 
+        # Si le joueur n'a pas assez de "core + subs" pour atteindre la taille 
+        # minimale de l'équipe (par ex: 5 membres pour un 5v5), on NE LA FORME PAS.
+        # Un joueur ne placera jamais une équipe avec un énorme trou en défense.
+        if len(assembled_members) < min_size:
+            continue
             
         # On accepte l'équipe telle quelle (même si incomplète), on la remplira à la fin
         score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in assembled_members])

@@ -55,7 +55,8 @@ GAC_TEAMS = {
     "DARTHBANE_5V5": {
         "leader_id": "DARTHBANE", "format": "5v5", "offense": 9, "defense": 1,
         "core": ["DARTHBANE", "SITHASSASSIN"],
-        "subs": []
+        "subs": [],
+        "min_size": 2
     },
     "DARTHBANE_3V3": {
         "leader_id": "DARTHBANE", "format": "3v3", "offense": 9, "defense": 1,
@@ -296,7 +297,7 @@ GAC_TEAMS = {
     "GENERALSKYWALKER_5V5": {
         "leader_id": "GENERALSKYWALKER", "format": "5v5", "offense": 6, "defense": 6,
         "core": ["GENERALSKYWALKER"],
-        "subs": ["CT7567", "CT5555", "ARCTROOPER501ST", "CT210408", "CLONESERGEANTPHASEII", "CC2224"]
+        "subs": ["CT7567", "CT5555", "ARCTROOPER501ST", "CT210408", "CLONESERGEANTPHASEI", "CC2224", "AHSOKATANO", "BARRISSOFFEE", "SHAAKTI", "BADBATCHECHO", "BADBATCHHUNTER", "BADBATCHTECH", "BADBATCHWRECKER"]
     },
     "GENERALSKYWALKER_3V3": {
         "leader_id": "GENERALSKYWALKER", "format": "3v3", "offense": 6, "defense": 6,

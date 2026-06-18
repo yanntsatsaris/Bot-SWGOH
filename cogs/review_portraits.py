@@ -41,6 +41,33 @@ class PortraitReviewView(discord.ui.View):
         await self.update_status(interaction, False)
 
 
+async def unit_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    async with get_db() as db:
+        # Recherche par nom OU par base_id, insensible à la casse
+        cursor = await db.execute(
+            "SELECT base_id, name FROM units_directory WHERE name LIKE ? OR base_id LIKE ? LIMIT 25",
+            (f"%{current}%", f"%{current}%")
+        )
+        rows = await cursor.fetchall()
+        # On limite le nom à 100 caractères (limite Discord)
+        return [
+            app_commands.Choice(name=f"{row['name']} ({row['base_id']})", value=row["base_id"])
+            for row in rows
+        ]
+
+async def image_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    import os
+    results = []
+    current_lower = current.lower()
+    for directory in ["assets/portraits", "assets/vaisseaux"]:
+        if os.path.exists(directory):
+            for f in os.listdir(directory):
+                if f.endswith(".png") and current_lower in f.lower():
+                    results.append(app_commands.Choice(name=f, value=f))
+                    if len(results) >= 25:
+                        return results
+    return results
+
 class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -107,7 +134,8 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
         name="reset-portrait",
         description="Réinitialise le statut de validation d'un personnage (pour qu'il repasse en revue)."
     )
-    @app_commands.describe(recherche="Nom ou ID du personnage à réinitialiser (ex: Kylo)")
+    @app_commands.describe(recherche="Nom ou ID du personnage à réinitialiser")
+    @app_commands.autocomplete(recherche=unit_autocomplete)
     async def reset_portrait(self, interaction: discord.Interaction, recherche: str) -> None:
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
@@ -182,6 +210,10 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
     @app_commands.describe(
         base_id="L'ID exact du personnage (ex: AHSOKATANO)",
         nom_image="Le nom exact de l'image (ex: charui_ahsoka.png)"
+    )
+    @app_commands.autocomplete(
+        base_id=unit_autocomplete,
+        nom_image=image_autocomplete
     )
     async def fix_portrait(self, interaction: discord.Interaction, base_id: str, nom_image: str) -> None:
         if not interaction.user.guild_permissions.administrator:

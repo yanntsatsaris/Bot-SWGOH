@@ -1,10 +1,6 @@
-"""
-sync_all_units.py — Récupère et filtre les unités avec dédoublonnage strict
-"""
 import asyncio
 import json
 from pathlib import Path
-from services.comlink import get_game_data, get_localization
 
 OUTPUT_FILE = Path("database/all_units.json")
 
@@ -12,11 +8,13 @@ async def sync():
     import aiohttp
     
     print("🚀 Initialisation du référentiel depuis Comlink...")
-    headers = {"Content-Type": "application/json"}
     base_url = "http://localhost:3200"
+    
+    # Timeout étendu pour éviter le "Server disconnected" sur l'énorme dictionnaire
+    timeout = aiohttp.ClientTimeout(total=300)
 
     try:
-        async with aiohttp.ClientSession(headers=headers) as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             # ÉTAPE 1 : EXTRACTION DES VERSIONS (POST /metadata)
             print("1️⃣ Récupération des versions (metadata)...")
             async with session.post(f"{base_url}/metadata", json={"payload": {}}) as resp:
@@ -30,8 +28,11 @@ async def sync():
                 print("❌ Versions introuvables.")
                 return
 
+            print(f" -> Version Jeu : {game_version}")
+            print(f" -> Version Loc (ID) : {loc_version}")
+
             # ÉTAPE 2 : TÉLÉCHARGEMENT DU ROSTER (POST /data)
-            print(f"2️⃣ Récupération du roster (version: {game_version})...")
+            print("2️⃣ Téléchargement des données...")
             payload_data = {
                 "payload": {
                     "version": game_version,
@@ -44,65 +45,67 @@ async def sync():
                 resp.raise_for_status()
                 data = await resp.json()
 
-            raw_units = data.get("units", [])
-            playable_units = []
-            processed_ids = set()
-
-            for u in raw_units:
-                if u.get("obtainable") is True and str(u.get("obtainableTime")) == "0":
-                    bid = u.get("baseId", "")
-                    if bid and bid not in processed_ids:
-                        playable_units.append(u)
-                        processed_ids.add(bid)
-
-            print(f"✅ {len(playable_units)} unités jouables trouvées.")
-
             # ÉTAPE 3 : TÉLÉCHARGEMENT DES TRADUCTIONS (POST /localization)
-            print(f"3️⃣ Récupération des traductions (id: {loc_version})...")
-            # On met unzip à False pour éviter que le serveur Node de Comlink crash par manque de RAM
+            print("3️⃣ Téléchargement et ciblage STRICT de l'Anglais (Loc_ENG_US.txt)...")
             payload_loc = {
                 "payload": {
                     "id": loc_version
                 },
-                "unzip": False
+                "unzip": True
             }
             async with session.post(f"{base_url}/localization", json=payload_loc) as resp:
                 resp.raise_for_status()
                 loc_data = await resp.json()
 
-            bundle_b64 = loc_data.get("localizationBundle", "")
-            bundle = None
+            # Extraction ciblée : on fouille le JSON pour ne prendre QUE le fichier Anglais
+            def find_eng(obj):
+                if isinstance(obj, dict):
+                    if "Loc_ENG_US.txt" in obj and isinstance(obj["Loc_ENG_US.txt"], str):
+                        return obj["Loc_ENG_US.txt"]
+                    for v in obj.values():
+                        res = find_eng(v)
+                        if res: return res
+                elif isinstance(obj, list):
+                    for v in obj:
+                        res = find_eng(v)
+                        if res: return res
+                return None
 
-            if bundle_b64:
-                import base64
-                import zipfile
-                import io
-                
-                print("📦 Décompression locale du dictionnaire...")
-                decoded = base64.b64decode(bundle_b64)
-                
-                try:
-                    with zipfile.ZipFile(io.BytesIO(decoded)) as z:
-                        for name in z.namelist():
-                            if "Loc_ENG_US.txt" in name:
-                                bundle = z.read(name).decode("utf-8")
-                                print("✅ Fichier Loc_ENG_US.txt trouvé dans l'archive !")
-                                break
-                except zipfile.BadZipFile:
-                    print("⚠️ Le fichier reçu n'est pas un ZIP valide.")
+            bundle = find_eng(loc_data)
             
-            name_map = {}
-            if bundle:
-                for line in bundle.split("\n"):
-                    if "|" in line:
-                        k, v = line.split("|", 1)
-                        name_map[k.strip()] = v.strip()
-                print(f"✅ {len(name_map)} noms extraits.")
-            else:
-                print("⚠️  Loc_ENG_US.txt introuvable dans le bundle.")
+            if not bundle or "UNIT_" not in bundle:
+                print("❌ ERREUR : Le dictionnaire ANGLAIS n'a pas pu être extrait.")
+                return
+                
+            print(" -> Dictionnaire ANGLAIS extrait avec succès !")
 
-            # ÉTAPE 4 : CROISEMENT ET SAUVEGARDE BDD (MERGE)
-            print("4️⃣ Sauvegarde en base de données...")
+            # Étape B : Traduction
+            name_map = {}
+            for line in bundle.splitlines():
+                if "|" in line:
+                    k, v = line.split("|", 1)
+                    # Nettoyage méticuleux des espaces et retours chariots comme dans AWK
+                    name_map[k.strip()] = v.strip()
+
+            # ÉTAPE 4 : CROISEMENT DES DONNÉES
+            print("4️⃣ Croisement des données (Filtre: obtainable=true & obtainableTime=0)...")
+            
+            raw_units = data.get("units", [])
+            playable_units = []
+            processed_ids = set()
+
+            for u in raw_units:
+                obtainable = u.get("obtainable")
+                obtainable_time = u.get("obtainableTime")
+                # Condition stricte
+                if obtainable is True and str(obtainable_time) == "0":
+                    bid = u.get("baseId", "")
+                    if bid and bid not in processed_ids:
+                        playable_units.append(u)
+                        processed_ids.add(bid)
+
+            print(f" -> {len(playable_units)} unités jouables trouvées et filtrées.")
+            print("---------------------------------------------------")
             
             from database.db import init_db, get_db
             from services.portrait_cache import get_portrait_path
@@ -112,9 +115,12 @@ async def sync():
                 for unit in playable_units:
                     bid = unit.get("baseId", "")
                     name_key = unit.get("nameKey", "")
+                    name_key = name_key.strip()
                     
-                    # Fallback sur le baseId si non trouvé
-                    final_name = name_map.get(name_key, bid.replace("_", " ").title())
+                    # Logique de Fallback
+                    final_name = bid
+                    if name_key in name_map and name_map[name_key]:
+                        final_name = name_map[name_key]
                     
                     combat_type = unit.get("combatType", 1)
                     unit_type = "character" if combat_type == 1 else "ship"
@@ -132,7 +138,7 @@ async def sync():
                             image_path=CASE WHEN units_directory.is_image_valid IS NOT 1 THEN excluded.image_path ELSE units_directory.image_path END
                     """, (bid, final_name, thumb, image_path))
                 await db.commit()
-            print("✅ Synchronisation terminée avec succès.")
+            print("Terminé ! La base de données SQLite (game_characters/units_directory) est sauvegardée et mise à jour.")
 
     except Exception as e:
         print(f"❌ Erreur lors de la synchronisation : {e}")

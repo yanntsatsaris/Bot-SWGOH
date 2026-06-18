@@ -115,9 +115,12 @@ async def sync():
             print("---------------------------------------------------")
             
             from database.db import init_db, get_db
-            from services.portrait_cache import get_portrait_path
+            from services.portrait_cache import get_portrait_path, build_portrait_cache
             
             await init_db()
+            # On charge les portraits validés pour éviter de les réattribuer !
+            await build_portrait_cache()
+            
             async with get_db() as db:
                 for unit in playable_units:
                     bid = unit.get("baseId", "")

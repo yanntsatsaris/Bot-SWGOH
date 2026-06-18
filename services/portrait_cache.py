@@ -16,17 +16,22 @@ ALL_UNITS_FILE = Path("database/all_units.json")
 
 _unit_data: dict[str, dict] = {}
 _db_image_paths: dict[str, str] = {}
+_validated_image_paths: set[str] = set()
 
 async def build_portrait_cache() -> None:
     """Charge le cache des chemins d'images validés depuis la BDD."""
-    global _db_image_paths
+    global _db_image_paths, _validated_image_paths
     try:
         from database.db import get_db
         async with get_db() as db:
-            cursor = await db.execute("SELECT base_id, image_path FROM units_directory WHERE image_path IS NOT NULL AND (is_image_valid IS NULL OR is_image_valid = 1)")
+            cursor = await db.execute("SELECT base_id, image_path, is_image_valid FROM units_directory WHERE image_path IS NOT NULL")
             rows = await cursor.fetchall()
             if rows:
                 _db_image_paths = {row["base_id"].upper(): row["image_path"] for row in rows}
+                _validated_image_paths = {
+                    Path(row["image_path"]).as_posix()
+                    for row in rows if row["is_image_valid"] == 1
+                }
     except Exception as e:
         log.error("Erreur chargement cache portraits depuis DB: %s", e)
 
@@ -99,7 +104,6 @@ def get_portrait_path(base_id: str) -> Path:
         "CLONESERGEANTPHASEI": "trooperclonegreen",
 
         # --- Autres Persos ---
-        "BISHOP": "captainenoch",
         "GOPHERANTS": "groguanz",
         "HERASYNDULLAS3": "hera_s3",
         "HOTHLEIA": "leiahoth",
@@ -127,11 +131,9 @@ def get_portrait_path(base_id: str) -> Path:
         "CHIEFCHIRPA": "ewok_chirpa",
         "COLONELSTARCK": "colonel_stark",
         "DARTHREVAN": "sithrevan",
-        "FIRSTORDERSPECIALFORCESPILOT": "firstorder_pilot",
         "HUMANTHUG": "mob_enforcer",
         "IG90": "ig-90",
         "OLDBENKENOBI": "obiwanep4",
-        "RACCOON": "rotta",
 
         # --- Vaisseaux ---
         "GEONOSIANSTARFIGHTER1": "geonosis_fighter_sunfac",
@@ -176,13 +178,18 @@ def get_portrait_path(base_id: str) -> Path:
     targets.append(bid_lower.replace("capital", "").replace("ship_", "").replace("gl", ""))
 
     prefixes = ["charui_", ""]
+    
+    def is_path_available(p: Path) -> bool:
+        # On rejette si c'est déjà validé pour un autre perso
+        return p.as_posix() not in _validated_image_paths
 
     for t in targets:
         if not t: continue
         clean = str(t).replace(".png", "").replace("tex.avatars_", "")
         for pref in prefixes:
             path = target_dir / f"{pref}{clean}.png"
-            if path.exists(): return path
+            if path.exists() and is_path_available(path): 
+                return path
 
     # Recherche floue intelligente améliorée
     if target_dir.exists():
@@ -192,6 +199,9 @@ def get_portrait_path(base_id: str) -> Path:
         search = bid_lower.replace("_", "").replace("charui", "")
 
         for p in target_dir.glob("*.png"):
+            if not is_path_available(p):
+                continue
+                
             fname = p.stem.lower().replace("_", "").replace("charui", "")
 
             # 1. Correspondance exacte après nettoyage

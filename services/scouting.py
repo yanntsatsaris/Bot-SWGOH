@@ -42,21 +42,47 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
     # 1. PERSONNAGES
     available_teams = []
     for team_id, team_data in GAC_TEAMS.items():
-        members = team_data["members"]
-        expected_size = 3 if fmt == "3v3" else 5
-        members = members[:expected_size]
+        if team_data.get("format") and team_data["format"] != fmt:
+            continue
+            
+        leader_id = team_data.get("leader_id", team_id)
+        if not leader_id:
+            continue
+            
+        core = team_data.get("core", [])
+        subs = team_data.get("subs", [])
         
-        leader = enemy_index.get(team_id)
-        if leader and _is_gac_ready(leader):
-            ready_count = sum(1 for m in members if enemy_index.get(m) and _is_gac_ready(enemy_index[m]))
-            if ready_count / len(members) >= 0.6:
-                score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in members if m in enemy_index])
-                available_teams.append({
-                    "leader_id": team_id,
-                    "members": members,
-                    "defense": team_data.get("defense", 5),
-                    "score": score
-                })
+        # Vérifier que le core est présent et ready (au moins 60% du core ou leader mandatory)
+        if leader_id not in enemy_index or not _is_gac_ready(enemy_index[leader_id]):
+            continue
+            
+        core_ready = [m for m in core if m in enemy_index and _is_gac_ready(enemy_index[m])]
+        # On exige tout le core (c'est le principe du core)
+        if len(core_ready) < len(core):
+            continue
+            
+        expected_size = 3 if fmt == "3v3" else 5
+        slots_left = expected_size - len(core_ready)
+        
+        assembled_members = list(core_ready)
+        
+        if slots_left > 0:
+            # Récupérer les subs dispos et les trier par puissance
+            ready_subs = [m for m in subs if m in enemy_index and _is_gac_ready(enemy_index[m])]
+            ready_subs.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+            
+            # Prendre les meilleurs subs pour remplir l'équipe
+            assembled_members.extend(ready_subs[:slots_left])
+            
+        # On valide si on a au moins 60% de l'équipe attendue
+        if len(assembled_members) / expected_size >= 0.6 or len(assembled_members) == expected_size or ("SOLO" in team_id):
+            score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in assembled_members])
+            available_teams.append({
+                "leader_id": leader_id,
+                "members": assembled_members,
+                "defense": team_data.get("defense", 5),
+                "score": score
+            })
                 
     # Trier par score défensif, puis puissance
     available_teams.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)

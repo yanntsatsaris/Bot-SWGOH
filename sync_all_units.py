@@ -51,6 +51,10 @@ async def sync():
             async with session.post(f"{base_url}/data", json=payload_data) as resp:
                 resp.raise_for_status()
                 data = await resp.json()
+                
+            print(" -> Sauvegarde temporaire des skills pour analyse (debug_skills.json)...")
+            with open("database/debug_skills.json", "w", encoding="utf-8") as f:
+                json.dump(data.get("skill", []), f, indent=2)
 
             # ÉTAPE 3 : TÉLÉCHARGEMENT DES TRADUCTIONS (POST /localization)
             print("3️⃣ Téléchargement et ciblage STRICT de l'Anglais (Loc_ENG_US.txt)...")

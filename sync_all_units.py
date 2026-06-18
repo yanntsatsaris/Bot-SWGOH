@@ -20,25 +20,25 @@ async def sync():
             return
         print(f"✅ {len(raw_units)} unités brutes reçues.")
 
-        # 2. Récupération des traductions
-        print("🌍 Récupération des noms...")
+        # 2. Récupération des traductions via swgoh.gg (Noms propres garantis)
+        print("🌍 Récupération des noms depuis swgoh.gg...")
         name_map = {}
+        import aiohttp
         try:
-            bundle = await get_localization()
-            if bundle:
-                for line in bundle.splitlines():
-                    # Le séparateur standard de SWGOH est "|"
-                    if "|" in line:
-                        key, _, value = line.partition("|")
-                        name_map[key] = value.strip()
-                    elif ":" in line:
-                        key, _, value = line.partition(":")
-                        name_map[key] = value.strip()
-                print(f"✅ {len(name_map)} clés de traduction trouvées.")
-            else:
-                print("⚠️  Traductions indisponibles.")
+            async with aiohttp.ClientSession() as session:
+                async with session.get("https://swgoh.gg/api/characters/") as resp:
+                    if resp.status == 200:
+                        chars = await resp.json()
+                        for c in chars:
+                            name_map[c["base_id"]] = c["name"]
+                async with session.get("https://swgoh.gg/api/ships/") as resp:
+                    if resp.status == 200:
+                        ships = await resp.json()
+                        for s in ships:
+                            name_map[s["base_id"]] = s["name"]
+            print(f"✅ {len(name_map)} noms récupérés depuis swgoh.gg.")
         except Exception as e:
-            print(f"⚠️  Erreur localization : {e}")
+            print(f"⚠️  Erreur swgoh.gg : {e}")
 
         # 3. Filtrage, Structuration et Dédoublonnage
         # Logique : baseId unique + obtainable
@@ -57,9 +57,8 @@ async def sync():
 
             thumb = u.get("thumbnailName", "").replace("tex.avatars_", "")
             
-            # Utilisation directe du nameKey fourni par l'API
-            name_key = u.get("nameKey", "")
-            name = name_map.get(name_key, bid.replace("_", " ").title())
+            # SWGOH.gg mappe directement le baseId au vrai nom
+            name = name_map.get(bid, bid.replace("_", " ").title())
             
             combat_type = u.get("combatType", 1)
 

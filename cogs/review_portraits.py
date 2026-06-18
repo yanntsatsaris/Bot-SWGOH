@@ -148,7 +148,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             return
 
         async with get_db() as db:
-            cursor = await db.execute("SELECT base_id, name FROM units_directory WHERE is_image_valid = 0")
+            cursor = await db.execute("SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid = 0")
             rows = await cursor.fetchall()
 
         if not rows:
@@ -159,7 +159,8 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
         content = "Liste des personnages dont le portrait est à refaire :\n"
         content += "="*55 + "\n\n"
         for row in rows:
-            content += f"- Nom : {row['name']}\n  ID  : {row['base_id']}\n\n"
+            img = row['image_path'] or "Aucune image"
+            content += f"- Nom   : {row['name']}\n  ID    : {row['base_id']}\n  Image : {img}\n\n"
 
         file = discord.File(io.BytesIO(content.encode('utf-8')), filename="portraits_incorrects.txt")
         await interaction.response.send_message(
@@ -167,6 +168,55 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             file=file,
             ephemeral=True
         )
+
+    @app_commands.command(
+        name="fix-portrait",
+        description="Associe manuellement une image à un personnage et la valide."
+    )
+    @app_commands.describe(
+        base_id="L'ID exact du personnage (ex: AHSOKATANO)",
+        nom_image="Le nom exact de l'image (ex: charui_ahsoka.png)"
+    )
+    async def fix_portrait(self, interaction: discord.Interaction, base_id: str, nom_image: str) -> None:
+        if not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
+            return
+            
+        base_id = base_id.upper()
+        # Construit le chemin relatif officiel attendu par le système
+        image_path = f"assets/portraits/{nom_image}"
+        
+        # Vérifie si l'unité existe en BDD
+        async with get_db() as db:
+            cursor = await db.execute("SELECT name FROM units_directory WHERE base_id = ?", (base_id,))
+            row = await cursor.fetchone()
+            
+            if not row:
+                await interaction.response.send_message(f"⚠️ Aucun personnage trouvé avec l'ID `{base_id}`.", ephemeral=True)
+                return
+                
+            # Mise à jour en base de données
+            await db.execute(
+                "UPDATE units_directory SET image_path = ?, is_image_valid = 1 WHERE base_id = ?",
+                (image_path, base_id)
+            )
+            await db.commit()
+            name = row["name"]
+            
+        embed = discord.Embed(
+            title="✅ Portrait Corrigé",
+            description=f"L'image de **{name}** a été remplacée par `{nom_image}`.",
+            color=discord.Color.green()
+        )
+        
+        # On essaie d'envoyer l'image en prévisualisation si elle existe localement
+        if os.path.exists(image_path):
+            file = discord.File(image_path, filename=nom_image)
+            embed.set_thumbnail(url=f"attachment://{nom_image}")
+            await interaction.response.send_message(embed=embed, file=file, ephemeral=True)
+        else:
+            embed.add_field(name="⚠️ Attention", value="L'image n'a pas été trouvée sur le disque du serveur, mais le chemin a été enregistré.", inline=False)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(ReviewPortraitsCog(bot))

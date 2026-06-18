@@ -126,11 +126,24 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
             "defense": def_score,
             "offense": off_score,
             "score": score,
-            "target_size": team_data.get("min_size", expected_size)
+            "target_size": team_data.get("min_size", expected_size),
+            "id": team_id
         })
                 
     # Trier par "Biais Défensif" (defense - offense), puis par défense absolue, puis puissance
     available_teams.sort(key=lambda x: (x["defense"] - x["offense"], x["defense"], x["score"]), reverse=True)
+
+    # Identification des personnages strictement réservés à l'attaque
+    offense_only_chars = set()
+    for t in available_teams:
+        if t["defense"] <= 2:
+            if t["leader_id"]:
+                offense_only_chars.add(t["leader_id"])
+            for c in t.get("members", []):
+                team_data = GAC_TEAMS.get(t["id"], {})
+                core_members = team_data.get("core", [])
+                if c in core_members:
+                    offense_only_chars.add(c)
     
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
@@ -159,7 +172,13 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
                 zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
     # 1.5 BOUCHAGE DE TROUS (Hole-Filling)
-    leftovers = [m for m, data in enemy_index.items() if m not in used_base_ids and _is_gac_ready(data) and data.get("combat_type", 1) == 1]
+    leftovers = [
+        m for m, data in enemy_index.items() 
+        if m not in used_base_ids 
+        and m not in offense_only_chars
+        and _is_gac_ready(data) 
+        and data.get("combat_type", 1) == 1
+    ]
     leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
     
     for zone in ["North", "South", "Back"]:

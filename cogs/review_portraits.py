@@ -140,7 +140,7 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
 
     @app_commands.command(
         name="list-incorrect-portraits",
-        description="Génère un fichier texte avec la liste de tous les personnages marqués comme incorrects."
+        description="Génère un fichier texte listant les portraits validés puis les portraits incorrects."
     )
     async def list_incorrect_portraits(self, interaction: discord.Interaction) -> None:
         if not interaction.user.guild_permissions.administrator:
@@ -148,23 +148,29 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             return
 
         async with get_db() as db:
-            cursor = await db.execute("SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid = 0")
-            rows = await cursor.fetchall()
-
-        if not rows:
-            await interaction.response.send_message("✅ Aucun portrait n'est marqué comme incorrect pour le moment !", ephemeral=True)
-            return
+            # Récupère les validés
+            cursor_valid = await db.execute("SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid = 1 ORDER BY name")
+            rows_valid = await cursor_valid.fetchall()
+            
+            # Récupère les invalides
+            cursor_invalid = await db.execute("SELECT base_id, name, image_path FROM units_directory WHERE is_image_valid = 0 ORDER BY name")
+            rows_invalid = await cursor_invalid.fetchall()
 
         import io
-        content = "Liste des personnages dont le portrait est à refaire :\n"
-        content += "="*55 + "\n\n"
-        for row in rows:
+        content = "=== PORTRAITS VALIDÉS (Ne pas réutiliser ces images) ===\n"
+        for row in rows_valid:
             img = row['image_path'] or "Aucune image"
             content += f"- Nom   : {row['name']}\n  ID    : {row['base_id']}\n  Image : {img}\n\n"
 
-        file = discord.File(io.BytesIO(content.encode('utf-8')), filename="portraits_incorrects.txt")
+        content += "\n" + "="*55 + "\n\n"
+        content += "=== PORTRAITS INCORRECTS (À corriger) ===\n"
+        for row in rows_invalid:
+            img = row['image_path'] or "Aucune image"
+            content += f"- Nom   : {row['name']}\n  ID    : {row['base_id']}\n  Image : {img}\n\n"
+
+        file = discord.File(io.BytesIO(content.encode('utf-8')), filename="bilan_portraits.txt")
         await interaction.response.send_message(
-            f"Voici la liste des **{len(rows)}** portrait(s) incorrect(s). Tu peux me donner ce fichier !",
+            f"Voici le bilan avec **{len(rows_valid)}** validés et **{len(rows_invalid)}** incorrects.\nCela t'aidera à voir quelles images sont déjà prises !",
             file=file,
             ephemeral=True
         )

@@ -27,7 +27,10 @@ async def build_portrait_cache() -> None:
             cursor = await db.execute("SELECT base_id, image_path, is_image_valid FROM units_directory WHERE image_path IS NOT NULL")
             rows = await cursor.fetchall()
             if rows:
-                _db_image_paths = {row["base_id"].upper(): row["image_path"] for row in rows}
+                _db_image_paths = {
+                    row["base_id"].upper(): row["image_path"] 
+                    for row in rows if row["is_image_valid"] == 1
+                }
                 _validated_image_paths = {
                     Path(row["image_path"]).as_posix()
                     for row in rows if row["is_image_valid"] == 1

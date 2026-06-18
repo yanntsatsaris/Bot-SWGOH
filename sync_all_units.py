@@ -9,105 +9,126 @@ from services.comlink import get_game_data, get_localization
 OUTPUT_FILE = Path("database/all_units.json")
 
 async def sync():
-    print("🚀 Synchronisation du référentiel GAC...")
+    import aiohttp
+    
+    print("🚀 Initialisation du référentiel depuis Comlink...")
+    headers = {"Content-Type": "application/json"}
+    base_url = "http://localhost:3200"
 
     try:
-        # 1. Récupération des données brutes
-        print("🔍 Récupération des unités...")
-        raw_units = await get_game_data()
-        if not raw_units:
-            print("❌ Aucune unité reçue.")
-            return
-        print(f"✅ {len(raw_units)} unités brutes reçues.")
+        async with aiohttp.ClientSession(headers=headers) as session:
+            # ÉTAPE 1 : EXTRACTION DES VERSIONS (POST /metadata)
+            print("1️⃣ Récupération des versions (metadata)...")
+            async with session.post(f"{base_url}/metadata", json={"payload": {}}) as resp:
+                resp.raise_for_status()
+                meta = await resp.json()
+            
+            game_version = meta.get("latestGamedataVersion")
+            loc_version = meta.get("latestLocalizationBundleVersion")
+            
+            if not game_version or not loc_version:
+                print("❌ Versions introuvables.")
+                return
 
-        # 2. Récupération des traductions via Comlink (Noms en Français)
-        print("🌍 Récupération des noms...")
-        name_map = {}
-        try:
-            bundle = await get_localization()
+            # ÉTAPE 2 : TÉLÉCHARGEMENT DU ROSTER (POST /data)
+            print(f"2️⃣ Récupération du roster (version: {game_version})...")
+            payload_data = {
+                "payload": {
+                    "version": game_version,
+                    "includePveUnits": True,
+                    "requestSegment": 0
+                },
+                "enums": False
+            }
+            async with session.post(f"{base_url}/data", json=payload_data) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+
+            raw_units = data.get("units", [])
+            playable_units = []
+            processed_ids = set()
+
+            for u in raw_units:
+                if u.get("obtainable") is True and str(u.get("obtainableTime")) == "0":
+                    bid = u.get("baseId", "")
+                    if bid and bid not in processed_ids:
+                        playable_units.append(u)
+                        processed_ids.add(bid)
+
+            print(f"✅ {len(playable_units)} unités jouables trouvées.")
+
+            # ÉTAPE 3 : TÉLÉCHARGEMENT DES TRADUCTIONS (POST /localization)
+            print(f"3️⃣ Récupération des traductions (id: {loc_version})...")
+            payload_loc = {
+                "payload": {
+                    "id": loc_version
+                },
+                "unzip": True
+            }
+            async with session.post(f"{base_url}/localization", json=payload_loc) as resp:
+                resp.raise_for_status()
+                loc_data = await resp.json()
+
+            # Extraction récursive pour trouver Loc_ENG_US.txt
+            def find_eng(obj):
+                if isinstance(obj, dict):
+                    if "Loc_ENG_US.txt" in obj:
+                        return obj["Loc_ENG_US.txt"]
+                    for v in obj.values():
+                        res = find_eng(v)
+                        if res: return res
+                elif isinstance(obj, list):
+                    for v in obj:
+                        res = find_eng(v)
+                        if res: return res
+                return None
+
+            bundle = find_eng(loc_data)
+            name_map = {}
             if bundle:
-                for line in bundle.splitlines():
-                    # Le séparateur standard de SWGOH est "|"
+                for line in bundle.split("\n"):
                     if "|" in line:
-                        key, _, value = line.partition("|")
-                        name_map[key] = value.strip()
-                    elif ":" in line:
-                        key, _, value = line.partition(":")
-                        name_map[key] = value.strip()
-                print(f"✅ {len(name_map)} clés de traduction trouvées.")
+                        k, v = line.split("|", 1)
+                        name_map[k.strip()] = v.strip()
+                print(f"✅ {len(name_map)} noms extraits.")
             else:
-                print("⚠️  Traductions indisponibles.")
-        except Exception as e:
-            print(f"⚠️  Erreur localization : {e}")
+                print("⚠️  Loc_ENG_US.txt introuvable dans le bundle.")
 
-        # 3. Filtrage, Structuration et Dédoublonnage
-        # Logique : baseId unique + obtainable
-        processed_ids = set()
-        all_units = []
-
-        for u in raw_units:
-            bid = u.get("baseId", "")
-            if not bid or bid in processed_ids:
-                continue
-
-            # Filtrage selon ta logique shell
-            # obtainable == True ET obtainableTime == "0"
-            if not (u.get("obtainable") is True and u.get("obtainableTime") == "0"):
-                continue
-
-            thumb = u.get("thumbnailName", "").replace("tex.avatars_", "")
+            # ÉTAPE 4 : CROISEMENT ET SAUVEGARDE BDD (MERGE)
+            print("4️⃣ Sauvegarde en base de données...")
             
-            # Utilisation directe du nameKey fourni par l'API
-            name_key = u.get("nameKey", "")
-            name = name_map.get(name_key, bid.replace("_", " ").title())
+            from database.db import init_db, get_db
+            from services.portrait_cache import get_portrait_path
             
-            combat_type = u.get("combatType", 1)
-
-            all_units.append({
-                "base_id": bid,
-                "name": name,
-                "thumbnail_name": thumb,
-                "type": "character" if combat_type == 1 else "ship"
-            })
-            processed_ids.add(bid)
-
-        # 4. Tri final
-        all_units.sort(key=lambda x: x["name"])
-
-        OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-            json.dump(all_units, f, indent=2, ensure_ascii=False)
-
-        print(f"\n✨ Terminé ! {len(all_units)} unités uniques filtrées et enregistrées.")
-
-        print("\n💾 Enregistrement dans la base de données SQLite...")
-        from database.db import init_db, get_db
-        from services.portrait_cache import get_portrait_path
-        
-        await init_db()
-        async with get_db() as db:
-            for unit in all_units:
-                bid = unit["base_id"]
-                name = unit["name"]
-                thumb = unit["thumbnail_name"]
-                # On détermine le chemin de l'image via la logique existante
-                # On force _unit_data à se recharger (puisqu'on vient de l'écrire)
-                path_obj = get_portrait_path(bid)
-                image_path = path_obj.as_posix() if path_obj else None
-                
-                await db.execute("""
-                    INSERT INTO units_directory (base_id, name, thumbnail_name, image_path)
-                    VALUES (?, ?, ?, ?)
-                    ON CONFLICT(base_id) DO UPDATE SET
-                        name=excluded.name,
-                        thumbnail_name=excluded.thumbnail_name,
-                        image_path=CASE WHEN units_directory.is_image_valid IS NOT 1 THEN excluded.image_path ELSE units_directory.image_path END
-                """, (bid, name, thumb, image_path))
-            await db.commit()
-        print("✅ Base de données mise à jour.")
+            await init_db()
+            async with get_db() as db:
+                for unit in playable_units:
+                    bid = unit.get("baseId", "")
+                    name_key = unit.get("nameKey", "")
+                    
+                    # Fallback sur le baseId si non trouvé
+                    final_name = name_map.get(name_key, bid.replace("_", " ").title())
+                    
+                    combat_type = unit.get("combatType", 1)
+                    unit_type = "character" if combat_type == 1 else "ship"
+                    thumb = unit.get("thumbnailName", "").replace("tex.avatars_", "")
+                    
+                    path_obj = get_portrait_path(bid)
+                    image_path = path_obj.as_posix() if path_obj else None
+                    
+                    await db.execute("""
+                        INSERT INTO units_directory (base_id, name, thumbnail_name, image_path)
+                        VALUES (?, ?, ?, ?)
+                        ON CONFLICT(base_id) DO UPDATE SET
+                            name=excluded.name,
+                            thumbnail_name=excluded.thumbnail_name,
+                            image_path=CASE WHEN units_directory.is_image_valid IS NOT 1 THEN excluded.image_path ELSE units_directory.image_path END
+                    """, (bid, final_name, thumb, image_path))
+                await db.commit()
+            print("✅ Synchronisation terminée avec succès.")
 
     except Exception as e:
-        print(f"\n❌ Erreur fatale : {e}")
+        print(f"❌ Erreur lors de la synchronisation : {e}")
 
 if __name__ == "__main__":
     asyncio.run(sync())

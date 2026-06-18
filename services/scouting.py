@@ -22,8 +22,8 @@ _HARDCODED_FLEETS = {
     "CAPITALLEVIATHAN": ["CAPITALLEVIATHAN", "SITHFIGHTER", "SITHBOMBER", "FURYCLASSINTERCEPTOR", "MKVIINTERCEPTOR", "EBONHAWK", "SITHASSASSIN"],
     "CAPITALEXECUTOR": ["CAPITALEXECUTOR", "HOUNDSTOOTH", "RAZORCREST", "XANADUBLOOD", "IG2000", "SLAVE1", "EBONHAWK", "TIEFIGHTER"],
     "CAPITALPROFUNDITY": ["CAPITALPROFUNDITY", "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "GHOST", "PHANTOM2", "CASSIANSUWING", "BISTANSUEING"],
-    "CAPITALNEGOTIATOR": ["CAPITALNEGOTIATOR", "ANAKINSJETAIRSTARFIGHTER", "UMBARANSTARFIGHTER", "AHSOKATANOSJEDIEXOCRAFT", "BTLBXYWING", "PLOKOONSJEDISTARFIGHTER", "CLONESERGEANTSARC170", "REXARC170"],
-    "CAPITALMALEVOLENCE": ["CAPITALMALEVOLENCE", "VULTUREDROID", "HYENABOMBER", "SUNFACGEONOSIANSTARFIGHTER", "GEONOSIANSPYSTARFIGHTER", "GEONOSIANSTARFIGHTER", "IG2000"],
+    "CAPITALNEGOTIATOR": ["CAPITALNEGOTIATOR", "JEDISTARFIGHTERANAKIN", "UMBARANSTARFIGHTER", "JEDISTARFIGHTERAHSOKATANO", "BTLB_YWING", "JEDISTARFIGHTERPLOKOON", "ARC170CLONESERGEANT", "ARC170REX"],
+    "CAPITALMALEVOLENCE": ["CAPITALMALEVOLENCE", "VULTUREDROID", "HYENABOMBER", "GEONOSIANSTARFIGHTERSUNFAC", "GEONOSIANSTARFIGHTERSPY", "GEONOSIANSTARFIGHTER", "IG2000"],
     "CAPITALCHIMAERA": ["CAPITALCHIMAERA", "TIEADVANCED", "TIEBOMBER", "TIEDEFENDER", "TIEINTERCEPTOR", "TIEFIGHTER", "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE"],
     "CAPITALSTARDESTROYER": ["CAPITALSTARDESTROYER", "TIEADVANCED", "TIEBOMBER", "TIEDEFENDER", "TIEINTERCEPTOR", "TIEFIGHTER", "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE"],
     "CAPITALFINALIZER": ["CAPITALFINALIZER", "KYLORENSCOMMANDSHUTTLE", "TIESILENCER", "FIRSTORDERSPECIALFORCESTIEFIGHTER", "FIRSTORDERTIEFIGHTER", "HOUNDSTOOTH"],
@@ -101,6 +101,9 @@ async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
         enemy_index = _build_roster_index(roster)
         detected_teams = _detect_enemy_meta_teams(enemy_index, fmt)
         
+        # On va garder une liste des personnages déjà utilisés
+        used_base_ids = set()
+        
         # Répartition naïve des équipes détectées selon les quotas
         team_idx = 0
         for zone in ["North", "South", "Back"]:
@@ -113,9 +116,29 @@ async def get_scout_data(enemy_ally_code: str, fmt: str) -> dict:
                         "members_ids": t["members_base_ids"],
                         "source": "predictive"
                     })
+                    used_base_ids.update(t["members_base_ids"])
                     team_idx += 1
                 else:
+                    # On marque comme à remplir plus tard
                     zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty"})
+                    
+        # Système de remplissage pour les slots vides (GAC Fill)
+        # On trie le roster par relic_tier puis gear_tier pour avoir les plus forts restants
+        roster.sort(key=lambda x: (x["relic_tier"], x["gear_tier"]), reverse=True)
+        remaining_chars = [u["base_id"] for u in roster if u["base_id"] not in used_base_ids and not u["base_id"].startswith("CAPITAL")]
+        
+        team_size = 3 if fmt == "3v3" else 5
+        
+        for zone in ["North", "South", "Back"]:
+            for team in zones[zone]:
+                if team["leader_id"] is None:
+                    # Remplir avec une team générique depuis remaining_chars
+                    if len(remaining_chars) >= team_size:
+                        new_team = remaining_chars[:team_size]
+                        remaining_chars = remaining_chars[team_size:]
+                        team["leader_id"] = new_team[0]
+                        team["members_ids"] = new_team
+                        team["source"] = "predictive_fill"
                     
         # Flottes
         fleet_quota = quotas.get("Fleet", 1)

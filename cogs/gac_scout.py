@@ -104,14 +104,49 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         """Commande principale pour scouter un ennemi."""
         await interaction.response.defer(thinking=True)
         try:
+            # Récupère l'ally code du joueur s'il est enregistré
+            my_ally_code = None
+            async with get_db() as db:
+                cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(interaction.user.id),))
+                row = await cursor.fetchone()
+                if row:
+                    my_ally_code = row["ally_code"]
+                    
             from services.scouting import get_scout_data
             from services.scout_image import generate_scout_map
             
-            scout_data = await get_scout_data(code_ennemi, format_gac.value)
-            image_buffer = generate_scout_map(scout_data)
+            scout_data = await get_scout_data(code_ennemi, format_gac.value, my_ally_code)
             
-            file = discord.File(image_buffer, filename="scout.png")
-            await interaction.followup.send(file=file)
+            files = []
+            
+            # Map de l'ennemi
+            enemy_img = generate_scout_map(
+                scout_data["zones"], 
+                scout_data["quotas"], 
+                scout_data["league"], 
+                scout_data["format"], 
+                scout_data["enemy_name"] + " (Ennemi)", 
+                scout_data["source"]
+            )
+            files.append(discord.File(enemy_img, filename="enemy_defense.png"))
+            
+            # Map du joueur (suggestion)
+            if "my_zones" in scout_data:
+                my_img = generate_scout_map(
+                    scout_data["my_zones"], 
+                    scout_data["quotas"], 
+                    scout_data["league"], 
+                    scout_data["format"], 
+                    scout_data["my_name"] + " (Ta Défense Suggérée)", 
+                    "Contre-Défense Optimisée"
+                )
+                files.append(discord.File(my_img, filename="my_defense.png"))
+            
+            msg = "Voici la prédiction de la GAC !"
+            if not my_ally_code:
+                msg += "\n*Astuce : Utilise `/register` pour que le bot te propose aussi une défense sur mesure !*"
+                
+            await interaction.followup.send(content=msg, files=files)
             
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)

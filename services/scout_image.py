@@ -15,13 +15,10 @@ log = logging.getLogger(__name__)
 
 H_ZONE_TITLE = 40
 
-def generate_scout_map(scout_data: dict) -> io.BytesIO:
+def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_name: str, source: str) -> io.BytesIO:
     """
     Génère l'image PNG de la carte GAC scannée.
     """
-    zones = scout_data["zones"]
-    quotas = scout_data["quotas"]
-    
     # Hauteur dynamique
     height = 100 + PADDING # Header
     
@@ -39,8 +36,8 @@ def generate_scout_map(scout_data: dict) -> io.BytesIO:
     title_font = _get_font("bold", 22)
     sub_font = _get_font("regular", 16)
     
-    draw.text((PADDING, 20), f"SCOUTING GAC — {scout_data['league']} ({scout_data['format']})", font=title_font, fill=C_GOLD)
-    draw.text((PADDING, 50), f"Adversaire : {scout_data['enemy_name']}  |  Source : {scout_data['source']}", font=sub_font, fill=C_TEXT)
+    draw.text((PADDING, 20), f"MAP GAC — {league} ({fmt})", font=title_font, fill=C_GOLD)
+    draw.text((PADDING, 50), f"Joueur : {player_name}  |  Analyse : {source}", font=sub_font, fill=C_TEXT)
     
     y = 100
     
@@ -77,7 +74,7 @@ def generate_scout_map(scout_data: dict) -> io.BytesIO:
                     if i == 3: # Espace après les 3 fronts
                         x += PORTRAIT_GAP * 2
             else:
-                slots = 3 if scout_data["format"] == "3v3" else 5
+                slots = 3 if fmt == "3v3" else 5
                 
                 # Leader
                 _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)

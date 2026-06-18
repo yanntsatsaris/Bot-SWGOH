@@ -132,14 +132,18 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
         for _ in range(q):
             placed = False
             for t in available_teams:
-                if not any(m in used_base_ids for m in t["members"]):
+                # Si le leader est libre, on retient l'équipe, et on écarte juste les membres déjà utilisés (au lieu de rejeter toute l'équipe)
+                if t["leader_id"] not in used_base_ids and t["leader_id"] != "USED":
+                    valid_members = [m for m in t["members"] if m not in used_base_ids]
+                    
                     zones[zone].append({
                         "leader_id": t["leader_id"],
-                        "members_ids": t["members"],
+                        "members_ids": valid_members,
                         "source": "predictive",
                         "target_size": t["target_size"]
                     })
-                    used_base_ids.update(t["members"])
+                    used_base_ids.update(valid_members)
+                    t["leader_id"] = "USED" # On marque l'équipe comme consommée
                     placed = True
                     break
             if not placed:
@@ -179,14 +183,16 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
     for _ in range(fleet_quota):
         placed = False
         for f in available_fleets:
-            if f["leader_id"] not in used_base_ids:
+            if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
+                valid_members = [m for m in f["members"] if m not in used_base_ids]
                 zones["Fleet"].append({
                     "leader_id": f["leader_id"],
-                    "members_ids": f["members"],
+                    "members_ids": valid_members,
                     "source": "predictive",
                     "target_size": 5
                 })
-                used_base_ids.add(f["leader_id"])
+                used_base_ids.update(valid_members)
+                f["leader_id"] = "USED"
                 placed = True
                 break
         if not placed:

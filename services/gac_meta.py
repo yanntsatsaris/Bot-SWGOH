@@ -118,19 +118,19 @@ GAC_TEAMS = {
         "subs": ["GRANDADMIRALTHRAWN", "ROYALGUARD"]
     },
 
-    "REY_5V5": {
-        "leader_id": "REY", "format": "5v5", "offense": 8, "defense": 9,
-        "core": ["REY", "BENSOLO"],
-        "subs": ["CALKESTIS", "REYJEDITRAINING", "EZRABRIDGEREXILE", "HOLDICE", "L3_37"]
+    "GLREY_5V5": {
+        "leader_id": "GLREY", "format": "5v5", "offense": 8, "defense": 9,
+        "core": ["GLREY", "BENSOLO"],
+        "subs": ["CALKESTIS", "REYJEDITRAINING", "EZRABRIDGEREXILE", "AMILYNHOLDO", "L3_37", "FINN", "POE", "BB8", "RESISTANCEHEROFINN", "RESISTANCEHEROPOE"]
     },
     "REYZRA_3V3": {
-        "leader_id": "REY", "format": "3v3", "offense": 9, "defense": 9,
-        "core": ["REY", "EZRABRIDGEREXILE", "BENSOLO"],
+        "leader_id": "GLREY", "format": "3v3", "offense": 9, "defense": 9,
+        "core": ["GLREY", "EZRABRIDGEREXILE", "BENSOLO"],
         "subs": []
     },
-    "REY_3V3": {
-        "leader_id": "REY", "format": "3v3", "offense": 8, "defense": 8,
-        "core": ["REY", "BENSOLO"],
+    "GLREY_3V3": {
+        "leader_id": "GLREY", "format": "3v3", "offense": 8, "defense": 8,
+        "core": ["GLREY", "BENSOLO"],
         "subs": ["CALKESTIS", "REYJEDITRAINING", "L3_37"]
     },
     

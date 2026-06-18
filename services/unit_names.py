@@ -31,8 +31,20 @@ def _load_units_data():
             log.error("Erreur chargement all_units.json: %s", e)
 
 async def build_name_cache() -> None:
-    """Charge le cache depuis le fichier JSON généré par sync_all_units.py."""
-    _load_units_data()
+    """Charge le cache depuis le fichier JSON généré par sync_all_units.py, ou la BDD."""
+    global _cache
+    try:
+        from database.db import get_db
+        async with get_db() as db:
+            cursor = await db.execute("SELECT base_id, name FROM units_directory")
+            rows = await cursor.fetchall()
+            if rows:
+                _cache = {row["base_id"].upper(): row["name"] for row in rows}
+    except Exception as e:
+        log.error("Erreur chargement cache noms depuis DB: %s", e)
+
+    if not _cache:
+        _load_units_data()
     if not _cache:
         _cache.update(STATIC_NAMES)
 

@@ -145,7 +145,9 @@ class GacCounterCog(commands.Cog, name="GacCounter"):
 
         # --- Analyse + génération image ---
         try:
+            from services.portrait_cache import build_portrait_cache
             await build_name_cache()
+            await build_portrait_cache()
             result  = await analyze_matchup(my_clean, enemy_clean, "5v5")
             my_name = interaction.user.display_name
 

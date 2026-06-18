@@ -15,6 +15,20 @@ SHIPS_DIR = Path("assets/vaisseaux")
 ALL_UNITS_FILE = Path("database/all_units.json")
 
 _unit_data: dict[str, dict] = {}
+_db_image_paths: dict[str, str] = {}
+
+async def build_portrait_cache() -> None:
+    """Charge le cache des chemins d'images validés depuis la BDD."""
+    global _db_image_paths
+    try:
+        from database.db import get_db
+        async with get_db() as db:
+            cursor = await db.execute("SELECT base_id, image_path FROM units_directory WHERE image_path IS NOT NULL AND (is_image_valid IS NULL OR is_image_valid = 1)")
+            rows = await cursor.fetchall()
+            if rows:
+                _db_image_paths = {row["base_id"].upper(): row["image_path"] for row in rows}
+    except Exception as e:
+        log.error("Erreur chargement cache portraits depuis DB: %s", e)
 
 def _load_data():
     global _unit_data
@@ -27,6 +41,14 @@ def _load_data():
             pass
 
 def get_portrait_path(base_id: str) -> Path:
+    bid_upper = base_id.upper()
+    
+    # 1. Priorité absolue : le chemin en base de données s'il est validé ou deviné
+    if bid_upper in _db_image_paths and _db_image_paths[bid_upper]:
+        p = Path(_db_image_paths[bid_upper])
+        if p.exists():
+            return p
+
     if not _unit_data:
         _load_data()
 

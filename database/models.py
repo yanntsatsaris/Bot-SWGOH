@@ -64,4 +64,13 @@ CREATE_TABLES_SQL: list[str] = [
         created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS units_directory (
+        base_id        TEXT    PRIMARY KEY,
+        name           TEXT    NOT NULL,
+        thumbnail_name TEXT,
+        image_path     TEXT,
+        is_image_valid BOOLEAN
+    )
+    """,
 ]

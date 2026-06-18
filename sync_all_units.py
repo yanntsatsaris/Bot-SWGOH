@@ -73,6 +73,32 @@ async def sync():
 
         print(f"\n✨ Terminé ! {len(all_units)} unités uniques filtrées et enregistrées.")
 
+        print("\n💾 Enregistrement dans la base de données SQLite...")
+        from database.db import init_db, get_db
+        from services.portrait_cache import get_portrait_path
+        
+        await init_db()
+        async with get_db() as db:
+            for unit in all_units:
+                bid = unit["base_id"]
+                name = unit["name"]
+                thumb = unit["thumbnail_name"]
+                # On détermine le chemin de l'image via la logique existante
+                # On force _unit_data à se recharger (puisqu'on vient de l'écrire)
+                path_obj = get_portrait_path(bid)
+                image_path = path_obj.as_posix() if path_obj else None
+                
+                await db.execute("""
+                    INSERT INTO units_directory (base_id, name, thumbnail_name, image_path)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(base_id) DO UPDATE SET
+                        name=excluded.name,
+                        thumbnail_name=excluded.thumbnail_name,
+                        image_path=CASE WHEN units_directory.is_image_valid IS NOT 1 THEN excluded.image_path ELSE units_directory.image_path END
+                """, (bid, name, thumb, image_path))
+            await db.commit()
+        print("✅ Base de données mise à jour.")
+
     except Exception as e:
         print(f"\n❌ Erreur fatale : {e}")
 

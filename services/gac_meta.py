@@ -300,20 +300,24 @@ GAC_TEAMS = {
     
     "WAMPA_SOLO": {
         "leader_id": "WAMPA", "format": "5v5", "offense": 5, "defense": 1,
-        "core": ["WAMPA"], "subs": []
+        "core": ["WAMPA"], "subs": [],
+        "requires_omicron": ["WAMPA"]
     },
     "WAMPA_SOLO_3V3": {
         "leader_id": "WAMPA", "format": "3v3", "offense": 5, "defense": 1,
-        "core": ["WAMPA"], "subs": []
+        "core": ["WAMPA"], "subs": [],
+        "requires_omicron": ["WAMPA"]
     },
     
     "SAVAGEOPRESS_SOLO": {
         "leader_id": "SAVAGEOPRESS", "format": "5v5", "offense": 5, "defense": 1,
-        "core": ["SAVAGEOPRESS"], "subs": []
+        "core": ["SAVAGEOPRESS"], "subs": [],
+        "requires_omicron": ["SAVAGEOPRESS"]
     },
     "SAVAGEOPRESS_SOLO_3V3": {
         "leader_id": "SAVAGEOPRESS", "format": "3v3", "offense": 5, "defense": 1,
-        "core": ["SAVAGEOPRESS"], "subs": []
+        "core": ["SAVAGEOPRESS"], "subs": [],
+        "requires_omicron": ["SAVAGEOPRESS"]
     },
     
     "IDENVERSIOEMPIRE_3V3": {

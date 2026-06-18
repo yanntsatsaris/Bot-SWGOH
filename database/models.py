@@ -81,4 +81,10 @@ CREATE_TABLES_SQL: list[str] = [
         is_image_valid BOOLEAN
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS game_omicrons (
+        skill_id      TEXT    PRIMARY KEY,
+        omicron_tier  INTEGER NOT NULL
+    )
+    """,
 ]

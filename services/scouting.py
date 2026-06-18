@@ -17,21 +17,43 @@ LEAGUE_MAP = {
     5: "KYBER"
 }
 
+async def get_omicron_dict() -> dict:
+    omicrons = {}
+    try:
+        async with get_db() as db:
+            async with db.execute("SELECT skill_id, omicron_tier FROM game_omicrons") as cursor:
+                async for row in cursor:
+                    omicrons[row["skill_id"]] = row["omicron_tier"]
+    except Exception as e:
+        log.warning(f"Erreur chargement omicrons: {e}")
+    return omicrons
+
 def _is_gac_ready(unit: dict) -> bool:
     return unit.get("relic_tier", 0) > 0 or unit.get("gear_tier", 0) >= 11
 
-def _build_roster_index(raw_roster: list) -> dict:
+def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
     roster = {}
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id
         raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
         relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
+        
+        has_omicron = False
+        for sk in unit.get("skill", []):
+            sid = sk.get("id")
+            tier = sk.get("tier", 0)
+            req_tier = omicron_dict.get(sid)
+            if req_tier and tier >= req_tier:
+                has_omicron = True
+                break
+                
         roster[base_id] = {
             "base_id": base_id,
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
+            "has_omicron": has_omicron
         }
     return roster
 
@@ -59,6 +81,15 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
         core_ready = [m for m in core if m in enemy_index and _is_gac_ready(enemy_index[m])]
         # On exige tout le core (c'est le principe du core)
         if len(core_ready) < len(core):
+            continue
+            
+        req_omis = team_data.get("requires_omicron", [])
+        missing_omi = False
+        for req in req_omis:
+            if req in enemy_index and not enemy_index[req].get("has_omicron"):
+                missing_omi = True
+                break
+        if missing_omi:
             continue
             
         expected_size = 3 if fmt == "3v3" else 5
@@ -159,7 +190,8 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         league_name = "CARBONITE"
         
     quotas = get_gac_quotas(league_name, fmt)
-    enemy_index = _build_roster_index(profile.get("rosterUnit", []))
+    omicron_dict = await get_omicron_dict()
+    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict)
     
     enemy_zones = _predict_zones(enemy_index, quotas, fmt)
     
@@ -176,7 +208,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_clean = str(my_ally_code).replace("-", "").strip()
         my_profile = await get_player(my_clean)
         if my_profile:
-            my_index = _build_roster_index(my_profile.get("rosterUnit", []))
+            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict)
             my_zones = _predict_zones(my_index, quotas, fmt)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)

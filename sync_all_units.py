@@ -163,10 +163,25 @@ async def sync():
                     """,
                         (bid, final_name, unit_type, thumb, image_path),
                     )
+                    
+                # Sauvegarde des Omicrons
+                print(" -> Traitement des Omicrons...")
+                await db.execute("DELETE FROM game_omicrons")
+                
+                omicrons_found = 0
+                for sk in data.get("skill", []):
+                    tiers = sk.get("tier", [])
+                    # On cherche le premier tier qui est isOmicronTier
+                    for idx, tier in enumerate(tiers):
+                        if tier.get("isOmicronTier"):
+                            skill_id = sk.get("id")
+                            omicron_tier = idx + 1 # Les tiers sont indexés à 1 dans le profil joueur
+                            await db.execute("INSERT INTO game_omicrons (skill_id, omicron_tier) VALUES (?, ?)", (skill_id, omicron_tier))
+                            omicrons_found += 1
+                            break
+                            
                 await db.commit()
-            print(
-                "Terminé ! La base de données SQLite (game_characters) est sauvegardée et mise à jour."
-            )
+            print(f"Terminé ! La base de données SQLite est mise à jour ({omicrons_found} Omicrons trouvés).")
 
     except Exception as e:
         print(f"❌ Erreur lors de la synchronisation : {e}")

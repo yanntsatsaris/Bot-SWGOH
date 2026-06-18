@@ -59,31 +59,38 @@ async def sync():
 
             # ÉTAPE 3 : TÉLÉCHARGEMENT DES TRADUCTIONS (POST /localization)
             print(f"3️⃣ Récupération des traductions (id: {loc_version})...")
+            # On met unzip à False pour éviter que le serveur Node de Comlink crash par manque de RAM
             payload_loc = {
                 "payload": {
                     "id": loc_version
                 },
-                "unzip": True
+                "unzip": False
             }
             async with session.post(f"{base_url}/localization", json=payload_loc) as resp:
                 resp.raise_for_status()
                 loc_data = await resp.json()
 
-            # Extraction récursive pour trouver Loc_ENG_US.txt
-            def find_eng(obj):
-                if isinstance(obj, dict):
-                    if "Loc_ENG_US.txt" in obj:
-                        return obj["Loc_ENG_US.txt"]
-                    for v in obj.values():
-                        res = find_eng(v)
-                        if res: return res
-                elif isinstance(obj, list):
-                    for v in obj:
-                        res = find_eng(v)
-                        if res: return res
-                return None
+            bundle_b64 = loc_data.get("localizationBundle", "")
+            bundle = None
 
-            bundle = find_eng(loc_data)
+            if bundle_b64:
+                import base64
+                import zipfile
+                import io
+                
+                print("📦 Décompression locale du dictionnaire...")
+                decoded = base64.b64decode(bundle_b64)
+                
+                try:
+                    with zipfile.ZipFile(io.BytesIO(decoded)) as z:
+                        for name in z.namelist():
+                            if "Loc_ENG_US.txt" in name:
+                                bundle = z.read(name).decode("utf-8")
+                                print("✅ Fichier Loc_ENG_US.txt trouvé dans l'archive !")
+                                break
+                except zipfile.BadZipFile:
+                    print("⚠️ Le fichier reçu n'est pas un ZIP valide.")
+            
             name_map = {}
             if bundle:
                 for line in bundle.split("\n"):

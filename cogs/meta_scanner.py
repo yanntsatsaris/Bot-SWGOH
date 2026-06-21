@@ -17,12 +17,12 @@ from utils.gac_config import get_gac_quotas
 
 log = logging.getLogger(__name__)
 
-async def analyze_player_meta(ally_code: str, fmt: str = "5v5") -> list[dict]:
+async def analyze_player_meta(ally_code: str | None = None, player_id: str | None = None, fmt: str = "5v5") -> list[dict]:
     """
     Récupère le roster d'un joueur et prédit ses équipes probables
     en utilisant le moteur de scouting existant.
     """
-    profile = await get_player(ally_code)
+    profile = await get_player(ally_code=ally_code, player_id=player_id)
     roster = profile.get("rosterUnit", [])
     if not roster:
         return []
@@ -63,11 +63,12 @@ async def build_meta_report(players: list[dict], fmt: str = "5v5") -> list[dict]
     
     for player in players:
         ally_code = player.get("allyCode")
-        if not ally_code:
+        player_id = player.get("playerId")
+        if not ally_code and not player_id:
             continue
             
         try:
-            teams = await analyze_player_meta(ally_code, fmt)
+            teams = await analyze_player_meta(ally_code=ally_code, player_id=player_id, fmt=fmt)
             if not teams:
                 continue
                 
@@ -82,7 +83,7 @@ async def build_meta_report(players: list[dict], fmt: str = "5v5") -> list[dict]
             await asyncio.sleep(0.15)
             
         except Exception as e:
-            log.warning("Échec de l'analyse pour le joueur %s: %s", ally_code, e)
+            log.warning("Échec de l'analyse pour le joueur %s (ID %s): %s", ally_code, player_id, e)
             continue
             
     meta_teams = []

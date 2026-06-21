@@ -124,14 +124,19 @@ async def get_localization() -> str:
     log.warning("Aucun bundle de localisation valide trouvé.")
     return ""
 
-async def get_player(ally_code: str) -> dict:
+async def get_player(ally_code: str | None = None, player_id: str | None = None) -> dict:
     """
     Retourne le profil brut complet d'un joueur depuis Comlink.
-    Inclut : name, allyCode, rosterUnit (liste brute), etc.
-    allyCode est envoyé en string (format standard Comlink).
     """
-    clean = str(ally_code).replace("-", "")
-    return await _post_raw("player", {"allyCode": clean})
+    payload = {}
+    if ally_code:
+        payload["allyCode"] = str(ally_code).replace("-", "")
+    elif player_id:
+        payload["playerId"] = player_id
+    else:
+        raise ValueError("ally_code ou player_id doit être fourni")
+        
+    return await _post_raw("player", payload)
 
 
 async def get_player_roster(ally_code: str) -> list[dict]:

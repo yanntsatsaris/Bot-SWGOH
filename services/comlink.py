@@ -183,8 +183,16 @@ async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: lis
                     "division": division,
                 })
                 # Extract player IDs/ally codes from response
-                for entry in data.get("leaderboardEntry", []):
+                entries = data.get("player") or data.get("leaderboardEntry") or []
+                if not entries and "leaderboard" in data:
+                    # Sometimes it's nested
+                    for lb in data["leaderboard"]:
+                        entries.extend(lb.get("player") or lb.get("leaderboardEntry") or [])
+                
+                for entry in entries:
                     all_players.append(entry)
+                    
+                log.info(f"L{league} D{division} : {len(entries)} joueurs récupérés")
                 await asyncio.sleep(0.1)
             except Exception as e:
                 log.warning("Erreur scan_all_leaderboards (L%s D%s): %s", league, division, e)

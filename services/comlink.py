@@ -156,3 +156,37 @@ async def get_player_roster(ally_code: str) -> list[dict]:
             "relic_tier": relic_tier,
         })
     return roster
+
+async def check_health() -> dict:
+    """Ping Comlink by calling /metadata. Returns version info or raises."""
+    return await _post_raw("metadata", {})
+
+async def get_player_arena(ally_code: str) -> dict:
+    """Fetch player arena data (squad/fleet arena ranks + teams)."""
+    clean = str(ally_code).replace("-", "")
+    return await _post_raw("playerArena", {"allyCode": clean})
+
+import asyncio
+
+async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: list[int] | None = None) -> list[dict]:
+    """Pull top 50 from every league/division combo. Always works."""
+    leagues = leagues or [20, 40, 60, 80, 100]       # Carbonite → Kyber
+    divisions = divisions or [5, 10, 15, 20, 25]       # D5 → D1
+    
+    all_players = []
+    for league in leagues:
+        for division in divisions:
+            try:
+                data = await _post_raw("getLeaderboard", {
+                    "leaderboardType": 6,
+                    "league": league,
+                    "division": division,
+                })
+                # Extract player IDs/ally codes from response
+                for entry in data.get("leaderboardEntry", []):
+                    all_players.append(entry)
+                await asyncio.sleep(0.1)
+            except Exception as e:
+                log.warning("Erreur scan_all_leaderboards (L%s D%s): %s", league, division, e)
+                continue
+    return all_players

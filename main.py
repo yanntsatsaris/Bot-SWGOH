@@ -35,6 +35,8 @@ INITIAL_EXTENSIONS = [
     "cogs.gac_history",
     "cogs.review_portraits",
     "cogs.gac_scout",
+    "cogs.meta_scanner",
+    "cogs.meta_manager",
 ]
 
 

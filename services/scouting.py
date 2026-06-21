@@ -171,7 +171,7 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
             if not placed:
                 zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
-    # 1.5 BOUCHAGE DE TROUS (Hole-Filling)
+    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT (Graphe de Synergie)
     leftovers = [
         m for m, data in enemy_index.items() 
         if m not in used_base_ids 
@@ -179,13 +179,49 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
         and _is_gac_ready(data) 
         and data.get("combat_type", 1) == 1
     ]
+    # Trier par puissance de base
     leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    
+    # Construire le graphe de synergie basé sur la méta connue
+    synergy_graph = {}
+    for team_id, team_data in GAC_TEAMS.items():
+        all_members = [team_data["leader_id"]] + team_data.get("core", []) + team_data.get("subs", [])
+        all_members = [m for m in all_members if m] # Filtrer les None
+        for m1 in all_members:
+            if m1 not in synergy_graph:
+                synergy_graph[m1] = set()
+            for m2 in all_members:
+                if m1 != m2:
+                    synergy_graph[m1].add(m2)
     
     for zone in ["North", "South", "Back"]:
         for t in zones[zone]:
             target = t.get("target_size", expected_size)
             while len(t["members_ids"]) < target and leftovers:
-                filler = leftovers.pop(0)
+                if len(t["members_ids"]) == 0:
+                    # Le premier membre est le plus fort disponible
+                    filler = leftovers.pop(0)
+                else:
+                    # Choisir le personnage ayant la meilleure synergie avec le reste de l'équipe
+                    best_filler = None
+                    best_score = -1
+                    best_idx = 0
+                    
+                    for i, cand in enumerate(leftovers):
+                        cand_synergy = synergy_graph.get(cand, set())
+                        # 1 point de synergie par membre de l'équipe actuelle avec qui il est connecté dans la méta
+                        synergy_score = sum(1 for m in t["members_ids"] if m in cand_synergy)
+                        
+                        # Pondération : La synergie est reine. En cas d'égalité, on prend celui avec le plus de GP (l'index i le plus bas)
+                        weighted_score = synergy_score * 1000 - i
+                        
+                        if weighted_score > best_score:
+                            best_score = weighted_score
+                            best_filler = cand
+                            best_idx = i
+                            
+                    filler = leftovers.pop(best_idx)
+
                 t["members_ids"].append(filler)
                 used_base_ids.add(filler)
                 

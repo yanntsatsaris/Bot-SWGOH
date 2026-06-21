@@ -62,9 +62,16 @@ async def build_meta_report(players: list[dict], fmt: str = "5v5") -> list[dict]
     total_players = 0
     
     for player in players:
+        # L'API peut renvoyer la donnée sous divers noms selon le format
         ally_code = player.get("allyCode")
-        player_id = player.get("playerId")
+        player_id = player.get("playerId") or player.get("player") or player.get("id") or player.get("player_id")
+        
+        # Si 'player' est directement une string (l'ID du joueur)
+        if isinstance(player, str):
+            player_id = player
+            
         if not ally_code and not player_id:
+            log.warning(f"Impossible de trouver l'ID pour l'entrée: {player}")
             continue
             
         try:

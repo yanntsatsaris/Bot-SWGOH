@@ -198,6 +198,8 @@ async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: lis
                     all_players.append(entry)
                     
                 log.info(f"L{league} D{division} : {len(entries)} joueurs récupérés")
+                if entries and league == 100 and division == 5:
+                    log.info(f"DEBUG ENTRY: {json.dumps(entries[0])}")
                 await asyncio.sleep(0.1)
             except Exception as e:
                 log.warning("Erreur scan_all_leaderboards (L%s D%s): %s", league, division, e)

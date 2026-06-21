@@ -158,5 +158,12 @@ class MetaScannerCog(commands.Cog, name="MetaScanner"):
         """Attend que le bot soit prêt avant de lancer la boucle."""
         await self.bot.wait_until_ready()
 
+    @app_commands.command(name="meta-scan-force", description="Force le lancement immédiat du scan de la méta GAC")
+    @app_commands.default_permissions(administrator=True)
+    async def force_scan(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message("Lancement du scan méta forcé... Vérifiez les logs pour l'avancement.")
+        # On lance la tâche en asynchrone pour ne pas bloquer l'interaction
+        self.bot.loop.create_task(self.daily_meta_scan())
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(MetaScannerCog(bot))

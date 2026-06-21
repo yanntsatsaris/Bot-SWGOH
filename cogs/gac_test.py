@@ -154,7 +154,7 @@ async def _load_teams_from_db(fmt: str) -> list[dict]:
             SELECT leader_name, members, counters, win_rate
             FROM   meta_teams
             WHERE  format = ?
-            ORDER  BY win_rate DESC NULLS LAST
+            ORDER  BY usage_rate DESC NULLS LAST, win_rate DESC NULLS LAST
             LIMIT  3
             """,
             (fmt,),

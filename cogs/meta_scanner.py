@@ -17,7 +17,7 @@ from utils.gac_config import get_gac_quotas
 
 log = logging.getLogger(__name__)
 
-async def analyze_player_meta(ally_code: str | None = None, player_id: str | None = None, fmt: str = "5v5") -> list[dict]:
+async def analyze_player_meta(ally_code: str | None = None, player_id: str | None = None, fmt: str = "5v5", league_name: str = "KYBER") -> list[dict]:
     """
     Récupère le roster d'un joueur et prédit ses équipes probables
     en utilisant le moteur de scouting existant.
@@ -30,9 +30,8 @@ async def analyze_player_meta(ally_code: str | None = None, player_id: str | Non
     omicron_dict = await get_omicron_dict()
     index = _build_roster_index(roster, omicron_dict)
     
-    # On scanne les joueurs Kyber, on utilise donc les quotas Kyber
-    league = "KYBER"
-    quotas = get_gac_quotas(league, fmt)
+    # On utilise les quotas correspondant à la ligue
+    quotas = get_gac_quotas(league_name, fmt)
     
     zones = _predict_zones(index, quotas, fmt)
     
@@ -53,7 +52,7 @@ async def analyze_player_meta(ally_code: str | None = None, player_id: str | Non
     return predicted_teams
 
 
-async def build_meta_report(players: list[dict], fmt: str = "5v5") -> list[dict]:
+async def build_meta_report(players: list[dict], fmt: str = "5v5", league_name: str = "KYBER") -> list[dict]:
     """
     Pour chaque joueur, on prédit ses équipes, puis on agrège
     pour trouver les compositions les plus fréquentes.
@@ -75,7 +74,7 @@ async def build_meta_report(players: list[dict], fmt: str = "5v5") -> list[dict]
             continue
             
         try:
-            teams = await analyze_player_meta(ally_code=ally_code, player_id=player_id, fmt=fmt)
+            teams = await analyze_player_meta(ally_code=ally_code, player_id=player_id, fmt=fmt, league_name=league_name)
             if not teams:
                 continue
                 
@@ -117,49 +116,60 @@ class MetaScannerCog(commands.Cog, name="MetaScanner"):
 
     @tasks.loop(hours=24)
     async def daily_meta_scan(self) -> None:
-        """Scan les classements Kyber et reconstruit les statistiques méta."""
+        """Scan les classements de chaque ligue et reconstruit les statistiques méta."""
         log.info("Démarrage du scan méta quotidien...")
         
+        leagues = {
+            100: "KYBER",
+            80: "AURODIUM",
+            60: "CHROMIUM",
+            40: "BRONZIUM",
+            20: "CARBONITE"
+        }
+        
         try:
-            # Ligues: 100 = Kyber. Divisions: 5,10,15,20,25.
-            top_players = await scan_all_leaderboards(leagues=[100], divisions=[5, 10, 15, 20, 25])
-            log.info("%d joueurs trouvés dans les leaderboards Kyber.", len(top_players))
-            
-            if not top_players:
-                log.warning("Aucun joueur trouvé. Scan méta annulé.")
-                return
-
-            for fmt in ["5v5", "3v3"]:
-                log.info("Analyse de la méta %s...", fmt)
-                meta = await build_meta_report(top_players, fmt=fmt)
+            for league_num, league_name in leagues.items():
+                log.info(f"--- Démarrage scan ligue : {league_name} ---")
+                # Divisions: 5,10,15,20,25.
+                top_players = await scan_all_leaderboards(leagues=[league_num], divisions=[5, 10, 15, 20, 25])
+                log.info("%d joueurs trouvés dans les leaderboards %s.", len(top_players), league_name)
                 
-                async with get_db() as db:
-                    # On supprime les anciennes équipes scannées pour ce format
-                    await db.execute(
-                        "DELETE FROM meta_teams WHERE source_url = 'comlink_scan' AND format = ?",
-                        (fmt,)
-                    )
+                if not top_players:
+                    log.warning("Aucun joueur trouvé pour %s. Scan ignoré.", league_name)
+                    continue
+    
+                for fmt in ["5v5", "3v3"]:
+                    log.info("Analyse de la méta %s (%s)...", fmt, league_name)
+                    meta = await build_meta_report(top_players, fmt=fmt, league_name=league_name)
                     
-                    # On insère le nouveau Top 20
-                    for team in meta[:20]:
+                    async with get_db() as db:
+                        # On supprime les anciennes équipes scannées pour ce format et cette ligue
                         await db.execute(
-                            """
-                            INSERT INTO meta_teams (
-                                leader_name, members, counters, format, win_rate, usage_rate, source_url
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                team["leader_id"],
-                                json.dumps(team["members_ids"]),
-                                "[]",
-                                fmt,
-                                None,
-                                team["usage_rate"],
-                                "comlink_scan"
-                            )
+                            "DELETE FROM meta_teams WHERE source_url = 'comlink_scan' AND format = ? AND league = ?",
+                            (fmt, league_name)
                         )
-                    await db.commit()
-                log.info("Scan méta %s terminé : %d équipes identifiées.", fmt, len(meta))
+                        
+                        # On insère le nouveau Top 20
+                        for team in meta[:20]:
+                            await db.execute(
+                                """
+                                INSERT INTO meta_teams (
+                                    leader_name, members, counters, format, league, win_rate, usage_rate, source_url
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    team["leader_id"],
+                                    json.dumps(team["members_ids"]),
+                                    "[]",
+                                    fmt,
+                                    league_name,
+                                    None,
+                                    team["usage_rate"],
+                                    "comlink_scan"
+                                )
+                            )
+                        await db.commit()
+                    log.info("Scan méta %s (%s) terminé : %d équipes identifiées.", fmt, league_name, len(meta))
         except Exception as e:
             log.exception("Erreur lors du scan méta quotidien : %s", e)
 

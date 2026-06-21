@@ -61,6 +61,7 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
 def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
+    expected_size = 3 if fmt == "3v3" else 5
     
     # 1. PERSONNAGES
     available_teams = []
@@ -93,7 +94,6 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
         if missing_omi:
             continue
             
-        expected_size = 3 if fmt == "3v3" else 5
         min_size = team_data.get("min_size", expected_size)
         slots_left = expected_size - len(core_ready)
         

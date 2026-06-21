@@ -42,6 +42,7 @@ CREATE_TABLES_SQL: list[str] = [
         members      TEXT    NOT NULL,
         counters     TEXT,
         format       TEXT    NOT NULL CHECK(format IN ('5v5', '3v3')),
+        league       TEXT    NOT NULL DEFAULT 'KYBER',
         win_rate     REAL,
         usage_rate   REAL,
         source_url   TEXT,

@@ -14,68 +14,18 @@ from database.db import get_db
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Portraits — URL directes vers les assets SWGOH.GG
-# Format : https://swgoh.gg/static/img/assets/tex.avatars_<base_id>.png
-# ---------------------------------------------------------------------------
-_PORTRAIT_BASE = "https://swgoh.gg/static/img/assets/tex.avatars_{}.png"
+from services.portrait_cache import get_portrait_path, get_unit_name
 
-CHARACTER_IDS: dict[str, str] = {
-    # Sith / Empire
-    "Sith Eternal Emperor":         "sithpalpatine",
-    "Darth Vader":                  "darthvader",
-    "Lord Vader":                   "lordvader",
-    "Mara Jade":                    "marajade",
-    "Darth Nihilus":                "darthnihilus",
-    "Royal Guard":                  "royalguard",
-    "Emperor Palpatine":            "palpatine",
-    "Grand Admiral Thrawn":         "thrawn",
-    # Jabba
-    "Jabba the Hutt":               "jabbathehutt",
-    "Boba Fett (Scion)":            "bobafettscion",
-    "Krrsantan":                    "krrsantan",
-    "Gamorrean Guard":              "gamorreanguard",
-    "Skiff Guard":                  "skiffguard",
-    # Jedi / République
-    "Jedi Master Kenobi":           "jedimasterkenobi",
-    "Padmé Amidala":                "padmeamidala",
-    "General Skywalker":            "generalskywalker",
-    "Jedi Master Luke Skywalker":   "jedimasterluke",
-    "Ahsoka Tano":                  "ahsokatano",
-    "Shaak Ti":                     "shaakti",
-    # First Order
-    "Supreme Leader Kylo Ren":      "supremeleaderkylo",
-    "Hux":                          "generalhux",
-    "First Order SF TIE Pilot":     "firstordersftfighter",
-    # Rebels
-    "Commander Luke Skywalker":     "commanderlukeskywalker",
-    "Han Solo":                     "hansolo",
-    "Chewbacca":                    "chewbacca",
-    # Autres
-    "Darth Revan":                  "darthrevan",
-    "Jedi Knight Revan":            "jediknightrevan",
-    "Mother Talzin":                "mothertalzin",
-    "The Mandalorian (Beskar)":     "themandalorian_beskar",
-    "Moff Gideon":                  "moffgideon",
-}
-
-
-def get_portrait_url(name: str) -> str:
+def get_portrait_url(base_id: str) -> str:
     """
-    Retourne l'URL du portrait d'un personnage.
-    Si le nom n'est pas dans le mapping, tente une dérivation automatique.
+    Retourne l'URL du portrait d'un personnage via la résolution de portrait_cache.
     """
-    base_id = CHARACTER_IDS.get(name)
-    if not base_id:
-        # Dérivation : minuscules, sans espaces ni caractères spéciaux
-        base_id = (
-            name.lower()
-            .replace(" ", "")
-            .replace("(", "").replace(")", "")
-            .replace("'", "").replace("-", "")
-            .replace("é", "e").replace("è", "e").replace("ê", "e")
-        )
-    return _PORTRAIT_BASE.format(base_id)
+    path = get_portrait_path(base_id)
+    filename = path.name
+    # swgoh.gg utilise tex.avatars_ pour les images au lieu de charui_
+    if filename.startswith("charui_"):
+        filename = filename.replace("charui_", "tex.avatars_")
+    return f"https://swgoh.gg/static/img/assets/{filename}"
 
 
 # ---------------------------------------------------------------------------
@@ -146,18 +96,18 @@ _COLORS = {
 }
 
 
-async def _load_teams_from_db(fmt: str) -> list[dict]:
-    """Charge les équipes méta depuis la BDD pour le format donné."""
+async def _load_teams_from_db(fmt: str, league: str) -> list[dict]:
+    """Charge les équipes méta depuis la BDD pour le format et la ligue donnés."""
     async with get_db() as db:
         cursor = await db.execute(
             """
             SELECT leader_name, members, counters, win_rate
             FROM   meta_teams
-            WHERE  format = ?
+            WHERE  format = ? AND league = ?
             ORDER  BY usage_rate DESC NULLS LAST, win_rate DESC NULLS LAST
             LIMIT  3
             """,
-            (fmt,),
+            (fmt, league),
         )
         rows = await cursor.fetchall()
 
@@ -175,13 +125,13 @@ async def _load_teams_from_db(fmt: str) -> list[dict]:
     return result
 
 
-async def _get_teams(fmt: str) -> tuple[list[dict], bool]:
+async def _get_teams(fmt: str, league: str) -> tuple[list[dict], bool]:
     """
     Retourne (teams, is_live_data).
     Tente la BDD d'abord, replie sur les données de démo si vide.
     """
     try:
-        teams = await _load_teams_from_db(fmt)
+        teams = await _load_teams_from_db(fmt, league)
         if teams:
             return teams, True
     except Exception:
@@ -193,12 +143,12 @@ async def _get_teams(fmt: str) -> tuple[list[dict], bool]:
 # ---------------------------------------------------------------------------
 # Construction des embeds (header + 1 par équipe)
 # ---------------------------------------------------------------------------
-def _build_header_embed(fmt: str, nb_teams: int, is_live: bool) -> discord.Embed:
+def _build_header_embed(fmt: str, league: str, nb_teams: int, is_live: bool) -> discord.Embed:
     """Embed d'en-tête affiché au-dessus des équipes."""
     label = "5 contre 5" if fmt == "5v5" else "3 contre 3"
     src   = "SWGOH.GG (live)" if is_live else "Démonstration"
     embed = discord.Embed(
-        title=f"{_E['sword']}  Méta GAC — Format **{label}**",
+        title=f"{_E['sword']}  Méta GAC — Format **{label}** ({league.capitalize()})",
         description=(
             f"Top **{nb_teams}** compositions les plus efficaces en Grande Arène.\n"
             f"-# Source : {src}"
@@ -215,19 +165,20 @@ def _build_team_embed(rank: int, team: dict, fmt: str) -> discord.Embed:
     """
     medal   = _MEDALS[rank - 1] if rank <= len(_MEDALS) else f"#{rank}"
     win_pct = f"{team['win_rate'] * 100:.0f}%" if team.get("win_rate") else "N/A"
-    leader  = team["leader"]
+    leader_base = team["leader"]
+    leader_name = get_unit_name(leader_base)
 
     embed = discord.Embed(
-        title=f"{medal}  {leader}",
+        title=f"{medal}  {leader_name}",
         color=_COLORS[fmt],
     )
 
     # Portrait du leader en thumbnail
-    embed.set_thumbnail(url=get_portrait_url(leader))
+    embed.set_thumbnail(url=get_portrait_url(leader_base))
 
     # Membres (leader en gras)
     members_text = "  ·  ".join(
-        f"**{m}**" if m == leader else m
+        f"**{get_unit_name(m)}**" if m == leader_base else get_unit_name(m)
         for m in team["members"]
     )
     embed.add_field(
@@ -254,9 +205,9 @@ def _build_team_embed(rank: int, team: dict, fmt: str) -> discord.Embed:
     return embed
 
 
-def _build_all_embeds(fmt: str, teams: list[dict], is_live: bool) -> list[discord.Embed]:
+def _build_all_embeds(fmt: str, league: str, teams: list[dict], is_live: bool) -> list[discord.Embed]:
     """Retourne : 1 embed header + 1 embed par équipe."""
-    embeds = [_build_header_embed(fmt, len(teams), is_live)]
+    embeds = [_build_header_embed(fmt, league, len(teams), is_live)]
 
     if not teams:
         embeds.append(discord.Embed(
@@ -274,15 +225,38 @@ def _build_all_embeds(fmt: str, teams: list[dict], is_live: bool) -> list[discor
 # ---------------------------------------------------------------------------
 # Vue interactive (boutons)
 # ---------------------------------------------------------------------------
+class LeagueSelect(discord.ui.Select):
+    """Sélecteur déroulant pour choisir la ligue GAC."""
+    def __init__(self, active_league: str):
+        options = [
+            discord.SelectOption(label="Kyber", value="KYBER", description="Division 1", default=(active_league=="KYBER")),
+            discord.SelectOption(label="Aurodium", value="AURODIUM", description="Division 2", default=(active_league=="AURODIUM")),
+            discord.SelectOption(label="Chromium", value="CHROMIUM", description="Division 3", default=(active_league=="CHROMIUM")),
+            discord.SelectOption(label="Bronzium", value="BRONZIUM", description="Division 4", default=(active_league=="BRONZIUM")),
+            discord.SelectOption(label="Carbonite", value="CARBONITE", description="Division 5", default=(active_league=="CARBONITE")),
+        ]
+        super().__init__(placeholder="Choisissez une ligue...", min_values=1, max_values=1, options=options, row=1)
+
+    async def callback(self, interaction: discord.Interaction):
+        view: GacFormatView = self.view
+        view.active_league = self.values[0]
+        # Mettre à jour l'option par défaut
+        for opt in self.options:
+            opt.default = (opt.value == view.active_league)
+        
+        await view._refresh_content(interaction)
+
+
 class GacFormatView(discord.ui.View):
     """
-    Affiche deux boutons : Format 5c5 / Format 3c3.
-    Le clic met à jour l'embed sans envoyer un nouveau message.
+    Affiche deux boutons : Format 5c5 / Format 3c3 et un sélecteur de ligue.
     """
 
-    def __init__(self, active_fmt: str = "5v5") -> None:
+    def __init__(self, active_fmt: str = "5v5", active_league: str = "KYBER") -> None:
         super().__init__(timeout=180)   # expire après 3 minutes d'inactivité
         self.active_fmt = active_fmt
+        self.active_league = active_league
+        self.add_item(LeagueSelect(active_league))
         self._refresh_button_styles()
 
     def _refresh_button_styles(self) -> None:
@@ -296,17 +270,11 @@ class GacFormatView(discord.ui.View):
                     child.style  = discord.ButtonStyle.secondary
                     child.emoji  = None
 
-    async def _switch_format(
-        self, interaction: discord.Interaction, fmt: str
-    ) -> None:
-        """Logique commune aux deux boutons."""
-        self.active_fmt = fmt
+    async def _refresh_content(self, interaction: discord.Interaction) -> None:
+        """Met à jour le message existant."""
         self._refresh_button_styles()
-
-        teams, is_live = await _get_teams(fmt)
-        embeds = _build_all_embeds(fmt, teams, is_live)
-
-        # Mise à jour du message existant (sans nouveau message)
+        teams, is_live = await _get_teams(self.active_fmt, self.active_league)
+        embeds = _build_all_embeds(self.active_fmt, self.active_league, teams, is_live)
         await interaction.response.edit_message(embeds=embeds, view=self)
 
     # --- Bouton 5c5 ---
@@ -320,7 +288,8 @@ class GacFormatView(discord.ui.View):
     async def btn_5v5(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await self._switch_format(interaction, "5v5")
+        self.active_fmt = "5v5"
+        await self._refresh_content(interaction)
 
     # --- Bouton 3c3 ---
     @discord.ui.button(
@@ -332,7 +301,8 @@ class GacFormatView(discord.ui.View):
     async def btn_3v3(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ) -> None:
-        await self._switch_format(interaction, "3v3")
+        self.active_fmt = "3v3"
+        await self._refresh_content(interaction)
 
     async def on_timeout(self) -> None:
         """Désactive les boutons quand la vue expire."""
@@ -357,9 +327,10 @@ class GacTestCog(commands.Cog, name="GacTest"):
         await interaction.response.defer()
 
         fmt            = "5v5"
-        teams, is_live = await _get_teams(fmt)
-        embeds         = _build_all_embeds(fmt, teams, is_live)
-        view           = GacFormatView(active_fmt=fmt)
+        league         = "KYBER"
+        teams, is_live = await _get_teams(fmt, league)
+        embeds         = _build_all_embeds(fmt, league, teams, is_live)
+        view           = GacFormatView(active_fmt=fmt, active_league=league)
 
         await interaction.followup.send(embeds=embeds, view=view)
 

@@ -25,6 +25,14 @@ async def init_db() -> None:
         await db.execute("PRAGMA foreign_keys = ON")
         for sql in CREATE_TABLES_SQL:
             await db.execute(sql)
+            
+        # Migration : Ajouter 'league' à 'meta_teams' si elle n'existe pas
+        try:
+            await db.execute("ALTER TABLE meta_teams ADD COLUMN league TEXT NOT NULL DEFAULT 'KYBER'")
+            log.info("Migration: colonne 'league' ajoutée à meta_teams.")
+        except aiosqlite.OperationalError:
+            pass  # La colonne existe déjà
+            
         await db.commit()
 
     log.info("Base de données initialisée : %s", DATABASE_PATH)

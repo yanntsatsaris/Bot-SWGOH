@@ -48,6 +48,13 @@ def _load_data():
         except Exception:
             pass
 
+def get_unit_name(base_id: str) -> str:
+    """Retourne le nom lisible d'un personnage à partir de son base_id."""
+    if not _unit_data:
+        _load_data()
+    unit = _unit_data.get(base_id.upper(), {})
+    return unit.get("name", base_id)
+
 def get_portrait_path(base_id: str) -> Path:
     bid_upper = base_id.upper()
     

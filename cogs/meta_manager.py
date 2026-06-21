@@ -29,6 +29,7 @@ class MetaManagerCog(commands.Cog, name="MetaManager"):
         leader="Nom du leader",
         members="Noms des membres séparés par une virgule (incluant le leader)",
         fmt="Format (5v5 ou 3v3)",
+        league="Ligue (défaut: KYBER)",
         counters="Liste des contres (optionnel, séparés par une virgule)",
         win_rate="Taux de victoire estimé (0.0 à 1.0, optionnel)"
     )
@@ -36,12 +37,20 @@ class MetaManagerCog(commands.Cog, name="MetaManager"):
         app_commands.Choice(name="5v5", value="5v5"),
         app_commands.Choice(name="3v3", value="3v3")
     ])
+    @app_commands.choices(league=[
+        app_commands.Choice(name="Kyber", value="KYBER"),
+        app_commands.Choice(name="Aurodium", value="AURODIUM"),
+        app_commands.Choice(name="Chromium", value="CHROMIUM"),
+        app_commands.Choice(name="Bronzium", value="BRONZIUM"),
+        app_commands.Choice(name="Carbonite", value="CARBONITE"),
+    ])
     async def team_add(
         self,
         interaction: discord.Interaction,
         leader: str,
         members: str,
         fmt: str,
+        league: str = "KYBER",
         counters: str | None = None,
         win_rate: float | None = None
     ) -> None:
@@ -52,14 +61,15 @@ class MetaManagerCog(commands.Cog, name="MetaManager"):
             await db.execute(
                 """
                 INSERT INTO meta_teams (
-                    leader_name, members, counters, format, win_rate, usage_rate, source_url
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    leader_name, members, counters, format, league, win_rate, usage_rate, source_url
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     leader.strip(),
                     json.dumps(members_list),
                     json.dumps(counters_list),
                     fmt,
+                    league,
                     win_rate,
                     1.0,  # Valeur par défaut pour les ajouts manuels
                     "manual_override"
@@ -68,7 +78,7 @@ class MetaManagerCog(commands.Cog, name="MetaManager"):
         
         embed = discord.Embed(
             title="✅ Équipe ajoutée manuellement",
-            description=f"Leader: **{leader}**\nMembres: {', '.join(members_list)}\nFormat: {fmt}",
+            description=f"Leader: **{leader}**\nMembres: {', '.join(members_list)}\nFormat: {fmt}\nLigue: {league}",
             color=discord.Color.green()
         )
         await interaction.response.send_message(embed=embed)
@@ -77,7 +87,7 @@ class MetaManagerCog(commands.Cog, name="MetaManager"):
     async def team_list(self, interaction: discord.Interaction) -> None:
         async with get_db() as db:
             cursor = await db.execute(
-                "SELECT id, leader_name, format FROM meta_teams WHERE source_url = 'manual_override' ORDER BY id"
+                "SELECT id, leader_name, format, league FROM meta_teams WHERE source_url = 'manual_override' ORDER BY id"
             )
             rows = await cursor.fetchall()
             
@@ -85,7 +95,7 @@ class MetaManagerCog(commands.Cog, name="MetaManager"):
             await interaction.response.send_message("Aucune équipe manuelle trouvée.")
             return
             
-        desc = "\n".join(f"`ID: {r['id']}` - **{r['leader_name']}** ({r['format']})" for r in rows)
+        desc = "\n".join(f"`ID: {r['id']}` - **{r['leader_name']}** ({r['format']} - {r['league']})" for r in rows)
         embed = discord.Embed(title="Équipes Méta (Manuelles)", description=desc, color=discord.Color.blue())
         await interaction.response.send_message(embed=embed)
 

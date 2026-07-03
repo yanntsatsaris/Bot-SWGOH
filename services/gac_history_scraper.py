@@ -100,7 +100,7 @@ class GACHistoryScraper:
                                 html_content = f.read()
                                 
                             logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
-                            parsed_data = self._parse_html(html_content, clean_code)
+                            parsed_data = self._parse_html(html_content, clean_code, target_url)
                             
                             # Si on a atterri sur la page d'accueil GAC, on remet les matchs trouvés dans la file d'attente
                             if parsed_data.get("hub_links"):
@@ -118,7 +118,7 @@ class GACHistoryScraper:
                             
                             # Sinon c'est un match normal, on sauvegarde en base de données
                             from database.db import save_gac_history_to_db
-                            await save_gac_history_to_db(parsed_data, clean_code)
+                            await save_gac_history_to_db(parsed_data, target_url)
                             
                             if interaction:
                                 try:
@@ -155,7 +155,7 @@ class GACHistoryScraper:
                 logger.error(f"Erreur critique dans le worker GAC Scraper : {e}")
                 await asyncio.sleep(5)
 
-    def _parse_html(self, html: str, ally_code: str) -> dict:
+    def _parse_html(self, html: str, ally_code: str, target_url: str = "") -> dict:
         """
         Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes complètes.
         Sépare les attaques et les défenses.
@@ -235,11 +235,10 @@ class GACHistoryScraper:
                             hub_links.append(full_url)
                             
                 if hub_links:
-                    # On peut extraire plus de matchs, par exemple 9 (soit une saison entière GAC)
-                    # ou tout garder si l'utilisateur le souhaite. Pour l'instant, on limite à 9
-                    limit = 9
-                    logger.info(f"🔗 Page Hub détectée, {len(hub_links)} sous-liens de matchs trouvés ! (On garde les {limit} premiers)")
-                    return {"matches": [], "hub_links": hub_links[:limit]}
+                    # L'utilisateur souhaite extraire la totalité de l'historique disponible (ex: 51 matchs)
+                    # la première fois, même si cela prend beaucoup de temps.
+                    logger.info(f"🔗 Page Hub détectée, {len(hub_links)} sous-liens de matchs trouvés ! (On les garde tous)")
+                    return {"matches": [], "hub_links": hub_links}
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
             return {"matches": matches}

@@ -70,11 +70,36 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
     async with get_db() as db:
         # 1. On détermine le Round, la Saison et l'adversaire (à partir du 1er match)
         first_match = parsed_data["matches"][0]
-        # Pour l'instant, on n'a pas le season_id ou le nom de l'adversaire extrait,
-        # donc on met des valeurs par défaut qu'on pourra raffiner plus tard.
         season_id = "UNKNOWN"
         opponent_name = "UNKNOWN"
-        round_number = 1 # Sera raffiné plus tard par l'URL
+        round_number = 1
+        
+        # L'ally_code passé ici est le target_url (ex: https://swgoh.gg/p/266539582/gac-history/O1782248400000/1/)
+        # On extrait les vraies valeurs
+        real_ally_code = ally_code
+        if "swgoh.gg/p/" in ally_code:
+            parts = [p for p in ally_code.split("/") if p]
+            try:
+                # ex: ['https:', 'swgoh.gg', 'p', '266539582', 'gac-history', 'O1782248400000', '1']
+                p_index = parts.index("p")
+                real_ally_code = parts[p_index + 1]
+                
+                hist_index = parts.index("gac-history")
+                season_id = parts[hist_index + 1]
+                round_number = int(parts[hist_index + 2])
+            except:
+                pass
+                
+        # Vérification des doublons : on regarde si ce round exact a déjà été enregistré
+        cursor = await db.execute(
+            "SELECT id FROM gac_rounds WHERE player_code = ? AND season_id = ? AND round_number = ?",
+            (real_ally_code, season_id, round_number)
+        )
+        existing = await cursor.fetchone()
+        
+        if existing:
+            log.info(f"⏭️ Historique déjà présent en BDD pour {real_ally_code} (Saison: {season_id}, Round: {round_number}). On ignore.")
+            return
         
         # 2. Insertion du Round
         # On ajoute format='5v5' pour respecter le schéma de la base de données déjà existante sur le serveur
@@ -83,7 +108,7 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
             INSERT INTO gac_rounds (season_id, round_number, player_code, opponent_name, format)
             VALUES (?, ?, ?, ?, '5v5')
             """,
-            (season_id, round_number, ally_code, opponent_name)
+            (season_id, round_number, real_ally_code, opponent_name)
         )
         round_id = cursor.lastrowid
         
@@ -102,4 +127,4 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
             )
         
         await db.commit()
-        log.info(f"✅ {len(parsed_data['matches'])} matchs sauvegardés en BDD pour {ally_code} (Round ID: {round_id})")
+        log.info(f"✅ {len(parsed_data['matches'])} matchs sauvegardés en BDD pour {real_ally_code} (Round ID: {round_id})")

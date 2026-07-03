@@ -1,30 +1,40 @@
 """
-services/comlink.py — Client HTTP vers SWGOH Comlink (Protocoles Stricts et Optimisés)
+services/comlink.py — Client HTTP vers SWGOH Comlink utilisant le wrapper officiel (swgoh-comlink)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 import logging
-import aiohttp
-import json
+import asyncio
 import base64
 import zipfile
 import io
+import json
+
+from swgoh_comlink import SwgohComlinkAsync
 from config import COMLINK_URL
 
 log = logging.getLogger(__name__)
-_TIMEOUT = aiohttp.ClientTimeout(total=45)
+
+# Initialisation du client officiel
+comlink_client = SwgohComlinkAsync(url=COMLINK_URL)
 
 async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None) -> dict:
+    """
+    Conserve une méthode _post_raw pour la compatibilité avec les requêtes spécifiques
+    qui ne seraient pas exposées nativement par le wrapper (comme les leaderboards complexes).
+    """
+    import aiohttp
     url = f"{COMLINK_URL}/{endpoint.lstrip('/')}"
     headers = {"Content-Type": "application/json"}
     body = {"payload": payload}
-    if top_level_params: body.update(top_level_params)
+    if top_level_params:
+        body.update(top_level_params)
 
-    async with aiohttp.ClientSession(timeout=_TIMEOUT) as session:
+    timeout = aiohttp.ClientTimeout(total=45)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(url, json=body, headers=headers) as resp:
             if resp.status != 200:
                 text = await resp.text()
                 log.error("Comlink Error %d sur %s: %s", resp.status, endpoint, text)
-                # On inclut le détail de l'erreur dans l'exception pour le debug
                 raise aiohttp.ClientResponseError(
                     resp.request_info,
                     resp.history,
@@ -35,71 +45,38 @@ async def _post_raw(endpoint: str, payload: dict, top_level_params: dict = None)
             return await resp.json()
 
 async def get_game_data() -> list[dict]:
-    meta = await _post_raw("metadata", {})
-    version = meta.get("latestGamedataVersion")
-    if not version: raise ValueError("Version du jeu introuvable")
+    # Utilisation du wrapper si possible, sinon on garde la méthode custom
+    try:
+        data = await comlink_client.get_game_data(version="", include_pve_units=True, request_segment=0)
+        return data.get("units", [])
+    except Exception as e:
+        log.warning("get_game_data via wrapper échoué, fallback sur _post_raw: %s", e)
+        meta = await _post_raw("metadata", {})
+        version = meta.get("latestGamedataVersion")
+        if not version: raise ValueError("Version du jeu introuvable")
 
-    payload = {"version": version, "includePveUnits": True, "requestSegment": 0}
-    data = await _post_raw("data", payload, top_level_params={"enums": False})
-    return data.get("units", [])
-
-def _find_loc_id(obj, target_locale: str | None = None, min_len=20) -> str | None:
-    """Recherche récursive exhaustive pour trouver un ID de localisation valide."""
-    if isinstance(obj, str):
-        if len(obj) >= min_len:
-            # Suffixes de locale valides
-            locales = [target_locale] if target_locale else [
-                "ENG_US", "FRE_FR", "GER_DE", "SPA_ES", "ITA_IT", 
-                "CHS_CN", "CHT_CN", "DAN_DK", "DUT_NL", "FIN_FI", 
-                "JPN_JP", "KOR_KR", "NOR_NO", "POR_BR", "RUS_RU", 
-                "SPA_MX", "SWE_SE"
-            ]
-            # On cherche un ID qui contient "Loc_" ou ".json" ET une locale valide
-            if ("Loc_" in obj or ".json" in obj) and any(loc in obj for loc in locales):
-                return obj
-    elif isinstance(obj, dict):
-        # Priorité aux clés 'id' ou 'bundle'
-        for k in ["id", "bundle", "localizationId"]:
-            if k in obj and isinstance(obj[k], str) and len(obj[k]) >= min_len:
-                locales = [target_locale] if target_locale else ["ENG_US", "FRE_FR"]
-                if any(loc in obj[k] for loc in locales):
-                    return obj[k]
-        for v in obj.values():
-            res = _find_loc_id(v, target_locale, min_len)
-            if res: return res
-    elif isinstance(obj, list):
-        for v in obj:
-            res = _find_loc_id(v, target_locale, min_len)
-            if res: return res
-    return None
+        payload = {"version": version, "includePveUnits": True, "requestSegment": 0}
+        data = await _post_raw("data", payload, top_level_params={"enums": False})
+        return data.get("units", [])
 
 def _decode_bundle(bundle: str) -> str:
     if not bundle:
         return ""
-    
-    # Si c'est déjà du texte brut (non base64)
     if "UNIT_" in bundle and "_NAME" in bundle:
         return bundle
-        
     try:
-        # Décodage base64
         decoded = base64.b64decode(bundle)
-        
-        # Tentative d'ouverture comme un ZIP
         try:
             with zipfile.ZipFile(io.BytesIO(decoded)) as z:
                 for name in z.namelist():
                     return z.read(name).decode("utf-8")
         except zipfile.BadZipFile:
-            # Texte brut encodé en base64
             return decoded.decode("utf-8")
     except Exception as e:
         log.warning("Erreur lors du décodage du bundle de localisation : %s", e)
-        
     return bundle
 
 async def get_localization() -> str:
-    # On ajoute les clientSpecs à l'intérieur du payload pour que SWGOH renvoie les métadonnées françaises
     payload_meta = {
         "clientSpecs": {
             "locale": "FRE_FR",
@@ -107,8 +84,6 @@ async def get_localization() -> str:
         }
     }
     meta = await _post_raw("metadata", payload_meta)
-
-    # 1. Extraction directe via latestLocalizationBundleVersion (qui sera maintenant en Français !)
     loc_id = meta.get("latestLocalizationBundleVersion") or meta.get("latestLocalizationRevision")
     if loc_id:
         try:
@@ -126,31 +101,25 @@ async def get_localization() -> str:
 
 async def get_player(ally_code: str | None = None, player_id: str | None = None) -> dict:
     """
-    Retourne le profil brut complet d'un joueur depuis Comlink.
+    Retourne le profil brut complet d'un joueur depuis Comlink via le wrapper.
     """
-    payload = {}
     if ally_code:
-        payload["allyCode"] = str(ally_code).replace("-", "")
+        clean_code = str(ally_code).replace("-", "")
+        return await comlink_client.get_player(allycode=clean_code)
     elif player_id:
-        payload["playerId"] = player_id
+        return await comlink_client.get_player(player_id=player_id)
     else:
         raise ValueError("ally_code ou player_id doit être fourni")
-        
-    return await _post_raw("player", payload)
-
 
 async def get_player_roster(ally_code: str) -> list[dict]:
     clean = str(ally_code).replace("-", "")
-    data = await _post_raw("player", {"allyCode": clean})
+    data = await comlink_client.get_player(allycode=clean)
     raw_roster = data.get("rosterUnit", [])
 
     roster = []
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id
-        # L'API Comlink encode le relic tier avec un décalage de +2
-        # (currentTier 1 = pas de relic, 3 = R1, 9 = R7)
-        # On soustrait 2 pour obtenir le tier réel (0 = pas de relic, 1 = R1...)
         raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
         relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
         roster.append({
@@ -163,20 +132,15 @@ async def get_player_roster(ally_code: str) -> list[dict]:
     return roster
 
 async def check_health() -> dict:
-    """Ping Comlink by calling /metadata. Returns version info or raises."""
-    return await _post_raw("metadata", {})
+    return await comlink_client.get_game_metadata()
 
 async def get_player_arena(ally_code: str) -> dict:
-    """Fetch player arena data (squad/fleet arena ranks + teams)."""
     clean = str(ally_code).replace("-", "")
-    return await _post_raw("playerArena", {"allyCode": clean})
-
-import asyncio
+    return await comlink_client.get_player_arena(allycode=clean)
 
 async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: list[int] | None = None) -> list[dict]:
-    """Pull top 50 from every league/division combo. Always works."""
-    leagues = leagues or [20, 40, 60, 80, 100]       # Carbonite → Kyber
-    divisions = divisions or [5, 10, 15, 20, 25]       # D5 → D1
+    leagues = leagues or [20, 40, 60, 80, 100]
+    divisions = divisions or [5, 10, 15, 20, 25]
     
     all_players = []
     for league in leagues:
@@ -187,10 +151,8 @@ async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: lis
                     "league": league,
                     "division": division,
                 })
-                # Extract player IDs/ally codes from response
                 entries = data.get("player") or data.get("leaderboardEntry") or []
                 if not entries and "leaderboard" in data:
-                    # Sometimes it's nested
                     for lb in data["leaderboard"]:
                         entries.extend(lb.get("player") or lb.get("leaderboardEntry") or [])
                 
@@ -198,8 +160,6 @@ async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: lis
                     all_players.append(entry)
                     
                 log.info(f"L{league} D{division} : {len(entries)} joueurs récupérés")
-                if entries and league == 100 and division == 5:
-                    log.info(f"DEBUG ENTRY: {json.dumps(entries[0])}")
                 await asyncio.sleep(0.1)
             except Exception as e:
                 log.warning("Erreur scan_all_leaderboards (L%s D%s): %s", league, division, e)

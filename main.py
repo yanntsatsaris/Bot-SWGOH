@@ -37,6 +37,7 @@ INITIAL_EXTENSIONS = [
     "cogs.gac_scout",
     "cogs.meta_scanner",
     "cogs.meta_manager",
+    "cogs.gac_scanner",
 ]
 
 

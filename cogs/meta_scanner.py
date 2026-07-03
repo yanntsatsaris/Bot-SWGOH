@@ -114,7 +114,9 @@ class MetaScannerCog(commands.Cog, name="MetaScanner"):
     def cog_unload(self) -> None:
         self.daily_meta_scan.cancel()
 
-    @tasks.loop(hours=24)
+    import datetime
+
+    @tasks.loop(time=datetime.time(hour=12, minute=0, tzinfo=datetime.timezone.utc))
     async def daily_meta_scan(self) -> None:
         """Scan les classements de chaque ligue et reconstruit les statistiques méta."""
         log.info("Démarrage du scan méta quotidien...")

@@ -18,3 +18,6 @@ cloudscraper==1.2.71
 
 # Génération d'images (rapports GAC)
 Pillow==10.4.0
+
+# API Comlink officielle
+swgoh-comlink

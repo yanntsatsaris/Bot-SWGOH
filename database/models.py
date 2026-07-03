@@ -133,26 +133,19 @@ CREATE_TABLES_SQL: list[str] = [
         season_id        TEXT    NOT NULL,
         round_number     INTEGER NOT NULL,
         player_code      TEXT    NOT NULL,
-        opponent_code    TEXT,
         opponent_name    TEXT,
-        result           TEXT    CHECK(result IN ('win','loss','draw')),
-        player_banners   INTEGER,
-        opponent_banners INTEGER,
-        format           TEXT    NOT NULL CHECK(format IN ('3v3','5v5')),
         recorded_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS gac_round_teams (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        round_id    INTEGER NOT NULL REFERENCES gac_rounds(id) ON DELETE CASCADE,
-        side        TEXT    NOT NULL CHECK(side IN ('offense','defense')),
-        owner       TEXT    NOT NULL CHECK(owner IN ('player','opponent')),
-        zone        TEXT,
-        leader_id   TEXT    NOT NULL,
-        members_ids TEXT    NOT NULL,
-        banners     INTEGER,
-        success     INTEGER
+    CREATE TABLE IF NOT EXISTS gac_matches (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        round_id       INTEGER NOT NULL REFERENCES gac_rounds(id) ON DELETE CASCADE,
+        is_attack      BOOLEAN NOT NULL,
+        attacker_team  TEXT    NOT NULL,
+        defender_team  TEXT    NOT NULL,
+        banners        INTEGER NOT NULL,
+        outcome        TEXT    NOT NULL
     )
-    """,
+    """
 ]

@@ -102,12 +102,14 @@ class GACHistoryScraper:
                             logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
                             parsed_data = self._parse_html(html_content, clean_code)
                             
-                            # C'est ici que tu pourras ajouter l'insertion en base de données
+                            # Sauvegarde en base de données
+                            from database.db import save_gac_history_to_db
+                            await save_gac_history_to_db(parsed_data, clean_code)
                             
                             if interaction:
                                 try:
                                     nb_matchs = len(parsed_data.get("matches", []))
-                                    await interaction.followup.send(f"🏆 Succès ! {nb_matchs} matchs ont été extraits et analysés pour {clean_code} !")
+                                    await interaction.followup.send(f"🏆 Succès ! {nb_matchs} matchs ont été extraits et sauvegardés dans la base de données pour {clean_code} !")
                                 except:
                                     pass
                         else:
@@ -142,6 +144,7 @@ class GACHistoryScraper:
     def _parse_html(self, html: str, ally_code: str) -> dict:
         """
         Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes complètes.
+        Sépare les attaques et les défenses.
         """
         try:
             from bs4 import BeautifulSoup
@@ -149,58 +152,64 @@ class GACHistoryScraper:
             
             matches = []
             
-            # On cherche les blocs de statistiques de chaque match
-            stats_blocks = soup.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
-            
-            for block in stats_blocks:
-                match_data = {
-                    "banners": 0,
-                    "attempt": 1,
-                    "outcome": "Unknown",
-                    "attacker_lead": "UNKNOWN",
-                    "defender_lead": "UNKNOWN",
-                    "attacker_team": [],
-                    "defender_team": []
-                }
-                
-                # Extraction des statistiques
-                stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
-                for stat in stats:
-                    label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
-                    value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
-                    if label_el and value_el:
-                        label = label_el.get_text(strip=True).lower()
-                        value = value_el.get_text(strip=True)
-                        if label == "banners":
-                            match_data["banners"] = int(value) if value.isdigit() else 0
-                        elif label == "attempt":
-                            match_data["attempt"] = int(value) if value.isdigit() else 1
-                        elif label == "outcome":
-                            match_data["outcome"] = value
-                            
-                parent = block.parent
-                if parent:
-                    # Extraction des équipes complètes
-                    squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout--character' in c)
-                    if squad_containers and len(squad_containers) >= 2:
-                        # Attaquant
-                        a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                        match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
-                        if match_data["attacker_team"]:
-                            match_data["attacker_lead"] = match_data["attacker_team"][0]
-                            
-                        # Défenseur
-                        d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                        match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
-                        if match_data["defender_team"]:
-                            match_data["defender_lead"] = match_data["defender_team"][0]
+            def parse_section(section_div, is_attack: bool):
+                stats_blocks = section_div.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
+                for block in stats_blocks:
+                    match_data = {
+                        "banners": 0,
+                        "attempt": 1,
+                        "outcome": "Unknown",
+                        "attacker_lead": "UNKNOWN",
+                        "defender_lead": "UNKNOWN",
+                        "attacker_team": [],
+                        "defender_team": [],
+                        "is_attack": is_attack
+                    }
+                    
+                    # Extraction des statistiques
+                    stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
+                    for stat in stats:
+                        label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
+                        value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
+                        if label_el and value_el:
+                            label = label_el.get_text(strip=True).lower()
+                            value = value_el.get_text(strip=True)
+                            if label == "banners":
+                                match_data["banners"] = int(value) if value.isdigit() else 0
+                            elif label == "attempt":
+                                match_data["attempt"] = int(value) if value.isdigit() else 1
+                            elif label == "outcome":
+                                match_data["outcome"] = value
+                                
+                    parent = block.parent
+                    if parent:
+                        # Extraction des équipes complètes
+                        squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout--character' in c)
+                        if squad_containers and len(squad_containers) >= 2:
+                            # Attaquant
+                            a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                            match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
+                            if match_data["attacker_team"]:
+                                match_data["attacker_lead"] = match_data["attacker_team"][0]
+                                
+                            # Défenseur
+                            d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                            match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
+                            if match_data["defender_team"]:
+                                match_data["defender_lead"] = match_data["defender_team"][0]
+                                
+                    matches.append(match_data)
 
-                matches.append(match_data)
+            # Analyse des deux sections
+            attack_div = soup.find('div', id='battles-attack')
+            if attack_div:
+                parse_section(attack_div, is_attack=True)
+                
+            defense_div = soup.find('div', id='battles-defense')
+            if defense_div:
+                parse_section(defense_div, is_attack=False)
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
-            for i, m in enumerate(matches[:3]):
-                logger.info(f"  Match {i+1}: {m['attacker_lead']} vs {m['defender_lead']} | {m['outcome']} ({m['banners']} bannières)")
-                
             return {"matches": matches}
             
         except Exception as e:

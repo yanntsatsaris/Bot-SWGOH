@@ -27,7 +27,7 @@ def analyze_gac_html():
     print("\n--- Analyse des blocs HTML ---")
     rounds = soup.find_all(lambda tag: tag.name == 'div' and tag.get('class') and any('round' in c.lower() or 'match' in c.lower() for c in tag.get('class')))
     
-    print("\n--- Analyse détaillée d'un match complet ---")
+    print("\n--- Extraction de la structure exacte d'un match ---")
     
     # On cherche les blocs de statistiques
     stats_blocks = soup.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
@@ -38,25 +38,20 @@ def analyze_gac_html():
         # On prend le premier match pour l'analyser
         match_block = stats_blocks[0]
         
-        # On remonte de 2 ou 3 niveaux pour avoir le conteneur principal du match
-        parent = match_block.parent.parent.parent if match_block.parent and match_block.parent.parent else match_block.parent
+        # On remonte juste au parent direct qui englobe la ligne de match
+        parent = match_block.parent
         
-        print("\n[STRUCTURE DU MATCH]")
-        print("Classes du conteneur principal :", parent.get('class'))
+        # On affiche le HTML formaté de ce seul match
+        print("\n[CODE HTML DU PREMIER MATCH]")
+        print(parent.prettify()[:1500]) # On coupe à 1500 caractères pour ne pas inonder le terminal
         
-        # On cherche tous les liens ou images pour voir les personnages
-        chars = parent.find_all(['img', 'a'])
-        print("\nÉléments visuels/liens trouvés dans ce match :")
-        for c in chars[:15]:
-            if c.name == 'img':
-                print(f"- Image: alt='{c.get('alt', '')}', src='{c.get('src', '')}'")
-            elif c.name == 'a':
-                print(f"- Lien: texte='{c.get_text(strip=True)}', href='{c.get('href', '')}'")
-                
-        # On cherche les sous-conteneurs (ex: attaquant vs défenseur)
-        squads = parent.find_all('div', class_=lambda c: c and 'squad' in c.lower())
-        if squads:
-            print("\nSous-groupes 'squad' trouvés :", len(squads))
+        # On extrait les liens pour voir s'ils contiennent les noms des personnages (href)
+        print("\n[LIENS DANS CE MATCH]")
+        for a in parent.find_all('a', href=True):
+            if '/characters/' in a['href'] or '/ships/' in a['href']:
+                print(f"- Personnage détecté : {a['href']}")
+            elif 'insight' in a['href']:
+                print(f"- Lien Insight : {a['href']}")
     else:
         print("Impossible de trouver gac-counters-battle-summary__stats")
 

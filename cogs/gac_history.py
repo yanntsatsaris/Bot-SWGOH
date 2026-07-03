@@ -87,7 +87,10 @@ class GacHistoryCog(commands.Cog, name="GacHistory"):
     ) -> None:
         await interaction.response.defer()
         
-        ally_code_clean = ally_code.replace("-", "").strip()
+        if ally_code.startswith("http"):
+            ally_code_clean = ally_code.strip()
+        else:
+            ally_code_clean = ally_code.replace("-", "").strip()
         
         # On vérifie que le scraper est bien initialisé
         if not hasattr(self.bot, "gac_scraper"):

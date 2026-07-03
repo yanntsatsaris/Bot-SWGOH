@@ -102,7 +102,20 @@ class GACHistoryScraper:
                             logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
                             parsed_data = self._parse_html(html_content, clean_code)
                             
-                            # Sauvegarde en base de données
+                            # Si on a atterri sur la page d'accueil GAC, on remet les matchs trouvés dans la file d'attente
+                            if parsed_data.get("hub_links"):
+                                logger.info("🔗 Page d'accueil détectée. Ajout automatique des sous-liens GAC dans la file d'attente...")
+                                for link in parsed_data["hub_links"]:
+                                    await self.queue_scrape(link, interaction)
+                                
+                                if interaction:
+                                    try:
+                                        await interaction.followup.send(f"📂 Page GAC principale détectée ! Je commence automatiquement le scraping des 3 derniers adversaires de l'événement...")
+                                    except:
+                                        pass
+                                continue
+                            
+                            # Sinon c'est un match normal, on sauvegarde en base de données
                             from database.db import save_gac_history_to_db
                             await save_gac_history_to_db(parsed_data, clean_code)
                             
@@ -208,6 +221,23 @@ class GACHistoryScraper:
             defense_div = soup.find('div', id='battles-defense')
             if defense_div:
                 parse_section(defense_div, is_attack=False)
+                
+            if not matches:
+                # On est probablement sur la page HUB générale (la liste de toutes les saisons)
+                # On cherche les liens vers les matchs individuels
+                hub_links = []
+                for a in soup.find_all('a', href=True):
+                    href = a['href']
+                    if "/gac-history/" in href and (href.endswith('/1/') or href.endswith('/2/') or href.endswith('/3/')):
+                        full_url = f"https://swgoh.gg{href}" if href.startswith('/') else href
+                        if full_url not in hub_links:
+                            hub_links.append(full_url)
+                            
+                if hub_links:
+                    logger.info(f"🔗 Page Hub détectée, {len(hub_links)} sous-liens de matchs trouvés !")
+                    # On retourne seulement les 3 premiers (le dernier événement GAC complet)
+                    # pour éviter que le bot ne scrape 30 pages d'un coup
+                    return {"matches": [], "hub_links": hub_links[:3]}
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
             return {"matches": matches}

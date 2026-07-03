@@ -27,24 +27,38 @@ def analyze_gac_html():
     print("\n--- Analyse des blocs HTML ---")
     rounds = soup.find_all(lambda tag: tag.name == 'div' and tag.get('class') and any('round' in c.lower() or 'match' in c.lower() for c in tag.get('class')))
     
-    # Recherche avancée des équipes (qui contiennent des bannières ou des scores)
-    print("\n--- Recherche des matchs (Banners / Score) ---")
+    print("\n--- Analyse détaillée d'un match complet ---")
     
-    # On cherche tous les éléments qui contiennent le mot Banners
-    elements = soup.find_all(string=lambda text: text and ("Banners" in text or "Score" in text))
+    # On cherche les blocs de statistiques
+    stats_blocks = soup.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
     
-    if elements:
-        for i, el in enumerate(elements[:5]):
-            parent = el.parent
-            while parent and parent.name != 'div':
-                parent = parent.parent
-            if parent:
-                # On remonte de quelques niveaux pour avoir le bloc entier
-                grandparent = parent.parent.parent if parent.parent else parent
-                print(f"\n[BLOC {i+1}] (Classes: {grandparent.get('class')})")
-                print(grandparent.get_text(separator=' | ', strip=True)[:300])
+    if stats_blocks:
+        print(f"Trouvé {len(stats_blocks)} matchs dans l'historique !")
+        
+        # On prend le premier match pour l'analyser
+        match_block = stats_blocks[0]
+        
+        # On remonte de 2 ou 3 niveaux pour avoir le conteneur principal du match
+        parent = match_block.parent.parent.parent if match_block.parent and match_block.parent.parent else match_block.parent
+        
+        print("\n[STRUCTURE DU MATCH]")
+        print("Classes du conteneur principal :", parent.get('class'))
+        
+        # On cherche tous les liens ou images pour voir les personnages
+        chars = parent.find_all(['img', 'a'])
+        print("\nÉléments visuels/liens trouvés dans ce match :")
+        for c in chars[:15]:
+            if c.name == 'img':
+                print(f"- Image: alt='{c.get('alt', '')}', src='{c.get('src', '')}'")
+            elif c.name == 'a':
+                print(f"- Lien: texte='{c.get_text(strip=True)}', href='{c.get('href', '')}'")
+                
+        # On cherche les sous-conteneurs (ex: attaquant vs défenseur)
+        squads = parent.find_all('div', class_=lambda c: c and 'squad' in c.lower())
+        if squads:
+            print("\nSous-groupes 'squad' trouvés :", len(squads))
     else:
-        print("Aucun texte contenant 'Banners' ou 'Score' trouvé...")
+        print("Impossible de trouver gac-counters-battle-summary__stats")
 
 if __name__ == "__main__":
     analyze_gac_html()

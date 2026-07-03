@@ -27,8 +27,6 @@ def analyze_gac_html():
     print("\n--- Analyse des blocs HTML ---")
     rounds = soup.find_all(lambda tag: tag.name == 'div' and tag.get('class') and any('round' in c.lower() or 'match' in c.lower() for c in tag.get('class')))
     
-    print("\n--- Extraction de la structure exacte d'un match ---")
-    
     # On cherche les blocs de statistiques
     stats_blocks = soup.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
     
@@ -41,17 +39,24 @@ def analyze_gac_html():
         # On remonte juste au parent direct qui englobe la ligne de match
         parent = match_block.parent
         
-        # On affiche le HTML formaté de ce seul match
-        print("\n[CODE HTML DU PREMIER MATCH]")
-        print(parent.prettify()[:1500]) # On coupe à 1500 caractères pour ne pas inonder le terminal
-        
-        # On extrait les liens pour voir s'ils contiennent les noms des personnages (href)
-        print("\n[LIENS DANS CE MATCH]")
-        for a in parent.find_all('a', href=True):
-            if '/characters/' in a['href'] or '/ships/' in a['href']:
-                print(f"- Personnage détecté : {a['href']}")
-            elif 'insight' in a['href']:
-                print(f"- Lien Insight : {a['href']}")
+        # On cherche toutes les images ou div qui ressemblent à des personnages
+        print("\n[PORTRAITS DE PERSONNAGES]")
+        portraits = parent.find_all(lambda tag: tag.has_attr('class') and any('portrait' in c for c in tag['class']))
+        if portraits:
+            print(f"Trouvé {len(portraits)} portraits via les classes CSS !")
+            for p in portraits:
+                print(f"- Portrait classe : {p.get('class')}")
+                img = p.find('img')
+                if img:
+                    print(f"  -> Image src : {img.get('src')}")
+        else:
+            # Cherchons juste toutes les images pour voir
+            imgs = parent.find_all('img')
+            for img in imgs:
+                src = img.get('src', '')
+                if 'characters' in src or 'ui_char' in src or 'tex.' in src:
+                    print(f"- Image trouvée : {src}")
+                    
     else:
         print("Impossible de trouver gac-counters-battle-summary__stats")
 

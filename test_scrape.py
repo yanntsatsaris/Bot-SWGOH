@@ -33,30 +33,27 @@ def analyze_gac_html():
     if stats_blocks:
         print(f"Trouvé {len(stats_blocks)} matchs dans l'historique !")
         
-        # On prend le premier match pour l'analyser
-        match_block = stats_blocks[0]
-        
-        # On remonte juste au parent direct qui englobe la ligne de match
-        parent = match_block.parent
-        
-        # On cherche toutes les images ou div qui ressemblent à des personnages
-        print("\n[PORTRAITS DE PERSONNAGES]")
-        portraits = parent.find_all(lambda tag: tag.has_attr('class') and any('portrait' in c for c in tag['class']))
-        if portraits:
-            print(f"Trouvé {len(portraits)} portraits via les classes CSS !")
-            for p in portraits:
-                print(f"- Portrait classe : {p.get('class')}")
-                img = p.find('img')
-                if img:
-                    print(f"  -> Image src : {img.get('src')}")
-        else:
-            # Cherchons juste toutes les images pour voir
-            imgs = parent.find_all('img')
-            for img in imgs:
-                src = img.get('src', '')
-                if 'characters' in src or 'ui_char' in src or 'tex.' in src:
-                    print(f"- Image trouvée : {src}")
-                    
+        for i, match_block in enumerate(stats_blocks[:3]):
+            parent = match_block.parent
+            print(f"\n[MATCH {i+1}]")
+            
+            # Dans SWGOH.GG, les équipes sont souvent divisées en deux gros blocs (attaquant / défenseur)
+            # ou on peut les trouver dans l'ordre. On va extraire tous les tags avec l'attribut magique :
+            characters = parent.find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+            
+            # On cherche aussi comment ils sont groupés
+            squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout--character' in c)
+            
+            if squad_containers and len(squad_containers) >= 2:
+                for j, squad in enumerate(squad_containers[:2]):
+                    side = "Attaquant" if j == 0 else "Défenseur"
+                    units = squad.find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                    unit_names = [u['data-unit-def-tooltip-app'] for u in units]
+                    print(f"- {side} : {', '.join(unit_names)}")
+            else:
+                # Fallback : on affiche juste tous les personnages trouvés dans le match dans l'ordre
+                names = [c['data-unit-def-tooltip-app'] for c in characters]
+                print(f"- Tous les personnages dans l'ordre : {names}")
     else:
         print("Impossible de trouver gac-counters-battle-summary__stats")
 

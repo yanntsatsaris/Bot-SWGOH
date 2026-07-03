@@ -89,11 +89,29 @@ class GACHistoryScraper:
                     
                     if process.returncode == 0:
                         logger.info(f"✅ Subprocess a réussi (Code 0)")
-                        if interaction:
-                            try:
-                                await interaction.followup.send(f"🏆 Fichier HTML sauvegardé avec succès pour {clean_code} !")
-                            except:
-                                pass
+                        
+                        # On lit le fichier généré par le worker
+                        safe_name = clean_code.replace("/", "_").replace(":", "")
+                        file_path = f"gac_history_{safe_name}.html"
+                        
+                        import os
+                        if os.path.exists(file_path):
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                html_content = f.read()
+                                
+                            logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
+                            parsed_data = self._parse_html(html_content, clean_code)
+                            
+                            # C'est ici que tu pourras ajouter l'insertion en base de données
+                            
+                            if interaction:
+                                try:
+                                    nb_matchs = len(parsed_data.get("matches", []))
+                                    await interaction.followup.send(f"🏆 Succès ! {nb_matchs} matchs ont été extraits et analysés pour {clean_code} !")
+                                except:
+                                    pass
+                        else:
+                            logger.error(f"Fichier {file_path} introuvable après le scraping.")
                     else:
                         logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
                         if interaction:
@@ -124,15 +142,63 @@ class GACHistoryScraper:
     def _parse_html(self, html: str, ally_code: str) -> dict:
         """
         Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes.
-        TODO: A implémenter complètement en regardant le code source d'un profil.
         """
-        soup = BeautifulSoup(html, "html.parser")
-        
-        # Pour le moment on sauvegarde l'HTML dans un fichier pour qu'on puisse
-        # l'étudier et écrire le parseur correct
-        with open(f"gac_history_{ally_code}.html", "w", encoding="utf-8") as f:
-            f.write(soup.prettify())
+        try:
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(html, 'html.parser')
             
-        logger.info(f"Fichier gac_history_{ally_code}.html sauvegardé pour analyse.")
-        
-        return {}
+            matches = []
+            
+            # On cherche les blocs de statistiques de chaque match
+            stats_blocks = soup.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
+            
+            for block in stats_blocks:
+                match_data = {
+                    "banners": 0,
+                    "attempt": 1,
+                    "outcome": "Unknown",
+                    "attacker_lead": "UNKNOWN",
+                    "defender_lead": "UNKNOWN"
+                }
+                
+                # Extraction des statistiques (Banners, Attempt, Outcome)
+                stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
+                for stat in stats:
+                    label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
+                    value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
+                    
+                    if label_el and value_el:
+                        label = label_el.get_text(strip=True).lower()
+                        value = value_el.get_text(strip=True)
+                        
+                        if label == "banners":
+                            match_data["banners"] = int(value) if value.isdigit() else 0
+                        elif label == "attempt":
+                            match_data["attempt"] = int(value) if value.isdigit() else 1
+                        elif label == "outcome":
+                            match_data["outcome"] = value
+                            
+                # On remonte au parent pour trouver les liens d'Insight qui contiennent les ID des leaders
+                parent = block.parent
+                if parent:
+                    links = parent.find_all('a', href=True)
+                    for link in links:
+                        href = link['href']
+                        if 'insight' in href:
+                            # Exemple: ...&a_lead=BOSSNASS&league=KYBER...
+                            if 'a_lead=' in href:
+                                match_data["attacker_lead"] = href.split('a_lead=')[1].split('&')[0]
+                            if 'd_lead=' in href:
+                                match_data["defender_lead"] = href.split('d_lead=')[1].split('&')[0]
+                
+                matches.append(match_data)
+                
+            logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
+            for i, m in enumerate(matches[:3]):
+                logger.info(f"  Match {i+1}: {m['attacker_lead']} vs {m['defender_lead']} | {m['outcome']} ({m['banners']} bannières)")
+                
+            return {"matches": matches}
+            
+        except Exception as e:
+            logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")
+            return {"matches": []}

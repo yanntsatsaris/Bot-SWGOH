@@ -50,30 +50,48 @@ class GACHistoryScraper:
                     except:
                         pass
                 
-                # Exécute la fonction bloquante SeleniumBase dans le ThreadPool
-                # pour ne pas freezer le bot Discord
-                result_html = await asyncio.get_event_loop().run_in_executor(
-                    self.executor,
-                    self._run_selenium_sync,
-                    ally_code
+                # Exécute la fonction bloquante SeleniumBase dans un processus séparé isolé !
+                # Ça évite tous les deadlocks liés à asyncio / Xvfb
+                if ally_code.startswith("http"):
+                    target_url = ally_code
+                    clean_code = "custom_url"
+                else:
+                    target_url = f"https://swgoh.gg/p/{ally_code}/gac-history/"
+                    clean_code = ally_code
+                    
+                process = await asyncio.create_subprocess_exec(
+                    "python", "scripts/sb_worker.py", target_url, clean_code,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
                 )
                 
-                if result_html:
-                    logger.info(f"✅ Code HTML récupéré pour {ally_code}. Lancement du parsing...")
-                    parsed_data = self._parse_html(result_html, ally_code)
+                try:
+                    # On laisse 60 secondes maximum au navigateur pour faire son travail
+                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60.0)
                     
-                    # Plus tard: insérer parsed_data dans la DB
+                    output_log = stdout.decode().strip()
+                    error_log = stderr.decode().strip()
                     
+                    if process.returncode == 0:
+                        logger.info(f"✅ Subprocess a réussi :\n{output_log}")
+                        if interaction:
+                            try:
+                                await interaction.followup.send(f"🏆 Fichier HTML sauvegardé avec succès pour {clean_code} !")
+                            except:
+                                pass
+                    else:
+                        logger.error(f"❌ Échec du Subprocess (Code {process.returncode}):\n{error_log}\n{output_log}")
+                        if interaction:
+                            try:
+                                await interaction.followup.send(f"❌ Le scraping a échoué (regarde la console).")
+                            except:
+                                pass
+                except asyncio.TimeoutError:
+                    process.kill()
+                    logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 60 secondes.")
                     if interaction:
                         try:
-                            await interaction.followup.send(f"🏆 Historique de {ally_code} extrait et analysé avec succès ! (Code HTML: {len(result_html)} octets)")
-                        except:
-                            pass
-                else:
-                    logger.error(f"❌ Échec de la récupération HTML pour {ally_code}.")
-                    if interaction:
-                        try:
-                            await interaction.followup.send(f"❌ Impossible d'extraire l'historique de {ally_code} (Blocage Cloudflare ou Timeout).")
+                            await interaction.followup.send(f"❌ Timeout : Cloudflare a fait planter le navigateur.")
                         except:
                             pass
                 
@@ -87,44 +105,6 @@ class GACHistoryScraper:
             except Exception as e:
                 logger.error(f"Erreur critique dans le worker GAC Scraper : {e}")
                 await asyncio.sleep(5)
-
-    def _run_selenium_sync(self, ally_code_or_url: str) -> str:
-        """
-        Fonction bloquante exécutée dans un thread séparé.
-        Gère SeleniumBase avec le faux écran (Xvfb).
-        """
-        if ally_code_or_url.startswith("http"):
-            target_url = ally_code_or_url
-            ally_code = "custom_url"
-        else:
-            target_url = f"https://swgoh.gg/p/{ally_code_or_url}/gac-history/"
-            ally_code = ally_code_or_url
-        
-        try:
-            # uc=True pour tromper Cloudflare, xvfb=True pour créer l'écran virtuel Linux, headless=False obligatoire pour UC
-            with SB(uc=True, xvfb=True, headless=False) as sb:
-                sb.uc_open_with_reconnect(target_url, reconnect_time=4)
-                
-                # Contournement Turnstile (l'IA clique sur la case)
-                try:
-                    sb.uc_gui_click_captcha()
-                except Exception as e:
-                    logger.warning(f"Pas de captcha ou clic raté pour {ally_code} : {e}")
-                
-                # On attend de voir si la page charge vraiment
-                sb.sleep(8)
-                
-                page_source = sb.get_page_source()
-                
-                # Sauvegarde du HTML brut pour analyse !
-                safe_name = ally_code.replace("/", "_").replace(":", "")
-                with open(f"gac_history_{safe_name}.html", "w", encoding="utf-8") as f:
-                    f.write(page_source)
-                
-                return page_source
-        except Exception as e:
-            logger.error(f"SeleniumBase a crashé pour {ally_code} : {e}")
-            return None
 
     def _parse_html(self, html: str, ally_code: str) -> dict:
         """

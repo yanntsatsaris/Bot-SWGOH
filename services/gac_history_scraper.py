@@ -59,8 +59,9 @@ class GACHistoryScraper:
                     target_url = f"https://swgoh.gg/p/{ally_code}/gac-history/"
                     clean_code = ally_code
                     
+                import sys
                 process = await asyncio.create_subprocess_exec(
-                    "python", "scripts/sb_worker.py", target_url, clean_code,
+                    sys.executable, "scripts/sb_worker.py", target_url, clean_code,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )

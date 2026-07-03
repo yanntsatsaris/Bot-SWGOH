@@ -32,19 +32,25 @@ async def main():
                 print(f"⚠️ Erreur ou Timeout lors du chargement : {e}")
 
             print("5. Recherche de la case à cocher Cloudflare...")
-            print("5. Tentative de clic à l'aveugle (Le widget n'est pas une iframe classique)...")
+            print("5. Tentative de clic à l'aveugle (Coordonnées exactes d'après ton image)...")
             try:
-                # Cloudflare est intelligent : il détecte qu'on est "headless" (invisible) 
-                # et refuse même de charger la case à cocher (c'est pour ça qu'il ne trouve pas d'iframe) !
-                # On va tenter de cliquer approximativement au milieu de la page
-                x, y = 1920 / 2, 1080 / 2
+                # J'ai analysé ton image : le contenu n'est pas centré au milieu, 
+                # il est dans une colonne qui commence environ à un quart de l'écran (X ~ 520).
+                # La case est située sous le texte, environ à un tiers de la hauteur (Y ~ 330).
+                x, y = 520, 330
                 
-                print(f"🎯 Mouvement de souris humain simulé vers le centre X={x}, Y={y}...")
+                print(f"🎯 Mouvement de souris humain simulé vers la case (X={x}, Y={y})...")
                 await page.mouse.move(x, y, steps=35)
                 await page.wait_for_timeout(800) # Petite pause "humaine"
                 
                 print("🖱️ Clic !")
                 await page.mouse.click(x, y, delay=150)
+                
+                # On attend 2 petites secondes et on prend tout de suite une photo pour voir si la case a réagi !
+                await page.wait_for_timeout(2000)
+                await page.screenshot(path="cloudflare_after_click.png", full_page=True)
+                print("📸 Capture d'écran juste après le clic sauvegardée sous 'cloudflare_after_click.png'")
+                
             except Exception as e:
                 print(f"⚠️ Le clic a échoué : {e}")
 

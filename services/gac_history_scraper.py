@@ -141,7 +141,7 @@ class GACHistoryScraper:
 
     def _parse_html(self, html: str, ally_code: str) -> dict:
         """
-        Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes.
+        Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes complètes.
         """
         try:
             from bs4 import BeautifulSoup
@@ -158,19 +158,19 @@ class GACHistoryScraper:
                     "attempt": 1,
                     "outcome": "Unknown",
                     "attacker_lead": "UNKNOWN",
-                    "defender_lead": "UNKNOWN"
+                    "defender_lead": "UNKNOWN",
+                    "attacker_team": [],
+                    "defender_team": []
                 }
                 
-                # Extraction des statistiques (Banners, Attempt, Outcome)
+                # Extraction des statistiques
                 stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
                 for stat in stats:
                     label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
                     value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
-                    
                     if label_el and value_el:
                         label = label_el.get_text(strip=True).lower()
                         value = value_el.get_text(strip=True)
-                        
                         if label == "banners":
                             match_data["banners"] = int(value) if value.isdigit() else 0
                         elif label == "attempt":
@@ -178,19 +178,23 @@ class GACHistoryScraper:
                         elif label == "outcome":
                             match_data["outcome"] = value
                             
-                # On remonte au parent pour trouver les liens d'Insight qui contiennent les ID des leaders
                 parent = block.parent
                 if parent:
-                    links = parent.find_all('a', href=True)
-                    for link in links:
-                        href = link['href']
-                        if 'insight' in href:
-                            # Exemple: ...&a_lead=BOSSNASS&league=KYBER...
-                            if 'a_lead=' in href:
-                                match_data["attacker_lead"] = href.split('a_lead=')[1].split('&')[0]
-                            if 'd_lead=' in href:
-                                match_data["defender_lead"] = href.split('d_lead=')[1].split('&')[0]
-                
+                    # Extraction des équipes complètes
+                    squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout--character' in c)
+                    if squad_containers and len(squad_containers) >= 2:
+                        # Attaquant
+                        a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                        match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
+                        if match_data["attacker_team"]:
+                            match_data["attacker_lead"] = match_data["attacker_team"][0]
+                            
+                        # Défenseur
+                        d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                        match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
+                        if match_data["defender_team"]:
+                            match_data["defender_lead"] = match_data["defender_team"][0]
+
                 matches.append(match_data)
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")

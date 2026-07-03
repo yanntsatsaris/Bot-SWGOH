@@ -27,35 +27,29 @@ def analyze_gac_html():
     print("\n--- Analyse des blocs HTML ---")
     rounds = soup.find_all(lambda tag: tag.name == 'div' and tag.get('class') and any('round' in c.lower() or 'match' in c.lower() for c in tag.get('class')))
     
-    # On cherche les blocs de statistiques
-    stats_blocks = soup.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
-    
-    if stats_blocks:
-        print(f"Trouvé {len(stats_blocks)} matchs dans l'historique !")
+    # Trouver le nom du joueur et de l'adversaire
+    player_names = soup.find_all(lambda tag: tag.name in ['h1', 'h2', 'h3', 'div'] and tag.get('class') and any('name' in c.lower() for c in tag.get('class')))
+    print(f"\n--- Noms trouvés dans les headers ---")
+    for p in player_names[:5]:
+        print(f"[{p.name}] (Classes: {p.get('class')}): {p.get_text(strip=True)}")
         
-        for i, match_block in enumerate(stats_blocks[:3]):
-            parent = match_block.parent
-            print(f"\n[MATCH {i+1}]")
-            
-            # Dans SWGOH.GG, les équipes sont souvent divisées en deux gros blocs (attaquant / défenseur)
-            # ou on peut les trouver dans l'ordre. On va extraire tous les tags avec l'attribut magique :
-            characters = parent.find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-            
-            # On cherche aussi comment ils sont groupés
-            squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout--character' in c)
-            
-            if squad_containers and len(squad_containers) >= 2:
-                for j, squad in enumerate(squad_containers[:2]):
-                    side = "Attaquant" if j == 0 else "Défenseur"
-                    units = squad.find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                    unit_names = [u['data-unit-def-tooltip-app'] for u in units]
-                    print(f"- {side} : {', '.join(unit_names)}")
-            else:
-                # Fallback : on affiche juste tous les personnages trouvés dans le match dans l'ordre
-                names = [c['data-unit-def-tooltip-app'] for c in characters]
-                print(f"- Tous les personnages dans l'ordre : {names}")
-    else:
-        print("Impossible de trouver gac-counters-battle-summary__stats")
+    print("\n--- Recherche des onglets Attacks / Defenses ---")
+    # Les onglets sont souvent des balises 'a' ou 'button' ou 'li' avec le texte Attacks / Defenses
+    tabs = soup.find_all(string=lambda t: t and ('Attacks' in t or 'Defenses' in t))
+    for t in tabs:
+        parent = t.parent
+        print(f"Onglet texte '{t.strip()}' -> tag: {parent.name}, classes: {parent.get('class')}")
+        
+    print("\n--- Recherche des zones de combat pour séparer les matchs ---")
+    # On regarde s'il y a des grands conteneurs pour les deux listes de matchs
+    match_lists = soup.find_all('ul', class_=lambda c: c and 'match' in c.lower())
+    if not match_lists:
+        # Peut-être des divs avec id ?
+        for div in soup.find_all('div', id=True):
+            if 'attack' in div['id'].lower() or 'defense' in div['id'].lower():
+                print(f"Trouvé div avec id='{div['id']}'")
+                
+    # Pour l'instant, dis-moi juste s'il a trouvé des indices sur le joueur / onglets !
 
 if __name__ == "__main__":
     analyze_gac_html()

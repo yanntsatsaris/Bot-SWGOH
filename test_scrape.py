@@ -1,35 +1,44 @@
-import asyncio
-from curl_cffi.requests import AsyncSession
+import json
+from bs4 import BeautifulSoup
+import sys
 
-async def main():
-    url = "https://swgoh.gg/gac/squads/?season_id=CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_78"
-    print(f"Tentative de connexion à swgoh.gg avec l'empreinte de Chrome 110...")
-    
+def analyze_gac_html():
+    filename = "gac_history_custom_url.html"
     try:
-        # On utilise "impersonate" pour imiter parfaitement la signature TLS d'un vrai navigateur
-        async with AsyncSession(impersonate="chrome110") as s:
-            response = await s.get(url)
-            print(f"Code HTTP reçu : {response.status_code}")
-            
-            if response.status_code == 200:
-                # Vérifie si on est tombé sur la page "Just a moment..." de Cloudflare
-                if "Just a moment..." in response.text or "Cloudflare" in response.title if hasattr(response, 'title') else "":
-                    print("\n❌ Aïe... On a reçu un code 200, mais c'est le défi Cloudflare qui nous bloque au portillon.")
-                else:
-                    print("\n✅ BINGO ! Contournement réussi. Voici le titre et un extrait du HTML :")
-                    print("-" * 50)
-                    # Affiche une petite partie pour prouver qu'on a bien la page
-                    print(response.text[:800])
-                    print("-" * 50)
-            else:
-                print(f"\n❌ Échec du contournement (Code {response.status_code}).")
+        with open(filename, "r", encoding="utf-8") as f:
+            html = f.read()
     except Exception as e:
-        print(f"Erreur technique lors de la requête : {e}")
+        print(f"Impossible de lire le fichier: {e}")
+        return
+
+    soup = BeautifulSoup(html, "html.parser")
+    print(f"Titre de la page: {soup.title.text if soup.title else 'Aucun'}")
+    
+    # Stratégie 1: Rechercher un JSON intégré dans la page
+    scripts = soup.find_all("script")
+    for s in scripts:
+        content = s.string
+        if content and "match" in content.lower() and "player" in content.lower() and "{" in content:
+            if "__NEXT_DATA__" in content or "window.__INITIAL_STATE__" in content:
+                print("\n[!] JSON D'ÉTAT INITIAL TROUVÉ DANS UN SCRIPT !")
+                print(content[:500] + "...")
+                
+    # Stratégie 2: Rechercher les divs qui contiennent les données de match
+    print("\n--- Analyse des blocs HTML ---")
+    rounds = soup.find_all(lambda tag: tag.name == 'div' and tag.get('class') and any('round' in c.lower() or 'match' in c.lower() for c in tag.get('class')))
+    
+    if not rounds:
+        # On essaie de trouver les mots clés GAC
+        print("Recherche de 'GAC' ou 'Round' dans les divs...")
+        for div in soup.find_all("div"):
+            text = div.get_text(separator=' ', strip=True)
+            if "Round" in text and "Banners" in text:
+                print(f"Div suspect trouvé (classes: {div.get('class')}): {text[:100]}...")
+                break
+    else:
+        print(f"Nombre de divs 'round/match' trouvés : {len(rounds)}")
+        if rounds:
+            print(f"Exemple du premier bloc : classes={rounds[0].get('class')}")
 
 if __name__ == "__main__":
-    # curl_cffi nécessite parfois une politique d'event loop spécifique sur Windows
-    import sys
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    
-    asyncio.run(main())
+    analyze_gac_html()

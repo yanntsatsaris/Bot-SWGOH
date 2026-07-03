@@ -106,11 +106,12 @@ class GACHistoryScraper:
                             if parsed_data.get("hub_links"):
                                 logger.info("🔗 Page d'accueil détectée. Ajout automatique des sous-liens GAC dans la file d'attente...")
                                 for link in parsed_data["hub_links"]:
-                                    await self.queue_scrape(link, interaction)
+                                    # On met interaction=None pour ne pas spammer le channel Discord à chaque sous-lien
+                                    await self.queue_scrape(link, interaction=None)
                                 
                                 if interaction:
                                     try:
-                                        await interaction.followup.send(f"📂 Page GAC principale détectée ! Je commence automatiquement le scraping des 3 derniers adversaires de l'événement...")
+                                        await interaction.followup.send(f"📂 Historique GAC détecté ! J'ai mis {len(parsed_data['hub_links'])} matchs dans la file d'attente. Le bot va les traiter silencieusement en arrière-plan (cela prendra quelques minutes).")
                                     except:
                                         pass
                                 continue
@@ -234,10 +235,11 @@ class GACHistoryScraper:
                             hub_links.append(full_url)
                             
                 if hub_links:
-                    logger.info(f"🔗 Page Hub détectée, {len(hub_links)} sous-liens de matchs trouvés !")
-                    # On retourne seulement les 3 premiers (le dernier événement GAC complet)
-                    # pour éviter que le bot ne scrape 30 pages d'un coup
-                    return {"matches": [], "hub_links": hub_links[:3]}
+                    # On peut extraire plus de matchs, par exemple 9 (soit une saison entière GAC)
+                    # ou tout garder si l'utilisateur le souhaite. Pour l'instant, on limite à 9
+                    limit = 9
+                    logger.info(f"🔗 Page Hub détectée, {len(hub_links)} sous-liens de matchs trouvés ! (On garde les {limit} premiers)")
+                    return {"matches": [], "hub_links": hub_links[:limit]}
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
             return {"matches": matches}

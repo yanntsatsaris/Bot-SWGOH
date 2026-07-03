@@ -26,7 +26,16 @@ async def main():
         page = await context.new_page()
 
         print("3. Application du camouflage (Stealth) pour tromper Cloudflare...")
-        await stealth(page)
+        import playwright_stealth
+        try:
+            if hasattr(playwright_stealth, 'stealth_async'):
+                await playwright_stealth.stealth_async(page)
+            elif hasattr(playwright_stealth, 'stealth') and hasattr(playwright_stealth.stealth, 'stealth_async'):
+                await getattr(playwright_stealth.stealth, 'stealth_async')(page)
+            else:
+                print("⚠️ Impossible de trouver stealth_async dans la lib. On essaie sans camouflage !")
+        except Exception as e:
+            print(f"⚠️ Erreur stealth ignorée : {e}")
 
         print(f"4. Navigation vers {target_url} ...")
         # On attend que le réseau soit calme pour s'assurer que les scripts Cloudflare sont chargés

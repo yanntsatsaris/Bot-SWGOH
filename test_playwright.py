@@ -13,8 +13,17 @@ async def main():
         # C'est la méthode recommandée par la doc que tu m'as envoyée
         async with Stealth().use_async(async_playwright()) as p:
             
-            print("2. Lancement du navigateur Chromium (headless)...")
-            browser = await p.chromium.launch(headless=True)
+            print("2. Lancement du navigateur Chromium (avec activation de ta Quadro P4000)...")
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--ignore-gpu-blocklist',        # Ignore les restrictions de base
+                    '--enable-gpu-rasterization',    # Force le rendu par le GPU
+                    '--enable-webgl',                # Active WebGL matériel
+                    '--use-gl=desktop',              # Demande le pilote OpenGL de la machine (Quadro)
+                    '--disable-software-rasterizer'  # Interdit à Chrome d'utiliser le processeur graphique logiciel (SwiftShader)
+                ]
+            )
             
             print("3. Création de la page camouflée...")
             # Le camouflage s'applique automatiquement sur les pages créées ici

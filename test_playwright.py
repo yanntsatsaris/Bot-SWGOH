@@ -32,12 +32,11 @@ async def main():
                 print(f"⚠️ Erreur ou Timeout lors du chargement : {e}")
 
             print("5. Recherche de la case à cocher Cloudflare...")
-            print("5. Tentative de clic à l'aveugle (Coordonnées exactes d'après ton image)...")
+            print("5. Tentative de clic à l'aveugle (Coordonnées ajustées)...")
             try:
-                # J'ai analysé ton image : le contenu n'est pas centré au milieu, 
-                # il est dans une colonne qui commence environ à un quart de l'écran (X ~ 520).
-                # La case est située sous le texte, environ à un tiers de la hauteur (Y ~ 330).
-                x, y = 520, 330
+                # Correction de la visée ! Le premier essai était un peu trop à gauche et un peu trop haut.
+                # On se décale vers la droite (+15px) et vers le bas (+10px) pour taper en plein dans le carré.
+                x, y = 535, 340
                 
                 print(f"🎯 Mouvement de souris humain simulé vers la case (X={x}, Y={y})...")
                 await page.mouse.move(x, y, steps=35)
@@ -47,6 +46,7 @@ async def main():
                 await page.mouse.click(x, y, delay=150)
                 
                 # On attend 2 petites secondes
+                await page.wait_for_timeout(2000)
                 await page.wait_for_timeout(2000)
                 
                 # INJECTION VISUELLE : On dessine un gros point rouge là où on a cliqué 

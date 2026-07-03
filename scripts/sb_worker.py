@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+from pyvirtualdisplay import Display
 from seleniumbase import SB
 
 # Force Python à afficher les logs instantanément sans attendre la fin du script
@@ -9,9 +10,17 @@ sys.stderr.reconfigure(line_buffering=True)
 
 def scrape(target_url, ally_code):
     print(f"[WORKER] Démarrage du scraping pour {target_url}...")
+    print(f"[DEBUG] Utilisateur : {os.environ.get('USER', 'Inconnu')}")
+    print(f"[DEBUG] Dossier HOME : {os.environ.get('HOME', 'Inconnu')}")
+    
     try:
-        print("[WORKER] Lancement de SeleniumBase (Xvfb + UC)...")
-        with SB(uc=True, xvfb=True, headless=False) as sb:
+        print("[WORKER] Démarrage manuel de l'écran virtuel (Xvfb)...")
+        display = Display(visible=0, size=(1920, 1080))
+        display.start()
+        print("[WORKER] Écran virtuel Xvfb démarré avec succès !")
+        
+        print("[WORKER] Lancement de SeleniumBase (UC Chrome)...")
+        with SB(uc=True, headless=False) as sb:
             print("[WORKER] Navigateur démarré. Chargement de la page avec Reconnect...")
             sb.uc_open_with_reconnect(target_url, reconnect_time=4)
             

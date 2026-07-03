@@ -1,7 +1,7 @@
 import asyncio
 import time
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import stealth
 
 async def main():
     print("🚀 Démarrage du test de Scraping Lourd (Playwright + Stealth)")
@@ -25,7 +25,7 @@ async def main():
         page = await context.new_page()
         
         print("3. Application du camouflage (Stealth) pour tromper Cloudflare...")
-        await stealth_async(page)
+        await stealth(page)
         
         print(f"4. Navigation vers {target_url} ...")
         # On attend que le réseau soit calme pour s'assurer que les scripts Cloudflare sont chargés

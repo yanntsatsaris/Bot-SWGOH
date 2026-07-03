@@ -29,10 +29,37 @@ async def main():
             except Exception as e:
                 print(f"⚠️ Erreur ou Timeout lors du chargement : {e}")
 
-            print("5. Attente de 10 secondes pour laisser le défi Cloudflare se résoudre...")
-            await page.wait_for_timeout(10000)
+            print("5. Recherche de la case à cocher Cloudflare...")
+            try:
+                # On cherche l'iframe (la fenêtre incrustée) de Cloudflare Turnstile
+                iframe_locator = page.locator("iframe").first
+                await iframe_locator.wait_for(state="visible", timeout=5000)
+                
+                # Récupère les coordonnées exactes de la case sur l'écran
+                box = await iframe_locator.bounding_box()
+                if box:
+                    # On vise le premier tiers de la case (là où se trouve généralement la checkbox)
+                    x = box['x'] + 30
+                    y = box['y'] + box['height'] / 2
+                    
+                    print(f"🎯 Mouvement de souris humain simulé vers X={x}, Y={y}...")
+                    # On bouge la souris lentement (steps=20) pour faire croire qu'on est humain
+                    await page.mouse.move(x, y, steps=20)
+                    await page.wait_for_timeout(500) # Petite pause comme un humain qui hésite
+                    
+                    print("🖱️ Clic !")
+                    await page.mouse.down()
+                    await page.wait_for_timeout(100) # Durée du clic
+                    await page.mouse.up()
+                else:
+                    print("❌ Impossible de trouver les coordonnées de la case.")
+            except Exception as e:
+                print(f"⚠️ La case n'a pas pu être cliquée : {e}")
+
+            print("6. Attente de 15 secondes pour voir si le clic a débloqué la situation...")
+            await page.wait_for_timeout(15000)
             
-            print("6. Analyse du résultat...")
+            print("7. Analyse du résultat...")
             title = await page.title()
             content = await page.content()
 

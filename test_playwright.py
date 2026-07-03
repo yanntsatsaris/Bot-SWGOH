@@ -46,10 +46,29 @@ async def main():
                 print("🖱️ Clic !")
                 await page.mouse.click(x, y, delay=150)
                 
-                # On attend 2 petites secondes et on prend tout de suite une photo pour voir si la case a réagi !
+                # On attend 2 petites secondes
                 await page.wait_for_timeout(2000)
+                
+                # INJECTION VISUELLE : On dessine un gros point rouge là où on a cliqué 
+                # pour que tu le voies sur la photo !
+                await page.evaluate(f"""
+                    const dot = document.createElement('div');
+                    dot.style.position = 'absolute';
+                    dot.style.left = '{x}px';
+                    dot.style.top = '{y}px';
+                    dot.style.width = '16px';
+                    dot.style.height = '16px';
+                    dot.style.backgroundColor = 'red';
+                    dot.style.border = '2px solid black';
+                    dot.style.borderRadius = '50%';
+                    dot.style.transform = 'translate(-50%, -50%)';
+                    dot.style.zIndex = '999999';
+                    document.body.appendChild(dot);
+                """)
+                
+                # On prend la photo avec le point rouge
                 await page.screenshot(path="cloudflare_after_click.png", full_page=True)
-                print("📸 Capture d'écran juste après le clic sauvegardée sous 'cloudflare_after_click.png'")
+                print("📸 Capture d'écran (avec le point rouge du clic) sauvegardée sous 'cloudflare_after_click.png'")
                 
             except Exception as e:
                 print(f"⚠️ Le clic a échoué : {e}")

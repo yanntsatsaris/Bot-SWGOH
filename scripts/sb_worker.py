@@ -10,8 +10,14 @@ sys.stderr.reconfigure(line_buffering=True)
 
 def scrape(target_url, ally_code):
     print(f"[WORKER] Démarrage du scraping pour {target_url}...")
+    # FORCER le dossier HOME vers le dossier du bot (qui est 100% accessible en écriture)
+    # Souvent les utilisateurs systemd (botswgoh) n'ont pas de vrai /home/botswgoh physique
+    project_dir = "/opt/bot-swgoh"
+    os.environ["HOME"] = project_dir
+    os.environ["XDG_CONFIG_HOME"] = os.path.join(project_dir, ".config")
+    
     print(f"[DEBUG] Utilisateur : {os.environ.get('USER', 'Inconnu')}")
-    print(f"[DEBUG] Dossier HOME : {os.environ.get('HOME', 'Inconnu')}")
+    print(f"[DEBUG] Dossier HOME forcé : {os.environ.get('HOME', 'Inconnu')}")
     
     try:
         print("[WORKER] Démarrage manuel de l'écran virtuel (Xvfb)...")
@@ -19,8 +25,12 @@ def scrape(target_url, ally_code):
         display.start()
         print("[WORKER] Écran virtuel Xvfb démarré avec succès !")
         
-        print("[WORKER] Lancement de SeleniumBase (UC Chrome)...")
-        with SB(uc=True, headless=False) as sb:
+        # On définit un profil Chrome spécifique à l'intérieur du projet pour éviter
+        # que Chrome n'essaie d'écrire dans /home/botswgoh qui n'existe peut-être pas
+        profile_dir = os.path.join(project_dir, "chrome_profile")
+        
+        print(f"[WORKER] Lancement de SeleniumBase (Profil: {profile_dir})...")
+        with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             print("[WORKER] Navigateur démarré. Chargement de la page avec Reconnect...")
             sb.uc_open_with_reconnect(target_url, reconnect_time=4)
             

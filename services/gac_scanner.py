@@ -101,12 +101,23 @@ async def fetch_and_store_roster(
             ally_code = player_info.get("ally_code")
             player_id = player_info.get("player_id")
             
-            if ally_code:
-                profile = await comlink_client.get_player(allycode=str(ally_code).replace("-", ""))
-            elif player_id:
-                profile = await comlink_client.get_player(player_id=player_id)
-            else:
-                return False
+            profile = None
+            for attempt in range(3):
+                try:
+                    if ally_code:
+                        profile = await comlink_client.get_player(allycode=str(ally_code).replace("-", ""))
+                    elif player_id:
+                        profile = await comlink_client.get_player(player_id=player_id)
+                    else:
+                        return False
+                    break # Succès, on sort de la boucle
+                except Exception as e:
+                    if "disconnected" in str(e).lower() and attempt < 2:
+                        log.warning(f"Déconnexion du serveur pour {player_id or ally_code}, tentative {attempt + 2}...")
+                        await asyncio.sleep(1) # Pause avant de réessayer
+                    else:
+                        log.warning(f"Erreur roster {player_info.get('player_id')}: {e}")
+                        return False
 
             if not profile:
                 return False

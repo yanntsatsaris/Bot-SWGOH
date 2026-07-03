@@ -32,31 +32,21 @@ async def main():
                 print(f"⚠️ Erreur ou Timeout lors du chargement : {e}")
 
             print("5. Recherche de la case à cocher Cloudflare...")
+            print("5. Tentative de clic à l'aveugle (Le widget n'est pas une iframe classique)...")
             try:
-                # On cherche l'iframe de Cloudflare (parfois il met du temps à apparaître)
-                iframe_locator = page.locator("iframe").first
-                await iframe_locator.wait_for(state="visible", timeout=15000)
+                # Cloudflare est intelligent : il détecte qu'on est "headless" (invisible) 
+                # et refuse même de charger la case à cocher (c'est pour ça qu'il ne trouve pas d'iframe) !
+                # On va tenter de cliquer approximativement au milieu de la page
+                x, y = 1920 / 2, 1080 / 2
                 
-                # Récupère les coordonnées exactes du cadre sur l'écran
-                box = await iframe_locator.bounding_box()
-                if box:
-                    # Dans Turnstile, la case à cocher est généralement située sur le tiers gauche du cadre
-                    x = box['x'] + 40
-                    y = box['y'] + (box['height'] / 2)
-                    
-                    print(f"🎯 Cadre trouvé ! Mouvement de souris humain simulé vers X={x}, Y={y}...")
-                    
-                    # On bouge la souris très lentement et de manière hachée (steps plus élevés)
-                    await page.mouse.move(x, y, steps=35)
-                    await page.wait_for_timeout(800) # Petite pause "humaine"
-                    
-                    print("🖱️ Clic !")
-                    # Un clic avec un léger délai (delay) pour simuler la pression physique d'un doigt
-                    await page.mouse.click(x, y, delay=150)
-                else:
-                    print("❌ Impossible de trouver les coordonnées du cadre.")
+                print(f"🎯 Mouvement de souris humain simulé vers le centre X={x}, Y={y}...")
+                await page.mouse.move(x, y, steps=35)
+                await page.wait_for_timeout(800) # Petite pause "humaine"
+                
+                print("🖱️ Clic !")
+                await page.mouse.click(x, y, delay=150)
             except Exception as e:
-                print(f"⚠️ Le widget Turnstile n'a pas pu être ciblé : {e}")
+                print(f"⚠️ Le clic a échoué : {e}")
 
             print("6. Attente de 15 secondes pour laisser l'IA Cloudflare analyser notre clic...")
             await page.wait_for_timeout(15000)

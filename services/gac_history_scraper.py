@@ -67,21 +67,35 @@ class GACHistoryScraper:
                 )
                 
                 try:
-                    # On laisse 60 secondes maximum au navigateur pour faire son travail
-                    stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=60.0)
-                    
-                    output_log = stdout.decode().strip()
-                    error_log = stderr.decode().strip()
+                    # Fonction pour lire les logs en temps réel
+                    async def read_stream(stream, is_error=False):
+                        async for line in stream:
+                            msg = line.decode().strip()
+                            if msg:
+                                if is_error:
+                                    logger.error(f"[WORKER] {msg}")
+                                else:
+                                    logger.info(f"{msg}")
+
+                    # On lance la lecture en parallèle
+                    await asyncio.wait_for(
+                        asyncio.gather(
+                            read_stream(process.stdout),
+                            read_stream(process.stderr, is_error=True),
+                            process.wait()
+                        ),
+                        timeout=150.0
+                    )
                     
                     if process.returncode == 0:
-                        logger.info(f"✅ Subprocess a réussi :\n{output_log}")
+                        logger.info(f"✅ Subprocess a réussi (Code 0)")
                         if interaction:
                             try:
                                 await interaction.followup.send(f"🏆 Fichier HTML sauvegardé avec succès pour {clean_code} !")
                             except:
                                 pass
                     else:
-                        logger.error(f"❌ Échec du Subprocess (Code {process.returncode}):\n{error_log}\n{output_log}")
+                        logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
                         if interaction:
                             try:
                                 await interaction.followup.send(f"❌ Le scraping a échoué (regarde la console).")

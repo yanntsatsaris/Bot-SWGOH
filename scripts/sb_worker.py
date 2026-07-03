@@ -1,20 +1,31 @@
 import sys
 import os
+import time
 from seleniumbase import SB
 
+# Force Python à afficher les logs instantanément sans attendre la fin du script
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 def scrape(target_url, ally_code):
-    print(f"Démarrage du scraping pour {target_url}...")
+    print(f"[WORKER] Démarrage du scraping pour {target_url}...")
     try:
-        # On utilise le mode UC avec Xvfb exactement comme dans ton test manuel
+        print("[WORKER] Lancement de SeleniumBase (Xvfb + UC)...")
         with SB(uc=True, xvfb=True, headless=False) as sb:
+            print("[WORKER] Navigateur démarré. Chargement de la page avec Reconnect...")
             sb.uc_open_with_reconnect(target_url, reconnect_time=4)
             
             try:
+                print("[WORKER] Tentative de clic sur le captcha Turnstile...")
                 sb.uc_gui_click_captcha()
+                print("[WORKER] Clic sur le Captcha effectué !")
             except Exception as e:
-                print(f"Captcha non trouvé ou passé automatiquement : {e}")
+                print(f"[WORKER] Captcha non trouvé ou passé automatiquement : {e}")
             
+            print("[WORKER] Attente de 8 secondes pour laisser la page charger...")
             sb.sleep(8)
+            
+            print("[WORKER] Récupération du code source HTML...")
             page_source = sb.get_page_source()
             
             if "Just a moment" in page_source or "Cloudflare" in page_source:

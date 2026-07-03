@@ -38,6 +38,16 @@ async def main():
 
             if "Just a moment" in title or "Cloudflare" in title:
                 print("\n❌ ÉCHEC : Cloudflare nous a repérés et bloqués au portillon (Turnstile).")
+                
+                # Sauvegarde du HTML pour inspection
+                with open("cloudflare_block.html", "w", encoding="utf-8") as f:
+                    f.write(content)
+                print("💾 Le code HTML complet a été sauvegardé dans 'cloudflare_block.html'")
+                
+                # Sauvegarde d'une capture d'écran (très utile pour voir à quoi ressemble le blocage)
+                await page.screenshot(path="cloudflare_block.png", full_page=True)
+                print("📸 Une capture d'écran a été sauvegardée sous 'cloudflare_block.png'")
+                
             elif "Not Found" in title or "404" in title:
                 print("\n⚠️ Page introuvable.")
             else:

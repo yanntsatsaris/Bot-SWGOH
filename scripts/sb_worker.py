@@ -10,8 +10,8 @@ sys.stderr.reconfigure(line_buffering=True)
 def scrape(target_url, ally_code):
     print(f"[WORKER] Démarrage du scraping pour {target_url}...")
     try:
-        print("[WORKER] Lancement de SeleniumBase (Xvfb + UC + No Sandbox)...")
-        with SB(uc=True, xvfb=True, headless=False, no_sandbox=True) as sb:
+        print("[WORKER] Lancement de SeleniumBase (Xvfb + UC)...")
+        with SB(uc=True, xvfb=True, headless=False) as sb:
             print("[WORKER] Navigateur démarré. Chargement de la page avec Reconnect...")
             sb.uc_open_with_reconnect(target_url, reconnect_time=4)
             

@@ -77,10 +77,11 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
         round_number = 1 # Sera raffiné plus tard par l'URL
         
         # 2. Insertion du Round
+        # On ajoute format='5v5' pour respecter le schéma de la base de données déjà existante sur le serveur
         cursor = await db.execute(
             """
-            INSERT INTO gac_rounds (season_id, round_number, player_code, opponent_name)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO gac_rounds (season_id, round_number, player_code, opponent_name, format)
+            VALUES (?, ?, ?, ?, '5v5')
             """,
             (season_id, round_number, ally_code, opponent_name)
         )

@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import sys
 
 def analyze_gac_html():
-    filename = "gac_history_custom_url.html"
+    filename = "gac_history_26653958.html"
     try:
         with open(filename, "r", encoding="utf-8") as f:
             html = f.read()
@@ -40,16 +40,22 @@ def analyze_gac_html():
         parent = t.parent
         print(f"Onglet texte '{t.strip()}' -> tag: {parent.name}, classes: {parent.get('class')}")
         
-    print("\n--- Recherche des zones de combat pour séparer les matchs ---")
-    # On regarde s'il y a des grands conteneurs pour les deux listes de matchs
-    match_lists = soup.find_all('ul', class_=lambda c: c and 'match' in c.lower())
-    if not match_lists:
-        # Peut-être des divs avec id ?
-        for div in soup.find_all('div', id=True):
-            if 'attack' in div['id'].lower() or 'defense' in div['id'].lower():
-                print(f"Trouvé div avec id='{div['id']}'")
-                
-    # Pour l'instant, dis-moi juste s'il a trouvé des indices sur le joueur / onglets !
+    print("\n--- Recherche des liens sur la page Hub ---")
+    links = soup.find_all('a', href=True)
+    gac_links = []
+    for a in links:
+        href = a['href']
+        if 'gac-history' in href.lower() or 'event' in href.lower() or 'season' in href.lower():
+            gac_links.append(href)
+            
+    if gac_links:
+        print(f"Trouvé {len(gac_links)} liens GAC !")
+        for link in gac_links[:10]:
+            print(f"- {link}")
+    else:
+        print("Aucun lien GAC trouvé... voici 5 liens au hasard pour voir à quoi ils ressemblent :")
+        for a in links[:5]:
+            print(f"- {a['href']}")
 
 if __name__ == "__main__":
     analyze_gac_html()

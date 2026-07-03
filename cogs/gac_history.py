@@ -73,5 +73,28 @@ class GacHistoryCog(commands.Cog, name="GacHistory"):
 
         await interaction.followup.send(f"✅ Combat contre **{enemy_name}** enregistré !", ephemeral=True)
 
+    @app_commands.command(
+        name="gac-history-fetch",
+        description="Extrait l'historique GAC d'un joueur depuis swgoh.gg (Processus long : ~20s).",
+    )
+    @app_commands.describe(
+        ally_code="Code allié du joueur (ex: 123456789 ou 123-456-789)"
+    )
+    async def gac_history_fetch(
+        self,
+        interaction: discord.Interaction,
+        ally_code: str
+    ) -> None:
+        await interaction.response.defer()
+        
+        ally_code_clean = ally_code.replace("-", "").strip()
+        
+        # On vérifie que le scraper est bien initialisé
+        if not hasattr(self.bot, "gac_scraper"):
+            await interaction.followup.send("❌ Le service d'extraction GAC (Scraper) n'est pas actif sur ce serveur.")
+            return
+            
+        await self.bot.gac_scraper.queue_scrape(ally_code_clean, interaction)
+        
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(GacHistoryCog(bot))

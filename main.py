@@ -58,6 +58,12 @@ class SwgohBot(commands.Bot):
         """Appelé automatiquement par discord.py avant la connexion."""
         # 1. Initialisation de la base de données
         await init_db()
+        from database.db import get_db
+        from services.gac_history_scraper import GACHistoryScraper
+
+        # 1.5 Initialisation du Scraper en arrière-plan
+        self.gac_scraper = GACHistoryScraper(get_db)
+        await self.gac_scraper.start()
 
         # 2. Chargement des cogs
         for extension in INITIAL_EXTENSIONS:

@@ -72,56 +72,37 @@ for bracket_num in range(200):  # brackets start at 0
 
 ---
 
-### Approach 2: Scraping swgoh.gg with Playwright (⚠️ Complex — Full Data)
+### Approach 2: Scraping swgoh.gg avec SeleniumBase UC (✅ VIABLE — Full Data)
 
-swgoh.gg is the **only** source that shows detailed per-round GAC history. The URL pattern is:
+swgoh.gg est la **seule** source qui affiche l'historique détaillé des matchs GAC round par round.
+L'URL est :
 ```
 https://swgoh.gg/p/{ally_code}/gac-history/
 ```
 
-This page shows:
-- Every GAC round with opponent name
-- Teams placed on defense (both players)
-- Teams used on offense (both players)  
-- Banners scored per attack
-- Final result (win/loss)
+Cette page contient :
+- Les équipes posées en défense
+- Les équipes utilisées en attaque
+- Les bannières marquées par round
+- Le résultat final (win/loss)
 
-**The problem (as noted in your dev_notes.md):**
-> Scraping web direct est écarté — swgoh.gg uses **Cloudflare Turnstile** protection. `curl_cffi` and `cloudscraper` both fail with 403. You need a **real browser** (Playwright/Selenium) to pass the invisible CAPTCHA.
+**Le problème initial (Résolu le 03/07/2026) :**
+swgoh.gg utilise la protection redoutable **Cloudflare Turnstile**. Les bibliothèques standards (`curl_cffi`, `playwright`, `cloudscraper`) échouent toutes face au mode "Headless".
 
-**If you want to pursue this:**
+**La Solution Architecturale (SeleniumBase UC + Xvfb) :**
+Grâce à un test grandeur nature, nous avons prouvé qu'il est possible de vaincre Cloudflare Turnstile sur un serveur Linux en ligne de commande en utilisant :
+1. **Xvfb (X Virtual Framebuffer)** : Pour créer un faux écran système.
+2. **Google Chrome installé nativement**.
+3. **SeleniumBase en mode UC (Undetected Chromedriver)** : Qui recompile le driver pour cacher l'automatisation.
+4. **La méthode `sb.uc_gui_click_captcha()`** : Une IA intégrée qui vise et clique le widget Turnstile physiquement.
 
-```python
-# Requires: pip install playwright
-# Then: playwright install chromium
+**Conséquences pour le bot :**
+Cette victoire change totalement la donne. Le bot n'a plus à dépendre uniquement des logs manuels (`/gac-log-round`). Il peut **extraire automatiquement** le vrai historique des adversaires.
 
-from playwright.async_api import async_playwright
-
-async def scrape_gac_history(ally_code: str) -> dict:
-    async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page()
-        
-        url = f"https://swgoh.gg/p/{ally_code}/gac-history/"
-        await page.goto(url, wait_until="networkidle")
-        
-        # Wait for Cloudflare challenge to complete
-        await page.wait_for_timeout(5000)
-        
-        # The GAC history page loads data via XHR — intercept it
-        # or parse the rendered DOM
-        content = await page.content()
-        
-        await browser.close()
-        return parse_gac_html(content)
-```
-
-**Downsides:**
-- Heavy dependency (Chromium binary ~400MB)
-- Fragile (Cloudflare may block headless browsers)
-- Slow (~5-10s per page load)
-- Can break if swgoh.gg changes HTML structure
-- Rate limiting risk (IP ban)
+**Points d'attention (Downsides gérables) :**
+- L'extraction prend environ 15-20 secondes par profil (à cause du défi Turnstile).
+- Il faut concevoir ce scraper comme une tâche de fond asynchrone (Background Task) pour ne pas bloquer les commandes Discord.
+- La structure HTML de swgoh.gg (`div` et `classes`) devra être parsée avec BeautifulSoup.
 
 ---
 

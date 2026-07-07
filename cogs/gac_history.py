@@ -85,7 +85,7 @@ class GacHistoryCog(commands.Cog, name="GacHistory"):
         interaction: discord.Interaction,
         ally_code: str
     ) -> None:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         
         if ally_code.startswith("http"):
             ally_code_clean = ally_code.strip()

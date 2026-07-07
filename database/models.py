@@ -153,5 +153,18 @@ CREATE_TABLES_SQL: list[str] = [
         outcome        TEXT    NOT NULL,
         format         TEXT    CHECK(format IN ('3v3','5v5'))
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_round_teams (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        round_id       INTEGER NOT NULL REFERENCES gac_rounds(id) ON DELETE CASCADE,
+        side           TEXT    NOT NULL CHECK(side IN ('offense', 'defense')),
+        owner          TEXT    NOT NULL CHECK(owner IN ('player', 'opponent')),
+        zone           TEXT,
+        leader_id      TEXT    NOT NULL,
+        members_ids    TEXT    NOT NULL,
+        banners        INTEGER,
+        success        BOOLEAN NOT NULL DEFAULT 1
+    )
     """
 ]

@@ -256,8 +256,11 @@ class GACHistoryScraper:
             if defense_div:
                 parse_section(defense_div, is_attack=False)
                 
-            if not matches:
-                # On est probablement sur la page HUB générale (la liste de toutes les saisons)
+            # On vérifie si c'est vraiment la page HUB (l'URL se termine par gac-history/)
+            is_hub_page = target_url.endswith('gac-history/') if target_url else not matches
+            
+            if is_hub_page:
+                # On est sur la page HUB générale (la liste de toutes les saisons)
                 # On cherche les liens vers les matchs individuels
                 hub_links = []
                 for a in soup.find_all('a', href=True):

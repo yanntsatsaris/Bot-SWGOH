@@ -34,15 +34,36 @@ def scrape(target_url, ally_code):
             print("[WORKER] Navigateur démarré. Chargement de la page avec Reconnect...")
             sb.uc_open_with_reconnect(target_url, reconnect_time=4)
             
-            try:
-                print("[WORKER] Tentative de clic sur le captcha Turnstile...")
-                sb.uc_gui_click_captcha()
-                print("[WORKER] Clic sur le Captcha effectué !")
-            except Exception as e:
-                print(f"[WORKER] Captcha non trouvé ou passé automatiquement : {e}")
+            # Check rapide : est-ce que Cloudflare est présent ?
+            quick_check = sb.get_page_source()
             
-            print("[WORKER] Attente de 8 secondes pour laisser la page charger...")
-            sb.sleep(8)
+            cloudflare_present = (
+                "Just a moment" in quick_check
+                or "cf-turnstile" in quick_check
+                or "Checking your browser" in quick_check
+            )
+            
+            if cloudflare_present:
+                print("[WORKER] ⚠️ Cloudflare détecté, clic en cours...")
+                try:
+                    sb.uc_gui_click_captcha()
+                    print("[WORKER] ✅ Clic effectué")
+                except Exception as e:
+                    print(f"[WORKER] Clic échoué : {e}")
+                wait_time = 8  # Attente longue après challenge
+            else:
+                print("[WORKER] ✅ Pas de Cloudflare")
+                wait_time = 2  # Attente courte pour rendu JS
+            
+            # Attente adaptive : poll au lieu de sleep fixe
+            print(f"[WORKER] Attente adaptative jusqu'à {wait_time}s pour chargement...")
+            for _ in range(wait_time * 2):  # Check toutes les 500ms
+                sb.sleep(0.5)
+                source = sb.get_page_source()
+                # On check soit le bloc stat, soit l'accueil des historiques
+                if "gac-counters-battle-summary" in source or "class=\"col-sm-6 col-md-6\"" in source:
+                    print("[WORKER] ✅ Contenu GAC détecté, stop de l'attente !")
+                    break
             
             print("[WORKER] Récupération du code source HTML...")
             page_source = sb.get_page_source()

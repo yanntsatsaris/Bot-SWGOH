@@ -15,6 +15,25 @@ class GACHistoryScraper:
         # On utilise un ThreadPool de 1 pour être sûr qu'un seul Chrome tourne à la fois
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
 
+    def _extract_round_info_from_url(self, url: str) -> dict | None:
+        """
+        Extrait ally_code, season_id et round_number depuis une URL swgoh.gg.
+        Ex: https://swgoh.gg/p/266539582/gac-history/O1782248400000/1/
+        """
+        if "gac-history/" not in url:
+            return None
+        parts = [p for p in url.split("/") if p]
+        try:
+            p_idx = parts.index("p")
+            hist_idx = parts.index("gac-history")
+            return {
+                "ally_code": parts[p_idx + 1],
+                "season_id": parts[hist_idx + 1],
+                "round": int(parts[hist_idx + 2]) if len(parts) > hist_idx + 2 else None,
+            }
+        except (ValueError, IndexError):
+            return None
+
     async def start(self):
         """Démarre le worker en arrière-plan."""
         if not self.is_running:
@@ -58,6 +77,20 @@ class GACHistoryScraper:
                 else:
                     target_url = f"https://swgoh.gg/p/{ally_code}/gac-history/"
                     clean_code = ally_code
+                    
+                # Vérification anti-doublon AVANT scraping
+                round_info = self._extract_round_info_from_url(target_url)
+                if round_info and round_info.get("round"):
+                    from database.db import get_db
+                    async with get_db() as db:
+                        cursor = await db.execute(
+                            "SELECT id FROM gac_rounds WHERE player_code=? AND season_id=? AND round_number=?",
+                            (round_info["ally_code"], round_info["season_id"], round_info["round"])
+                        )
+                        if await cursor.fetchone():
+                            logger.info(f"⏭️ Round déjà en BDD, skip du scraping pour {target_url}")
+                            self.queue.task_done()
+                            continue
                     
                 import sys
                 process = await asyncio.create_subprocess_exec(
@@ -234,14 +267,24 @@ class GACHistoryScraper:
                         if full_url not in hub_links:
                             hub_links.append(full_url)
                             
+                            
                 if hub_links:
-                    # L'utilisateur souhaite extraire la totalité de l'historique disponible (ex: 51 matchs)
-                    # la première fois, même si cela prend beaucoup de temps.
-                    logger.info(f"🔗 Page Hub détectée, {len(hub_links)} sous-liens de matchs trouvés ! (On les garde tous)")
-                    return {"matches": [], "hub_links": hub_links}
+                    # L'utilisateur souhaite extraire la totalité de l'historique disponible.
+                    # On trie pour prendre les plus récentes (les IDs sont des timestamps)
+                    hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
+                    # On limite aux 3 dernières saisons (9 rounds max)
+                    MAX_SEASONS = 3
+                    hub_links_filtered = hub_links_sorted[:MAX_SEASONS * 3]
+                    
+                    logger.info(f"🔗 Page Hub détectée, {len(hub_links_filtered)} sous-liens de matchs trouvés ! (Limité aux {MAX_SEASONS} dernières saisons)")
+                    return {"matches": [], "hub_links": hub_links_filtered}
+                
+            # Détection du format 5v5 vs 3v3
+            max_size = max((len(m["attacker_team"]) for m in matches if m["attacker_team"]), default=5)
+            detected_format = "3v3" if max_size <= 3 else "5v5"
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
-            return {"matches": matches}
+            return {"matches": matches, "format": detected_format}
             
         except Exception as e:
             logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")

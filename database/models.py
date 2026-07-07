@@ -133,7 +133,12 @@ CREATE_TABLES_SQL: list[str] = [
         season_id        TEXT    NOT NULL,
         round_number     INTEGER NOT NULL,
         player_code      TEXT    NOT NULL,
+        opponent_code    TEXT,
         opponent_name    TEXT,
+        result           TEXT    CHECK(result IN ('win','loss','draw')),
+        player_banners   INTEGER,
+        opponent_banners INTEGER,
+        format           TEXT    NOT NULL DEFAULT '5v5' CHECK(format IN ('3v3','5v5')),
         recorded_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
@@ -144,8 +149,9 @@ CREATE_TABLES_SQL: list[str] = [
         is_attack      BOOLEAN NOT NULL,
         attacker_team  TEXT    NOT NULL,
         defender_team  TEXT    NOT NULL,
-        banners        INTEGER NOT NULL,
-        outcome        TEXT    NOT NULL
+        banners        INTEGER NOT NULL DEFAULT 0,
+        outcome        TEXT    NOT NULL,
+        format         TEXT    CHECK(format IN ('3v3','5v5'))
     )
     """
 ]

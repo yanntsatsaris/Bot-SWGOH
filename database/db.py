@@ -32,6 +32,22 @@ async def init_db() -> None:
             log.info("Migration: colonne 'league' ajoutée à meta_teams.")
         except aiosqlite.OperationalError:
             pass  # La colonne existe déjà
+
+        # Migrations GAC Rounds et Matches
+        migrations = [
+            "ALTER TABLE gac_rounds ADD COLUMN opponent_code TEXT",
+            "ALTER TABLE gac_rounds ADD COLUMN result TEXT",
+            "ALTER TABLE gac_rounds ADD COLUMN player_banners INTEGER",
+            "ALTER TABLE gac_rounds ADD COLUMN opponent_banners INTEGER",
+            "ALTER TABLE gac_rounds ADD COLUMN format TEXT NOT NULL DEFAULT '5v5'",
+            "ALTER TABLE gac_matches ADD COLUMN format TEXT"
+        ]
+        for migration in migrations:
+            try:
+                await db.execute(migration)
+                log.info(f"Migration appliquée : {migration}")
+            except aiosqlite.OperationalError:
+                pass # Colonne existante
             
         await db.commit()
 
@@ -102,13 +118,14 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
             return
         
         # 2. Insertion du Round
-        # On ajoute format='5v5' pour respecter le schéma de la base de données déjà existante sur le serveur
+        # On utilise le format détecté dans _parse_html (défaut '5v5')
+        detected_format = parsed_data.get("format", "5v5")
         cursor = await db.execute(
             """
             INSERT INTO gac_rounds (season_id, round_number, player_code, opponent_name, format)
-            VALUES (?, ?, ?, ?, '5v5')
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (season_id, round_number, real_ally_code, opponent_name)
+            (season_id, round_number, real_ally_code, opponent_name, detected_format)
         )
         round_id = cursor.lastrowid
         
@@ -120,10 +137,10 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
             await db.execute(
                 """
                 INSERT INTO gac_matches 
-                (round_id, is_attack, attacker_team, defender_team, banners, outcome)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (round_id, is_attack, attacker_team, defender_team, banners, outcome, format)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (round_id, match["is_attack"], attacker_json, defender_json, match["banners"], match["outcome"])
+                (round_id, match["is_attack"], attacker_json, defender_json, match["banners"], match["outcome"], detected_format)
             )
         
         await db.commit()

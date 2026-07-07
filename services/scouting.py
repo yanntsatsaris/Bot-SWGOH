@@ -58,10 +58,35 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
         }
     return roster
 
-def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
+def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = None) -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
+    
+    # 0. INJECTION DE L'HISTORIQUE RÉEL
+    if habits and habits.get("total_rounds", 0) > 0:
+        mapping = {"top": "North", "bottom": "South", "back": "Back", "fleet": "Fleet"}
+        for hz, h_name in mapping.items():
+            teams = habits["zones"].get(hz, [])
+            quota = quotas.get(h_name, 0)
+            
+            # Prendre les N équipes les plus fréquentes (où N = quota de la zone)
+            for t in teams[:quota]:
+                leader = t["leader_id"]
+                members = t["members"]
+                percent = t["percent"]
+                
+                valid_members = [m for m in members if m not in used_base_ids]
+                if leader not in used_base_ids:
+                    # Ajout de l'équipe historique
+                    zones[h_name].append({
+                        "leader_id": leader,
+                        "members_ids": valid_members,
+                        "source": f"Historique ({percent}%)",
+                        "target_size": expected_size if hz != "fleet" else 5
+                    })
+                    used_base_ids.add(leader)
+                    used_base_ids.update(valid_members)
     
     # 1. PERSONNAGES
     available_teams = []
@@ -147,7 +172,8 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
     
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
-        for _ in range(q):
+        remaining_q = max(0, q - len(zones[zone]))
+        for _ in range(remaining_q):
             placed = False
             for t in available_teams:
                 # Interdiction de placer une équipe d'Attaque pure (Défense <= 2) en Défense
@@ -244,7 +270,8 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str) -> dict:
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
     
     fleet_quota = quotas.get("Fleet", 1)
-    for _ in range(fleet_quota):
+    remaining_fleet_q = max(0, fleet_quota - len(zones["Fleet"]))
+    for _ in range(remaining_fleet_q):
         placed = False
         for f in available_fleets:
             if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
@@ -310,7 +337,10 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     omicron_dict = await get_omicron_dict()
     enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict)
     
-    enemy_zones = _predict_zones(enemy_index, quotas, fmt)
+    from services.gac_scout_analyzer import GacScoutAnalyzer
+    habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
+    
+    enemy_zones = _predict_zones(enemy_index, quotas, fmt, habits)
     
     result = {
         "enemy_name": enemy_name,

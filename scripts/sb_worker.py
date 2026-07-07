@@ -1,17 +1,19 @@
 import sys
 import os
+
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
+if __name__ == "__main__":
+    if len(sys.argv) >= 3:
+        print(f"[WORKER] Lancement du script pour {sys.argv[1]}...", flush=True)
+
 import time
 from pyvirtualdisplay import Display
 from seleniumbase import SB
 
-# Force Python à afficher les logs instantanément sans attendre la fin du script
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
-
 def scrape(target_url, ally_code):
-    print(f"[WORKER] Démarrage du scraping pour {target_url}...")
-    # FORCER le dossier HOME vers le dossier du bot (qui est 100% accessible en écriture)
-    # Souvent les utilisateurs systemd (botswgoh) n'ont pas de vrai /home/botswgoh physique
+    print(f"[WORKER] Démarrage de la fonction scrape pour {target_url}...")
     project_dir = "/opt/bot-swgoh"
     os.environ["HOME"] = project_dir
     os.environ["XDG_CONFIG_HOME"] = os.path.join(project_dir, ".config")

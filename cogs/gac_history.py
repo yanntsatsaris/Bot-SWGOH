@@ -74,13 +74,13 @@ class GacHistoryCog(commands.Cog, name="GacHistory"):
         await interaction.followup.send(f"✅ Combat contre **{enemy_name}** enregistré !", ephemeral=True)
 
     @app_commands.command(
-        name="gac-scout",
-        description="Analyse les habitudes défensives d'un joueur (récupère l'historique silencieusement si besoin).",
+        name="gac-history-fetch",
+        description="Extrait l'historique GAC d'un joueur depuis swgoh.gg (Processus long : ~20s).",
     )
     @app_commands.describe(
         ally_code="Code allié du joueur (ex: 123456789 ou 123-456-789)"
     )
-    async def gac_scout(
+    async def gac_history_fetch(
         self,
         interaction: discord.Interaction,
         ally_code: str

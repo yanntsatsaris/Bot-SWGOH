@@ -102,55 +102,70 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         format_gac: app_commands.Choice[str]
     ) -> None:
         """Commande principale pour scouter un ennemi."""
-        await interaction.response.defer(thinking=True)
+        # On met le message initial en éphémère (silencieux) pour masquer le processus
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send("🔍 Vérification de l'historique en cours... Le résultat sera posté publiquement ici dès que c'est prêt !", ephemeral=True)
+        
         try:
-            # Récupère l'ally code du joueur s'il est enregistré
-            my_ally_code = None
-            async with get_db() as db:
-                cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(interaction.user.id),))
-                row = await cursor.fetchone()
-                if row:
-                    my_ally_code = row["ally_code"]
+            # Fonction callback qui sera appelée quand le scraper aura fini
+            async def on_scrape_finished(ally_code: str, inter: discord.Interaction):
+                try:
+                    my_ally_code = None
+                    async with get_db() as db:
+                        cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(inter.user.id),))
+                        row = await cursor.fetchone()
+                        if row:
+                            my_ally_code = row["ally_code"]
+                            
+                    from services.scouting import get_scout_data
+                    from services.scout_image import generate_scout_map
                     
-            from services.scouting import get_scout_data
-            from services.scout_image import generate_scout_map
+                    scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code)
+                    
+                    files = []
+                    
+                    enemy_img = generate_scout_map(
+                        scout_data["zones"], 
+                        scout_data["quotas"], 
+                        scout_data["league"], 
+                        scout_data["format"], 
+                        scout_data["enemy_name"] + " (Ennemi)", 
+                        scout_data["source"]
+                    )
+                    files.append(discord.File(enemy_img, filename="enemy_defense.png"))
+                    
+                    if "my_zones" in scout_data:
+                        my_img = generate_scout_map(
+                            scout_data["my_zones"], 
+                            scout_data["quotas"], 
+                            scout_data["league"], 
+                            scout_data["format"], 
+                            scout_data["my_name"] + " (Ta Défense Suggérée)", 
+                            "Contre-Défense Optimisée"
+                        )
+                        files.append(discord.File(my_img, filename="my_defense.png"))
+                    
+                    msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !"
+                    if not my_ally_code:
+                        msg += "\n*Astuce : Utilise `/register` pour que le bot te propose aussi une défense sur mesure !*"
+                        
+                    await inter.channel.send(content=msg, files=files)
+                except Exception as e:
+                    log.exception("Erreur lors de la génération de l'image de scouting : %s", e)
+                    await inter.channel.send(f"<@{inter.user.id}> ❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
+
+            # Lance le scraper en arrière-plan avec notre callback
+            clean_code = code_ennemi.replace("-", "").strip()
             
-            scout_data = await get_scout_data(code_ennemi, format_gac.value, my_ally_code)
-            
-            files = []
-            
-            # Map de l'ennemi
-            enemy_img = generate_scout_map(
-                scout_data["zones"], 
-                scout_data["quotas"], 
-                scout_data["league"], 
-                scout_data["format"], 
-                scout_data["enemy_name"] + " (Ennemi)", 
-                scout_data["source"]
-            )
-            files.append(discord.File(enemy_img, filename="enemy_defense.png"))
-            
-            # Map du joueur (suggestion)
-            if "my_zones" in scout_data:
-                my_img = generate_scout_map(
-                    scout_data["my_zones"], 
-                    scout_data["quotas"], 
-                    scout_data["league"], 
-                    scout_data["format"], 
-                    scout_data["my_name"] + " (Ta Défense Suggérée)", 
-                    "Contre-Défense Optimisée"
-                )
-                files.append(discord.File(my_img, filename="my_defense.png"))
-            
-            msg = "Voici la prédiction de la GAC !"
-            if not my_ally_code:
-                msg += "\n*Astuce : Utilise `/register` pour que le bot te propose aussi une défense sur mesure !*"
+            if not hasattr(self.bot, "gac_scraper"):
+                await interaction.followup.send("❌ Le service d'extraction GAC (Scraper) n'est pas actif sur ce serveur.")
+                return
                 
-            await interaction.followup.send(content=msg, files=files)
+            await self.bot.gac_scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
             
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)
-            await interaction.followup.send(f"❌ Impossible de scouter cet ennemi : {e}")
+            await interaction.followup.send(f"❌ Impossible d'initier le scouting : {e}")
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(GACScoutCog(bot))

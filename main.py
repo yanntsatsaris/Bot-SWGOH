@@ -38,6 +38,7 @@ INITIAL_EXTENSIONS = [
     "cogs.meta_scanner",
     "cogs.meta_manager",
     "cogs.gac_scanner",
+    "cogs.gac_global_meta",
 ]
 
 

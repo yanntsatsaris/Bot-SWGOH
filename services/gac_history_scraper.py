@@ -14,6 +14,8 @@ class GACHistoryScraper:
         self._worker_task = None
         # On utilise un ThreadPool de 1 pour être sûr qu'un seul Chrome tourne à la fois
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        self.pending_tasks = {}
+        self.interactions = {}
 
     def _extract_round_info_from_url(self, url: str) -> dict | None:
         """
@@ -51,6 +53,17 @@ class GACHistoryScraper:
 
     async def queue_scrape(self, ally_code: str, interaction=None):
         """Ajoute un joueur à la file d'attente pour être scrapé."""
+        if interaction:
+            clean_code = ally_code.replace("-", "").strip() if not ally_code.startswith("http") else self._extract_round_info_from_url(ally_code).get("ally_code", "unknown")
+            if clean_code != "unknown":
+                self.interactions[clean_code] = interaction
+                self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+        else:
+            round_info = self._extract_round_info_from_url(ally_code)
+            if round_info and round_info.get("ally_code"):
+                clean_code = round_info["ally_code"]
+                self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+
         await self.queue.put((ally_code, interaction))
         logger.info(f"Ajout de {ally_code} à la file d'attente de scraping. (Taille: {self.queue.qsize()})")
 
@@ -65,7 +78,7 @@ class GACHistoryScraper:
                 
                 if interaction:
                     try:
-                        await interaction.followup.send(f"🔍 Début de l'extraction de l'historique pour {ally_code} (Patientez ~20s)...")
+                        await interaction.followup.send(ephemeral=True, content=f"🔍 Début de l'extraction de l'historique pour {ally_code} (Patientez ~20s)...")
                     except:
                         pass
                 
@@ -90,6 +103,15 @@ class GACHistoryScraper:
                         if await cursor.fetchone():
                             logger.info(f"⏭️ Round déjà en BDD, skip du scraping pour {target_url}")
                             self.queue.task_done()
+                            c_code = round_info["ally_code"]
+                            if c_code in self.pending_tasks:
+                                self.pending_tasks[c_code] -= 1
+                                if self.pending_tasks[c_code] <= 0:
+                                    del self.pending_tasks[c_code]
+                                    saved_int = self.interactions.pop(c_code, None)
+                                    if saved_int:
+                                        import asyncio
+                                        asyncio.create_task(self._send_scout_analysis(c_code, saved_int))
                             continue
                     
                 import sys
@@ -144,7 +166,7 @@ class GACHistoryScraper:
                                 
                                 if interaction:
                                     try:
-                                        await interaction.followup.send(f"📂 Historique GAC détecté ! J'ai mis {len(parsed_data['hub_links'])} matchs dans la file d'attente. Le bot va les traiter silencieusement en arrière-plan (cela prendra quelques minutes).")
+                                        await interaction.followup.send(ephemeral=True, content=f"📂 Historique GAC détecté ! J'ai mis {len(parsed_data['hub_links'])} matchs dans la file d'attente. Le bot va les traiter silencieusement en arrière-plan (cela prendra quelques minutes).")
                                     except:
                                         pass
                                 continue
@@ -156,7 +178,7 @@ class GACHistoryScraper:
                             if interaction:
                                 try:
                                     nb_matchs = len(parsed_data.get("matches", []))
-                                    await interaction.followup.send(f"🏆 Succès ! {nb_matchs} matchs ont été extraits et sauvegardés dans la base de données pour {clean_code} !")
+                                    await interaction.followup.send(ephemeral=True, content=f"🏆 Succès ! {nb_matchs} matchs ont été extraits et sauvegardés dans la base de données pour {clean_code} !")
                                 except:
                                     pass
                         else:
@@ -165,7 +187,7 @@ class GACHistoryScraper:
                         logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
                         if interaction:
                             try:
-                                await interaction.followup.send(f"❌ Le scraping a échoué (regarde la console).")
+                                await interaction.followup.send(ephemeral=True, content=f"❌ Le scraping a échoué (regarde la console).")
                             except:
                                 pass
                 except asyncio.TimeoutError:
@@ -173,11 +195,23 @@ class GACHistoryScraper:
                     logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 60 secondes.")
                     if interaction:
                         try:
-                            await interaction.followup.send(f"❌ Timeout : Cloudflare a fait planter le navigateur.")
+                            await interaction.followup.send(ephemeral=True, content=f"❌ Timeout : Cloudflare a fait planter le navigateur.")
                         except:
                             pass
                 
                 self.queue.task_done()
+                
+                # Check pending tasks
+                r_info = self._extract_round_info_from_url(target_url)
+                c_code = r_info["ally_code"] if r_info else clean_code
+                if c_code in self.pending_tasks:
+                    self.pending_tasks[c_code] -= 1
+                    if self.pending_tasks[c_code] <= 0:
+                        del self.pending_tasks[c_code]
+                        saved_int = self.interactions.pop(c_code, None)
+                        if saved_int:
+                            import asyncio
+                            asyncio.create_task(self._send_scout_analysis(c_code, saved_int))
                 
                 # Petite pause entre chaque profil pour ne pas affoler Cloudflare
                 await asyncio.sleep(5)
@@ -289,3 +323,24 @@ class GACHistoryScraper:
         except Exception as e:
             logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")
             return {"matches": []}
+
+    async def _send_scout_analysis(self, ally_code: str, interaction):
+        import discord
+        try:
+            from services.gac_scout_analyzer import GacScoutAnalyzer
+            habits = await GacScoutAnalyzer.get_defensive_habits(ally_code)
+            
+            if habits["total_rounds"] > 0:
+                embed = discord.Embed(title=f"🛡️ Analyse Défensive - {ally_code}", description=f"Basé sur {habits['total_rounds']} rounds 5v5", color=0x00ff00)
+                for zone, teams in habits["zones"].items():
+                    if teams:
+                        top_teams = teams[:3]
+                        text = ""
+                        for t in top_teams:
+                            text += f"**{t['leader_id']}** : {t['percent']}%\n"
+                        embed.add_field(name=f"Zone: {zone.upper()}", value=text, inline=False)
+                await interaction.channel.send(content=f"<@{interaction.user.id}> L'analyse de {ally_code} est prête !", embed=embed)
+            else:
+                await interaction.channel.send(content=f"<@{interaction.user.id}> L'analyse de {ally_code} est terminée mais aucune donnée défensive trouvée.")
+        except Exception as e:
+            logger.error(f"Erreur send_scout_analysis: {e}")

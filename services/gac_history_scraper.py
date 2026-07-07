@@ -272,12 +272,9 @@ class GACHistoryScraper:
                     # L'utilisateur souhaite extraire la totalité de l'historique disponible.
                     # On trie pour prendre les plus récentes (les IDs sont des timestamps)
                     hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
-                    # On limite aux 3 dernières saisons (9 rounds max)
-                    MAX_SEASONS = 3
-                    hub_links_filtered = hub_links_sorted[:MAX_SEASONS * 3]
-                    
-                    logger.info(f"🔗 Page Hub détectée, {len(hub_links_filtered)} sous-liens de matchs trouvés ! (Limité aux {MAX_SEASONS} dernières saisons)")
-                    return {"matches": [], "hub_links": hub_links_filtered}
+                    # On ne limite plus, on prend toutes les saisons trouvées
+                    logger.info(f"🔗 Page Hub détectée, {len(hub_links_sorted)} sous-liens de matchs trouvés ! (Toutes les saisons)")
+                    return {"matches": [], "hub_links": hub_links_sorted}
                 
             # Détection du format 5v5 vs 3v3
             max_size = max((len(m["attacker_team"]) for m in matches if m["attacker_team"]), default=5)

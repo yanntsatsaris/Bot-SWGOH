@@ -16,22 +16,19 @@ class GacMetaSquadsScraper:
         Génère l'URL, demande à sb_worker.py de récupérer le HTML (via le VPS),
         et parse les résultats.
         """
-        duel_type = 1 if format_type == "5v5" else 2
-        type_param = 1 if mode == "attack" else 2 # Hypothèse classique: 1=Attack, 2=Defense
-
-        target_url = f"https://swgoh.gg/gac/squads/?duel_type={duel_type}&type={type_param}"
+        # On passe directement à swgoh.gg/gac/squads/
+        target_url = "https://swgoh.gg/gac/squads/"
         
-        logger.info(f"Début du scraping global meta: {target_url}")
+        logger.info(f"Début du scraping global meta ({format_type} {mode}) via SPA worker...")
 
-        # On utilise le même worker que l'historique GAC
         output_file = "gac_meta_squads.html"
         
         # Ce code sera exécuté sur le VPS.
         import subprocess
         try:
-            # Lancement du worker SeleniumBase
+            # Lancement du worker SeleniumBase spécial SPA
             process = await asyncio.create_subprocess_exec(
-                "python3", "scripts/sb_worker.py", target_url, output_file,
+                "python3", "scripts/meta_sb_worker.py", target_url, output_file, format_type, mode,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )
@@ -39,7 +36,7 @@ class GacMetaSquadsScraper:
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                logger.error(f"Erreur sb_worker: {stderr.decode()}")
+                logger.error(f"Erreur meta_sb_worker: {stderr.decode()}")
                 return False
 
             if not os.path.exists(output_file):

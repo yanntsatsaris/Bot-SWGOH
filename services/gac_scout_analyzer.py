@@ -52,7 +52,7 @@ class GacScoutAnalyzer:
                     
                 if total_rounds > 0:
                     query_scraped = """
-                        SELECT m.defender_team, COUNT(*) as frequency
+                        SELECT m.defender_team, COUNT(DISTINCT r.id) as frequency
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE m.is_attack = 0

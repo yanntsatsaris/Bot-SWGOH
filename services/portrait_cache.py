@@ -165,6 +165,8 @@ def get_portrait_path(base_id: str) -> Path:
         "JEDISTARFIGHTERCONSULAR": "jedi_fighter",
         "ARC170CLONESERGEANT": "arc170",
         "ARC170REX": "arc170_02",
+        "PUNISHINGONE": "punishingone",
+        "TIEFIGHTER": "tiefighter",
         "MEONECROW": "comeuppance",
         "SITHBOMBER": "b28extinctionclassbomber",
         "SITHINFILTRATOR": "sithinfiltrator",

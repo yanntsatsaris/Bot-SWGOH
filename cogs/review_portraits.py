@@ -221,29 +221,43 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             return
             
         base_id = base_id.upper()
-        # Construit le chemin relatif officiel attendu par le système
-        image_path = f"assets/portraits/{nom_image}"
         
         # Vérifie si l'unité existe en BDD
         async with get_db() as db:
-            cursor = await db.execute("SELECT name FROM game_characters WHERE base_id = ?", (base_id,))
+            cursor = await db.execute("SELECT name, type FROM game_characters WHERE base_id = ?", (base_id,))
             row = await cursor.fetchone()
             
             if not row:
                 await interaction.response.send_message(f"⚠️ Aucun personnage trouvé avec l'ID `{base_id}`.", ephemeral=True)
                 return
                 
+            name = row["name"]
+            unit_type = row["type"]
+            
+            # Heuristique pour forcer le type vaisseau si besoin
+            KNOWN_SHIPS = {
+                "TIEFIGHTER", "SLAVE1", "EBONHAWK", "RAZORCREST", "XANADUBLOOD", "IG2000",
+                "HOUNDSTOOTH", "CAPITALEXECUTOR", "CAPITALCHIMAERA", "CAPITALSTARDESTROYER",
+                "SITHFIGHTER", "TIEBOMBER", "TIEADVANCED", "TIEECHELON", "TIESILENCER",
+                "MALEVOLENCE", "NEGOTIATOR", "ENDURANCE", "HOMEONE", "PROFUNDITY", "EXECUTRIX"
+            }
+            if base_id in KNOWN_SHIPS:
+                unit_type = "ship"
+            
+            # Détermine le dossier en fonction du type
+            folder = "vaisseaux" if unit_type == "ship" else "portraits"
+            image_path = f"assets/{folder}/{nom_image}"
+            
             # Mise à jour en base de données
             await db.execute(
                 "UPDATE game_characters SET image_path = ?, is_image_valid = 1 WHERE base_id = ?",
                 (image_path, base_id)
             )
             await db.commit()
-            name = row["name"]
             
         embed = discord.Embed(
             title="✅ Portrait Corrigé",
-            description=f"L'image de **{name}** a été remplacée par `{nom_image}`.",
+            description=f"L'image de **{name}** a été remplacée par `{nom_image}` dans le dossier `{folder}`.",
             color=discord.Color.green()
         )
         

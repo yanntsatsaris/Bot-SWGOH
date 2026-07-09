@@ -90,15 +90,17 @@ def get_portrait_path(base_id: str) -> Path:
     unit = _unit_data.get(bid_upper, {})
     unit_type = unit.get("type")
     
-    if not unit_type:
-        # Heuristique si la base de données ne connaît pas l'unité
-        KNOWN_SHIPS = {
-            "TIEFIGHTER", "SLAVE1", "EBONHAWK", "RAZORCREST", "XANADUBLOOD", "IG2000",
-            "HOUNDSTOOTH", "CAPITALEXECUTOR", "CAPITALCHIMAERA", "CAPITALSTARDESTROYER",
-            "SITHFIGHTER", "TIEBOMBER", "TIEADVANCED", "TIEECHELON", "TIESILENCER",
-            "MALEVOLENCE", "NEGOTIATOR", "ENDURANCE", "HOMEONE", "PROFUNDITY", "EXECUTRIX"
-        }
-        unit_type = "ship" if bid_upper in KNOWN_SHIPS else "character"
+    # Heuristique prioritaire : forcer le type vaisseau pour les vaisseaux connus, même si la BDD se trompe
+    KNOWN_SHIPS = {
+        "TIEFIGHTER", "SLAVE1", "EBONHAWK", "RAZORCREST", "XANADUBLOOD", "IG2000",
+        "HOUNDSTOOTH", "CAPITALEXECUTOR", "CAPITALCHIMAERA", "CAPITALSTARDESTROYER",
+        "SITHFIGHTER", "TIEBOMBER", "TIEADVANCED", "TIEECHELON", "TIESILENCER",
+        "MALEVOLENCE", "NEGOTIATOR", "ENDURANCE", "HOMEONE", "PROFUNDITY", "EXECUTRIX"
+    }
+    if bid_upper in KNOWN_SHIPS:
+        unit_type = "ship"
+    elif not unit_type:
+        unit_type = "character"
 
     target_dir = SHIPS_DIR if unit_type == "ship" else PORTRAITS_DIR
 

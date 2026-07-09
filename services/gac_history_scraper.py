@@ -225,12 +225,15 @@ class GACHistoryScraper:
                             bars = int((pct / 100) * 10)
                             bar_str = "■" * bars + "□" * (10 - bars)
                             
-                            try:
-                                inter = self.interactions[c_code]["interaction"]
-                                if pending > 0:
-                                    await inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Traitement des matchs ({done}/{total} complétés)...")
-                            except:
-                                pass
+                            # On ne met à jour l'UI que tous les 10% pour éviter le rate-limit Discord !
+                            update_step = max(1, total // 10)
+                            if pending == 0 or done % update_step == 0:
+                                try:
+                                    inter = self.interactions[c_code]["interaction"]
+                                    if pending > 0:
+                                        await inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Traitement des matchs ({done}/{total} complétés)...")
+                                except:
+                                    pass
                                 
                         if self.pending_tasks[c_code] <= 0:
                             del self.pending_tasks[c_code]

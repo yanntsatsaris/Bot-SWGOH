@@ -1,4 +1,4 @@
-﻿"""
+"""
 database/models.py — Schémas SQL des tables SQLite
 """
 
@@ -126,6 +126,24 @@ CREATE_TABLES_SQL: list[str] = [
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_units_unit ON gac_roster_units(unit_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_gac_history_enemy ON gac_history(enemy_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_meta_squads (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        leader_id      TEXT    NOT NULL,
+        format         TEXT    NOT NULL,
+        members        TEXT    NOT NULL,
+        win_rate       REAL    DEFAULT 0.0,
+        defense_holds  REAL    DEFAULT 0.0,
+        season         TEXT,
+        updated_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_gac_meta_squads_leader ON gac_meta_squads(leader_id, format)
     """,
     """
     CREATE TABLE IF NOT EXISTS gac_rounds (

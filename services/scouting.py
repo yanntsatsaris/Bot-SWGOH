@@ -5,7 +5,7 @@ import logging
 from database.db import get_db
 from services.comlink import get_player
 from utils.gac_config import get_gac_quotas
-from services.gac_meta import GAC_TEAMS, GAC_FLEETS
+from services.gac_meta import GAC_FLEETS
 
 log = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
         }
     return roster
 
-def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = None) -> dict:
+async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = None) -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
@@ -88,75 +88,76 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = Non
                     used_base_ids.add(leader)
                     used_base_ids.update(valid_members)
     
-    # 1. PERSONNAGES
+    # 1. PERSONNAGES (Via la Meta Dynamique de swgoh.gg)
+    # Récupérer les top teams défensives depuis la BDD
+    dynamic_teams = []
+    import json
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT squad_units, hold_percent, avg_banners FROM gac_global_meta WHERE format = ? AND mode = 'defense' ORDER BY seen DESC LIMIT 150",
+            (fmt,)
+        ) as cur:
+            rows = await cur.fetchall()
+            for row in rows:
+                units = json.loads(row["squad_units"])
+                if not units:
+                    continue
+                # On utilise une échelle 0-10 basée sur le % de holds pour la défense
+                def_score = min(10, int((row["hold_percent"] or 0) / 10))
+                dynamic_teams.append({
+                    "leader_id": units[0],
+                    "core": units, # Tous les membres sont considérés comme "core" (équipe stricte)
+                    "defense": def_score,
+                    "offense": 0, # Inconnu pour les stats défensives
+                    "target_size": len(units)
+                })
+
     available_teams = []
-    for team_id, team_data in GAC_TEAMS.items():
-        if team_data.get("format") and team_data["format"] != fmt:
-            continue
-            
-        leader_id = team_data.get("leader_id", team_id)
-        if not leader_id:
-            continue
-            
+    for team_data in dynamic_teams:
+        leader_id = team_data["leader_id"]
         core = team_data.get("core", [])
-        subs = team_data.get("subs", [])
         
-        # Vérifier que le core est présent et ready (au moins 60% du core ou leader mandatory)
+        # Vérifier que l'équipe stricte est présente (au moins X membres)
         if leader_id not in enemy_index or not _is_gac_ready(enemy_index[leader_id]):
             continue
             
+        # Vu que ce sont des équipes exactes issues des stats globales, on tolère qu'il manque au maximum 1 membre non-leader,
+        # qui sera bouché par les leftovers. Si on exige tout le monde, on risque de rejeter trop d'équipes si le joueur 
+        # a mis un perso différent. Mais idéalement, on exige au moins le core minimum.
         core_ready = [m for m in core if m in enemy_index and _is_gac_ready(enemy_index[m])]
-        # On exige tout le core (c'est le principe du core)
-        if len(core_ready) < len(core):
-            continue
-            
-        req_omis = team_data.get("requires_omicron", [])
-        missing_omi = False
-        for req in req_omis:
-            if req in enemy_index and not enemy_index[req].get("has_omicron"):
-                missing_omi = True
-                break
-        if missing_omi:
-            continue
-            
-        min_size = team_data.get("min_size", expected_size)
-        slots_left = expected_size - len(core_ready)
-        
-        # Récupérer les subs dispos et les trier par puissance
-        ready_subs = [m for m in subs if m in enemy_index and _is_gac_ready(enemy_index[m])]
-        ready_subs.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-        
-        # Prendre les meilleurs subs pour remplir l'équipe
-        assembled_members = list(core_ready)
-        assembled_members.extend(ready_subs[:slots_left])
         
         # RÈGLE D'OR STRATÉGIQUE : 
-        # Si le joueur n'a pas assez de "core + subs" pour atteindre la taille 
-        # minimale de l'équipe (par ex: 5 membres pour un 5v5), on NE LA FORME PAS.
-        # Un joueur ne placera jamais une équipe avec un énorme trou en défense.
-        if len(assembled_members) < min_size:
+        # L'équipe doit avoir au moins (expected_size - 1) membres prêts (ex: 4/5 ou 2/3)
+        min_size = expected_size - 1 if expected_size > 3 else expected_size
+        if len(core_ready) < min_size:
             continue
             
-        # On accepte l'équipe telle quelle (même si incomplète), on la remplira à la fin
-        score = sum([enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0) for m in assembled_members])
-        
+        # On accepte l'équipe telle quelle
         def_score = team_data.get("defense", 5)
         off_score = team_data.get("offense", 5)
-        if team_data.get("role") == "offense":
-            def_score -= 100 # Pénalité extrême pour ne l'utiliser qu'en dernier recours
-            
+        score = def_score + len(core_ready) # Bonus si équipe très complète
+        
         available_teams.append({
             "leader_id": leader_id,
-            "members": assembled_members,
+            "members": core_ready,
             "defense": def_score,
             "offense": off_score,
             "score": score,
-            "target_size": team_data.get("min_size", expected_size),
-            "id": team_id
+            "target_size": expected_size,
+            "id": leader_id
         })
                 
     # Trier par "Biais Défensif" (defense - offense), puis par défense absolue, puis puissance
     available_teams.sort(key=lambda x: (x["defense"] - x["offense"], x["defense"], x["score"]), reverse=True)
+
+    # Filtrer les doublons de leader (si le joueur a les unités pour la Variation 1 et Variation 2)
+    filtered_teams = []
+    seen_leaders = set()
+    for t in available_teams:
+        if t["leader_id"] not in seen_leaders:
+            filtered_teams.append(t)
+            seen_leaders.add(t["leader_id"])
+    available_teams = filtered_teams
 
     # Identification des personnages strictement réservés à l'attaque
     offense_only_chars = set()
@@ -165,10 +166,7 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = Non
             if t["leader_id"]:
                 offense_only_chars.add(t["leader_id"])
             for c in t.get("members", []):
-                team_data = GAC_TEAMS.get(t["id"], {})
-                core_members = team_data.get("core", [])
-                if c in core_members:
-                    offense_only_chars.add(c)
+                offense_only_chars.add(c)
     
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
@@ -201,7 +199,7 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = Non
             if not placed:
                 zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
-    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT (Graphe de Synergie)
+    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT
     leftovers = [
         m for m, data in enemy_index.items() 
         if m not in used_base_ids 
@@ -212,11 +210,10 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = Non
     # Trier par puissance de base
     leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
     
-    # Construire le graphe de synergie basé sur la méta connue
+    # Construire le graphe de synergie basé sur la méta connue (dynamic_teams)
     synergy_graph = {}
-    for team_id, team_data in GAC_TEAMS.items():
-        all_members = [team_data["leader_id"]] + team_data.get("core", []) + team_data.get("subs", [])
-        all_members = [m for m in all_members if m] # Filtrer les None
+    for team_data in dynamic_teams:
+        all_members = team_data.get("core", [])
         for m1 in all_members:
             if m1 not in synergy_graph:
                 synergy_graph[m1] = set()
@@ -331,7 +328,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
     )
     
     if not suggestions:
-        return _predict_zones(my_index, quotas, fmt, None)
+        return await _predict_zones(my_index, quotas, fmt, None)
 
     # 1. Escouades au sol
     for zone in ["North", "South", "Back"]:
@@ -445,7 +442,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     from services.gac_scout_analyzer import GacScoutAnalyzer
     habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
     
-    enemy_zones = _predict_zones(enemy_index, quotas, fmt, habits)
+    enemy_zones = await _predict_zones(enemy_index, quotas, fmt, habits)
     
     has_habits = habits and habits.get("total_rounds", 0) > 0
     result = {

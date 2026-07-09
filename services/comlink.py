@@ -104,16 +104,19 @@ async def get_player(ally_code: str | None = None, player_id: str | None = None)
     Retourne le profil brut complet d'un joueur depuis Comlink via le wrapper.
     """
     if ally_code:
-        clean_code = str(ally_code).replace("-", "")
-        return await comlink_client.get_player(allycode=clean_code)
+        clean_code = str(ally_code).replace("-", "").strip()
+        # On cast en int si possible, car certains serveurs Comlink rejettent les strings avec HTTP 400
+        ally_int = int(clean_code) if clean_code.isdigit() else clean_code
+        return await comlink_client.get_player(allycode=ally_int)
     elif player_id:
         return await comlink_client.get_player(player_id=player_id)
     else:
         raise ValueError("ally_code ou player_id doit être fourni")
 
 async def get_player_roster(ally_code: str) -> list[dict]:
-    clean = str(ally_code).replace("-", "")
-    data = await comlink_client.get_player(allycode=clean)
+    clean = str(ally_code).replace("-", "").strip()
+    ally_int = int(clean) if clean.isdigit() else clean
+    data = await comlink_client.get_player(allycode=ally_int)
     raw_roster = data.get("rosterUnit", [])
 
     roster = []
@@ -135,8 +138,9 @@ async def check_health() -> dict:
     return await comlink_client.get_game_metadata()
 
 async def get_player_arena(ally_code: str) -> dict:
-    clean = str(ally_code).replace("-", "")
-    return await comlink_client.get_player_arena(allycode=clean)
+    clean = str(ally_code).replace("-", "").strip()
+    ally_int = int(clean) if clean.isdigit() else clean
+    return await comlink_client.get_player_arena(allycode=ally_int)
 
 async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: list[int] | None = None) -> list[dict]:
     leagues = leagues or [20, 40, 60, 80, 100]

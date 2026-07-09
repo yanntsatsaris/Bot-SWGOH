@@ -35,7 +35,7 @@ async def get_ship_base_ids() -> set:
     ships = set()
     try:
         async with get_db() as db:
-            async with db.execute("SELECT base_id FROM game_units WHERE combat_type = 2") as cursor:
+            async with db.execute("SELECT base_id FROM game_characters WHERE type = 'ship'") as cursor:
                 async for row in cursor:
                     ships.add(row["base_id"])
     except Exception as e:

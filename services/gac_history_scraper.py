@@ -90,128 +90,118 @@ class GACHistoryScraper:
                 else:
                     target_url = f"https://swgoh.gg/p/{ally_code}/gac-history/"
                     clean_code = ally_code
-                    
-                # Vérification anti-doublon AVANT scraping
-                round_info = self._extract_round_info_from_url(target_url)
-                if round_info and round_info.get("round"):
-                    from database.db import get_db
-                    async with get_db() as db:
-                        cursor = await db.execute(
-                            "SELECT id FROM gac_rounds WHERE player_code=? AND season_id=? AND round_number=?",
-                            (round_info["ally_code"], round_info["season_id"], round_info["round"])
-                        )
-                        if await cursor.fetchone():
-                            logger.info(f"⏭️ Round déjà en BDD, skip du scraping pour {target_url}")
-                            self.queue.task_done()
-                            c_code = round_info["ally_code"]
-                            if c_code in self.pending_tasks:
-                                self.pending_tasks[c_code] -= 1
-                                if self.pending_tasks[c_code] <= 0:
-                                    del self.pending_tasks[c_code]
-                                    saved_int = self.interactions.pop(c_code, None)
-                                    if saved_int and saved_int.get("callback"):
-                                        import asyncio
-                                        asyncio.create_task(saved_int["callback"](c_code, saved_int["interaction"]))
-                            continue
-                    
-                import sys
-                process = await asyncio.create_subprocess_exec(
-                    sys.executable, "scripts/sb_worker.py", target_url, clean_code,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
                 
-                try:
-                    # Fonction pour lire les logs en temps réel
-                    async def read_stream(stream, is_error=False):
-                        async for line in stream:
-                            msg = line.decode().strip()
-                            if msg:
-                                if is_error:
-                                    logger.error(f"[WORKER] {msg}")
-                                else:
-                                    logger.info(f"{msg}")
+                # Définir le code utilisateur cible pour le suivi de la tâche de fin
+                r_info = self._extract_round_info_from_url(target_url)
+                c_code = r_info["ally_code"] if r_info else clean_code
 
-                    # On lance la lecture en parallèle
-                    await asyncio.wait_for(
-                        asyncio.gather(
-                            read_stream(process.stdout),
-                            read_stream(process.stderr, is_error=True),
-                            process.wait()
-                        ),
-                        timeout=150.0
+                try:
+                    # Vérification anti-doublon AVANT scraping
+                    if r_info and r_info.get("round"):
+                        from database.db import get_db
+                        async with get_db() as db:
+                            cursor = await db.execute(
+                                "SELECT id FROM gac_rounds WHERE player_code=? AND season_id=? AND round_number=?",
+                                (r_info["ally_code"], r_info["season_id"], r_info["round"])
+                            )
+                            if await cursor.fetchone():
+                                logger.info(f"⏭️ Round déjà en BDD, skip du scraping pour {target_url}")
+                                continue
+                    
+                    import sys
+                    process = await asyncio.create_subprocess_exec(
+                        sys.executable, "scripts/sb_worker.py", target_url, clean_code,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
                     )
                     
-                    if process.returncode == 0:
-                        logger.info(f"✅ Subprocess a réussi (Code 0)")
+                    try:
+                        # Fonction pour lire les logs en temps réel
+                        async def read_stream(stream, is_error=False):
+                            async for line in stream:
+                                msg = line.decode().strip()
+                                if msg:
+                                    if is_error:
+                                        logger.error(f"[WORKER] {msg}")
+                                    else:
+                                        logger.info(f"{msg}")
+
+                        # On lance la lecture en parallèle
+                        await asyncio.wait_for(
+                            asyncio.gather(
+                                read_stream(process.stdout),
+                                read_stream(process.stderr, is_error=True),
+                                process.wait()
+                            ),
+                            timeout=150.0
+                        )
                         
-                        # On lit le fichier généré par le worker
-                        safe_name = clean_code.replace("/", "_").replace(":", "")
-                        file_path = f"gac_history_{safe_name}.html"
-                        
-                        import os
-                        if os.path.exists(file_path):
-                            with open(file_path, "r", encoding="utf-8") as f:
-                                html_content = f.read()
-                                
-                            logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
-                            parsed_data = self._parse_html(html_content, clean_code, target_url)
+                        if process.returncode == 0:
+                            logger.info(f"✅ Subprocess a réussi (Code 0)")
                             
-                            # Si on a atterri sur la page d'accueil GAC, on remet les matchs trouvés dans la file d'attente
-                            if parsed_data.get("hub_links"):
-                                logger.info("🔗 Page d'accueil détectée. Ajout automatique des sous-liens GAC dans la file d'attente...")
-                                for link in parsed_data["hub_links"]:
-                                    # On met interaction=None pour ne pas spammer le channel Discord à chaque sous-lien
-                                    await self.queue_scrape(link, interaction=None)
+                            # On lit le fichier généré par le worker
+                            safe_name = clean_code.replace("/", "_").replace(":", "")
+                            file_path = f"gac_history_{safe_name}.html"
+                            
+                            import os
+                            if os.path.exists(file_path):
+                                with open(file_path, "r", encoding="utf-8") as f:
+                                    html_content = f.read()
+                                    
+                                logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
+                                parsed_data = self._parse_html(html_content, clean_code, target_url)
+                                
+                                # Si on a atterri sur la page d'accueil GAC, on remet les matchs trouvés dans la file d'attente
+                                if parsed_data.get("hub_links"):
+                                    logger.info("🔗 Page d'accueil détectée. Ajout automatique des sous-liens GAC dans la file d'attente...")
+                                    for link in parsed_data["hub_links"]:
+                                        # On met interaction=None pour ne pas spammer le channel Discord à chaque sous-lien
+                                        await self.queue_scrape(link, interaction=None)
+                                    
+                                    if interaction:
+                                        try:
+                                            await interaction.followup.send(ephemeral=True, content=f"📂 Historique GAC détecté ! J'ai mis {len(parsed_data['hub_links'])} matchs dans la file d'attente. Le bot va les traiter silencieusement en arrière-plan (cela prendra quelques minutes).")
+                                        except:
+                                            pass
+                                    continue
+                                
+                                # Sinon c'est un match normal, on sauvegarde en base de données
+                                from database.db import save_gac_history_to_db
+                                await save_gac_history_to_db(parsed_data, target_url)
                                 
                                 if interaction:
                                     try:
-                                        await interaction.followup.send(ephemeral=True, content=f"📂 Historique GAC détecté ! J'ai mis {len(parsed_data['hub_links'])} matchs dans la file d'attente. Le bot va les traiter silencieusement en arrière-plan (cela prendra quelques minutes).")
+                                        nb_matchs = len(parsed_data.get("matches", []))
+                                        await interaction.followup.send(ephemeral=True, content=f"🏆 Succès ! {nb_matchs} matchs ont été extraits et sauvegardés dans la base de données pour {clean_code} !")
                                     except:
                                         pass
-                                continue
-                            
-                            # Sinon c'est un match normal, on sauvegarde en base de données
-                            from database.db import save_gac_history_to_db
-                            await save_gac_history_to_db(parsed_data, target_url)
-                            
+                            else:
+                                logger.error(f"Fichier {file_path} introuvable après le scraping.")
+                        else:
+                            logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
                             if interaction:
                                 try:
-                                    nb_matchs = len(parsed_data.get("matches", []))
-                                    await interaction.followup.send(ephemeral=True, content=f"🏆 Succès ! {nb_matchs} matchs ont été extraits et sauvegardés dans la base de données pour {clean_code} !")
+                                    await interaction.followup.send(ephemeral=True, content=f"❌ Le scraping a échoué (regarde la console).")
                                 except:
                                     pass
-                        else:
-                            logger.error(f"Fichier {file_path} introuvable après le scraping.")
-                    else:
-                        logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
+                    except asyncio.TimeoutError:
+                        process.kill()
+                        logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 60 secondes.")
                         if interaction:
                             try:
-                                await interaction.followup.send(ephemeral=True, content=f"❌ Le scraping a échoué (regarde la console).")
+                                await interaction.followup.send(ephemeral=True, content=f"❌ Timeout : Cloudflare a fait planter le navigateur.")
                             except:
                                 pass
-                except asyncio.TimeoutError:
-                    process.kill()
-                    logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 60 secondes.")
-                    if interaction:
-                        try:
-                            await interaction.followup.send(ephemeral=True, content=f"❌ Timeout : Cloudflare a fait planter le navigateur.")
-                        except:
-                            pass
-                
-                self.queue.task_done()
-                
-                # Check pending tasks
-                r_info = self._extract_round_info_from_url(target_url)
-                c_code = r_info["ally_code"] if r_info else clean_code
-                if c_code in self.pending_tasks:
-                    self.pending_tasks[c_code] -= 1
-                    if self.pending_tasks[c_code] <= 0:
-                        del self.pending_tasks[c_code]
-                        saved_int = self.interactions.pop(c_code, None)
-                        if saved_int and saved_int.get("callback"):
-                            import asyncio
-                            asyncio.create_task(saved_int["callback"](c_code, saved_int["interaction"]))
+                finally:
+                    self.queue.task_done()
+                    if c_code in self.pending_tasks:
+                        self.pending_tasks[c_code] -= 1
+                        if self.pending_tasks[c_code] <= 0:
+                            del self.pending_tasks[c_code]
+                            saved_int = self.interactions.pop(c_code, None)
+                            if saved_int and saved_int.get("callback"):
+                                import asyncio
+                                asyncio.create_task(saved_int["callback"](c_code, saved_int["interaction"]))
                 
                 # Petite pause entre chaque profil pour ne pas affoler Cloudflare
                 await asyncio.sleep(5)

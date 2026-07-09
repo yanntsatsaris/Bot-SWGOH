@@ -9,23 +9,36 @@ if __name__ == "__main__":
         print(f"[WORKER] Lancement du script pour {sys.argv[1]}...", flush=True)
 
 import time
+import platform
 from pyvirtualdisplay import Display
 from seleniumbase import SB
 
 def scrape(target_url, ally_code):
     print(f"[WORKER] Démarrage de la fonction scrape pour {target_url}...")
-    project_dir = "/opt/bot-swgoh"
-    os.environ["HOME"] = project_dir
-    os.environ["XDG_CONFIG_HOME"] = os.path.join(project_dir, ".config")
+    
+    # Déterminer le dossier racine du projet
+    project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if not os.path.exists(project_dir):
+        project_dir = os.getcwd()
+        
+    is_windows = (platform.system() == "Windows")
+    if not is_windows:
+        os.environ["HOME"] = project_dir
+        os.environ["XDG_CONFIG_HOME"] = os.path.join(project_dir, ".config")
     
     print(f"[DEBUG] Utilisateur : {os.environ.get('USER', 'Inconnu')}")
-    print(f"[DEBUG] Dossier HOME forcé : {os.environ.get('HOME', 'Inconnu')}")
+    print(f"[DEBUG] Dossier HOME : {os.environ.get('HOME', 'Inconnu')}")
     
+    display = None
+    exit_code = 1
     try:
-        print("[WORKER] Démarrage manuel de l'écran virtuel (Xvfb)...")
-        display = Display(visible=0, size=(1920, 1080))
-        display.start()
-        print("[WORKER] Écran virtuel Xvfb démarré avec succès !")
+        if not is_windows:
+            print("[WORKER] Démarrage manuel de l'écran virtuel (Xvfb)...")
+            display = Display(visible=0, size=(1920, 1080))
+            display.start()
+            print("[WORKER] Écran virtuel Xvfb démarré avec succès !")
+        else:
+            print("[WORKER] Environnement Windows détecté, pas d'écran virtuel Xvfb.")
         
         # On définit un profil Chrome spécifique à l'intérieur du projet pour éviter
         # que Chrome n'essaie d'écrire dans /home/botswgoh qui n'existe peut-être pas
@@ -72,17 +85,27 @@ def scrape(target_url, ally_code):
             
             if "Just a moment" in page_source or "Cloudflare" in page_source:
                 print("ECHEC: Toujours bloqué par Cloudflare.")
-                sys.exit(1)
+                exit_code = 1
+                return
             
             safe_name = ally_code.replace("/", "_").replace(":", "")
             with open(f"gac_history_{safe_name}.html", "w", encoding="utf-8") as f:
                 f.write(page_source)
                 
             print(f"SUCCES: HTML sauvegardé (gac_history_{safe_name}.html)")
-            sys.exit(0)
+            exit_code = 0
     except Exception as e:
         print(f"ERREUR CRITIQUE: {e}")
-        sys.exit(1)
+        exit_code = 1
+    finally:
+        if display is not None:
+            print("[WORKER] Arrêt de l'écran virtuel (Xvfb)...")
+            try:
+                display.stop()
+                print("[WORKER] Écran virtuel Xvfb arrêté.")
+            except Exception as e:
+                print(f"[WORKER] Erreur lors de l'arrêt de Xvfb : {e}")
+        sys.exit(exit_code)
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:

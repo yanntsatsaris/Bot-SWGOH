@@ -42,10 +42,12 @@ def _load_data():
     global _unit_data
     try:
         import sqlite3
-        conn = sqlite3.connect("database/bot.db")
+        from config import DATABASE_PATH
+        conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT base_id, name, type FROM game_characters")
+        # On inclut thumbnail_name pour les images personnalisées
+        cursor.execute("SELECT base_id, name, type, thumbnail_name FROM game_characters")
         rows = cursor.fetchall()
         _unit_data = {row["base_id"].upper(): dict(row) for row in rows}
         conn.close()

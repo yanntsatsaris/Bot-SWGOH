@@ -125,6 +125,16 @@ class GACHistoryScraper:
                                         logger.error(f"[WORKER] {msg}")
                                     else:
                                         logger.info(f"{msg}")
+                                        if interaction:
+                                            try:
+                                                if "Cloudflare détecté" in msg:
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■□□□□□□] 40%** : Cloudflare détecté, résolution du captcha...")
+                                                elif "Clic effectué" in msg or "Pas de Cloudflare" in msg:
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■□□□□□] 50%** : Captcha passé, attente du chargement de la page...")
+                                                elif "Contenu GAC détecté" in msg:
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : Page chargée, récupération des données HTML...")
+                                            except:
+                                                pass
 
                         # On lance la lecture en parallèle
                         await asyncio.wait_for(
@@ -138,6 +148,12 @@ class GACHistoryScraper:
                         
                         if process.returncode == 0:
                             logger.info(f"✅ Subprocess a réussi (Code 0)")
+                            
+                            if interaction:
+                                try:
+                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■■□□□] 70%** : HTML récupéré, analyse du contenu...")
+                                except:
+                                    pass
                             
                             # On lit le fichier généré par le worker
                             safe_name = clean_code.replace("/", "_").replace(":", "")

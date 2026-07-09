@@ -67,11 +67,34 @@ class GacPlanner:
         suggestions = []
         used_characters = set() # Pour éviter de suggérer deux équipes avec le même personnage clé
 
+        from services.portrait_cache import get_unit_name
+        import re
+
+        slug_to_base = {}
+        for base_id in player_units.keys():
+            name = get_unit_name(base_id)
+            if name:
+                computed_slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
+                slug_to_base[computed_slug] = base_id
+            slug_to_base[base_id.lower()] = base_id
+
         # 3. Évaluer chaque squad de la meta par rapport au roster du joueur
         for row in meta_rows:
-            units = json.loads(row["squad_units"])
-            if not units:
+            raw_units = json.loads(row["squad_units"])
+            if not raw_units:
                 continue
+
+            # Traduire les slugs en base_ids
+            units = []
+            for slug in raw_units:
+                base = slug_to_base.get(slug.lower())
+                if not base:
+                    # Fallback on removing hyphens
+                    base = slug_to_base.get(slug.lower().replace("-", ""))
+                if base:
+                    units.append(base)
+                else:
+                    units.append(slug.upper()) # fallback
 
             leader_id = units[0]
             

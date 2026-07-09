@@ -329,6 +329,9 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         min_relic=-1,
         min_gear=12
     )
+    
+    if not suggestions:
+        return _predict_zones(my_index, quotas, fmt, None)
 
     # 1. Escouades au sol
     for zone in ["North", "South", "Back"]:

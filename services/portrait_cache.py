@@ -76,7 +76,17 @@ def get_portrait_path(base_id: str) -> Path:
     bid_upper = base_id.upper()
     bid_lower = base_id.lower()
     unit = _unit_data.get(bid_upper, {})
-    unit_type = unit.get("type", "character")
+    unit_type = unit.get("type")
+    
+    if not unit_type:
+        # Heuristique si la base de données ne connaît pas l'unité
+        KNOWN_SHIPS = {
+            "TIEFIGHTER", "SLAVE1", "EBONHAWK", "RAZORCREST", "XANADUBLOOD", "IG2000",
+            "HOUNDSTOOTH", "CAPITALEXECUTOR", "CAPITALCHIMAERA", "CAPITALSTARDESTROYER",
+            "SITHFIGHTER", "TIEBOMBER", "TIEADVANCED", "TIEECHELON", "TIESILENCER",
+            "MALEVOLENCE", "NEGOTIATOR", "ENDURANCE", "HOMEONE", "PROFUNDITY", "EXECUTRIX"
+        }
+        unit_type = "ship" if bid_upper in KNOWN_SHIPS else "character"
 
     target_dir = SHIPS_DIR if unit_type == "ship" else PORTRAITS_DIR
 
@@ -138,6 +148,7 @@ def get_portrait_path(base_id: str) -> Path:
         "C3POLEGENDARY": "c3p0",
         "R2D2_LEGENDARY": "astromech_r2d2",
         "SKIFFGUARD": "undercoverlando",
+        "MISSIONVAO": "mission",
 
         # --- Nouveaux Overrides Persos ---
         "ADMINISTRATORLANDO": "landobespin",
@@ -148,6 +159,8 @@ def get_portrait_path(base_id: str) -> Path:
         "COLONELSTARCK": "colonel_stark",
         "DARTHREVAN": "sithrevan",
         "HUMANTHUG": "mob_enforcer",
+        "SITHTROOPER": "firstorder_sithtrooper",
+        "SITHEMPIRETROOPER": "sithtrooperempire",
         "IG90": "ig-90",
         "OLDBENKENOBI": "obiwanep4",
         "BISHOP": "colonelward",

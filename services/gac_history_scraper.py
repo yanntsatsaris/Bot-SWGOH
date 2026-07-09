@@ -15,6 +15,7 @@ class GACHistoryScraper:
         # On utilise un ThreadPool de 1 pour être sûr qu'un seul Chrome tourne à la fois
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         self.pending_tasks = {}
+        self.total_tasks = {}
         self.interactions = {}
 
     def _extract_round_info_from_url(self, url: str) -> dict | None:
@@ -58,11 +59,13 @@ class GACHistoryScraper:
             if clean_code != "unknown":
                 self.interactions[clean_code] = {"interaction": interaction, "callback": callback}
                 self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+                self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
         else:
             round_info = self._extract_round_info_from_url(ally_code)
             if round_info and round_info.get("ally_code"):
                 clean_code = round_info["ally_code"]
                 self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+                self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
 
         await self.queue.put((ally_code, interaction))
         logger.info(f"Ajout de {ally_code} à la file d'attente de scraping. (Taille: {self.queue.qsize()})")
@@ -127,12 +130,10 @@ class GACHistoryScraper:
                                         logger.info(f"{msg}")
                                         if interaction:
                                             try:
-                                                if "Cloudflare détecté" in msg:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■□□□□□□] 40%** : Cloudflare détecté, résolution du captcha...")
-                                                elif "Clic effectué" in msg or "Pas de Cloudflare" in msg:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■□□□□□] 50%** : Captcha passé, attente du chargement de la page...")
+                                                if "Cloudflare détecté" in msg or "Pas de Cloudflare" in msg:
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■□□□□□] 50%** : Extraction de l'historique GAC en cours...")
                                                 elif "Contenu GAC détecté" in msg:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : Page chargée, récupération des données HTML...")
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : Historique récupéré, chargement des données...")
                                             except:
                                                 pass
 
@@ -151,7 +152,7 @@ class GACHistoryScraper:
                             
                             if interaction:
                                 try:
-                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■■□□□] 70%** : HTML récupéré, analyse du contenu...")
+                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■■□□□] 70%** : Données brutes récupérées, préparation du traitement...")
                                 except:
                                     pass
                             
@@ -212,8 +213,29 @@ class GACHistoryScraper:
                     self.queue.task_done()
                     if c_code in self.pending_tasks:
                         self.pending_tasks[c_code] -= 1
+                        
+                        # Mise à jour de la barre de progression pour les sous-liens
+                        if c_code in self.interactions and self.total_tasks.get(c_code, 1) > 1:
+                            total = self.total_tasks[c_code]
+                            pending = self.pending_tasks[c_code]
+                            done = total - pending
+                            
+                            # La barre passe de 70% à 100% pendant le traitement des matchs
+                            pct = int((done / total) * 30) + 70
+                            bars = int((pct / 100) * 10)
+                            bar_str = "■" * bars + "□" * (10 - bars)
+                            
+                            try:
+                                inter = self.interactions[c_code]["interaction"]
+                                if pending > 0:
+                                    await inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Traitement des matchs ({done}/{total} complétés)...")
+                            except:
+                                pass
+                                
                         if self.pending_tasks[c_code] <= 0:
                             del self.pending_tasks[c_code]
+                            if c_code in self.total_tasks:
+                                del self.total_tasks[c_code]
                             saved_int = self.interactions.pop(c_code, None)
                             if saved_int and saved_int.get("callback"):
                                 asyncio.create_task(saved_int["callback"](c_code, saved_int["interaction"]))

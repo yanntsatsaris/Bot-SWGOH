@@ -91,11 +91,13 @@ def scrape(target_url, output_file, format_type, mode):
             
             for base_href in season_hrefs:
                 final_url = base_href
+                if "?" in final_url:
+                    final_url += "&cutoff=0"
+                else:
+                    final_url += "?cutoff=0"
+                    
                 if mode.lower() == "attack":
-                    if "?" in final_url:
-                        final_url += "&perspective=attack"
-                    else:
-                        final_url += "?perspective=attack"
+                    final_url += "&perspective=attack"
                         
                 # Sécurité: si l'URL est relative, on s'assure d'avoir l'absolue
                 if final_url.startswith('/'):

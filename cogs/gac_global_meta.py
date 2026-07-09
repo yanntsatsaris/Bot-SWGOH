@@ -53,8 +53,12 @@ class GacGlobalMetaCog(commands.Cog):
         await self.scraper.fetch_and_parse(format_type="5v5", mode="attack")
         # 5v5 Defense
         await self.scraper.fetch_and_parse(format_type="5v5", mode="defense")
+        # 3v3 Attack
+        await self.scraper.fetch_and_parse(format_type="3v3", mode="attack")
+        # 3v3 Defense
+        await self.scraper.fetch_and_parse(format_type="3v3", mode="defense")
         
-        await interaction.followup.send(ephemeral=True, content="✅ Mise à jour des Meta Squads terminée avec succès !")
+        await interaction.followup.send(ephemeral=True, content="✅ Mise à jour des Meta Squads (5v5 et 3v3, 3 dernières saisons) terminée avec succès !")
 
     @app_commands.command(
         name="gac-meta-squads",

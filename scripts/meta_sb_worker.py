@@ -72,71 +72,85 @@ def scrape(target_url, output_file, format_type, mode):
             # On utilise BeautifulSoup pour lire le DOM brut sans se soucier de la visibilité !
             from bs4 import BeautifulSoup
             soup = BeautifulSoup(sb.get_page_source(), 'html.parser')
-            season_href = None
+            
+            season_hrefs = []
             for a in soup.find_all('a'):
                 if a.string and f"- {format_type}" in a.string:
-                    season_href = a.get('href')
-                    break
+                    href = a.get('href')
+                    if href not in season_hrefs:
+                        season_hrefs.append(href)
+                    if len(season_hrefs) >= 3: # On prend les 3 dernières saisons de ce format !
+                        break
             
-            if not season_href:
-                raise Exception(f"Lien pour le format {format_type} introuvable dans le DOM.")
+            if not season_hrefs:
+                raise Exception(f"Aucun lien pour le format {format_type} introuvable dans le DOM.")
                 
-            print(f"[WORKER] URL de saison trouvée : {season_href}")
+            print(f"[WORKER] URLs de saisons trouvées : {season_hrefs}")
             
-            # 2. Ajouter le paramètre perspective si on est en attaque
-            final_url = season_href
-            if mode.lower() == "attack":
-                if "?" in final_url:
-                    final_url += "&perspective=attack"
-                else:
-                    final_url += "?perspective=attack"
+            all_htmls = []
+            
+            for base_href in season_hrefs:
+                final_url = base_href
+                if mode.lower() == "attack":
+                    if "?" in final_url:
+                        final_url += "&perspective=attack"
+                    else:
+                        final_url += "?perspective=attack"
+                        
+                # Sécurité: si l'URL est relative, on s'assure d'avoir l'absolue
+                if final_url.startswith('/'):
+                    final_url = "https://swgoh.gg" + final_url
                     
-            # Sécurité: si l'URL est relative, on s'assure d'avoir l'absolue
-            if final_url.startswith('/'):
-                final_url = "https://swgoh.gg" + final_url
+                print(f"[WORKER] Navigation vers l'URL finale : {final_url}")
+                # On navigue vers la nouvelle page (qui va recharger entièrement)
+                sb.uc_open_with_reconnect(final_url, reconnect_time=4)
                 
-            print(f"[WORKER] Navigation vers l'URL finale : {final_url}")
-            # On navigue vers la nouvelle page (qui va recharger entièrement)
-            sb.uc_open_with_reconnect(final_url, reconnect_time=4)
-            
-            # On revérifie si Cloudflare nous a bloqué au rechargement de page
-            quick_check_2 = sb.get_page_source()
-            cloudflare_present_2 = (
-                "Just a moment" in quick_check_2
-                or "cf-turnstile" in quick_check_2
-                or "Checking your browser" in quick_check_2
-            )
-            
-            if cloudflare_present_2:
-                print("[WORKER] Cloudflare détecté après navigation, tentative de clic...")
-                try:
-                    sb.uc_gui_click_captcha()
-                except:
-                    pass
-                sb.sleep(8)
-            else:
-                sb.sleep(3)
-            
-            # Attente active du chargement du tableau sur la nouvelle page
-            table_found = False
-            for _ in range(20):
-                if sb.is_element_visible("table.stat-table"):
-                    table_found = True
-                    break
-                sb.sleep(0.5)
+                # On revérifie si Cloudflare nous a bloqué au rechargement de page
+                quick_check_2 = sb.get_page_source()
+                cloudflare_present_2 = (
+                    "Just a moment" in quick_check_2
+                    or "cf-turnstile" in quick_check_2
+                    or "Checking your browser" in quick_check_2
+                )
                 
-            if not table_found:
-                raise Exception(f"La table 'table.stat-table' n'est jamais apparue sur l'URL {final_url}. Possible blocage Cloudflare ou erreur de rendu.")
+                if cloudflare_present_2:
+                    print(f"[WORKER] Cloudflare détecté après navigation sur {final_url}, tentative de clic...")
+                    try:
+                        sb.uc_gui_click_captcha()
+                    except:
+                        pass
+                    sb.sleep(8)
+                else:
+                    sb.sleep(3)
                 
-            sb.sleep(2) # Petit buffer
+                # Attente active du chargement du tableau sur la nouvelle page
+                table_found = False
+                for _ in range(20):
+                    if sb.is_element_visible("table.stat-table"):
+                        table_found = True
+                        break
+                    sb.sleep(0.5)
+                    
+                if not table_found:
+                    print(f"[WORKER] ATTENTION: La table 'table.stat-table' n'est jamais apparue sur l'URL {final_url}. On ignore cette saison.")
+                    continue
+                    
+                sb.sleep(2) # Petit buffer
+                
+                print(f"[WORKER] Récupération du code source HTML pour {final_url}...")
+                all_htmls.append(sb.get_page_source())
+                
+            if not all_htmls:
+                raise Exception("Aucune des saisons n'a pu être chargée correctement.")
+
+            print("[WORKER] Sauvegarde des HTML combinés...")
+            # On combine les HTML pour que le parseur trouve plusieurs tables
+            page_source = "\n<hr>\n".join(all_htmls)
             
-            print("[WORKER] Récupération du code source final HTML...")
-            page_source = sb.get_page_source()
-            
-            with open(output_file, "w", encoding="utf-8") as f:
+            with open(output_file, 'w', encoding='utf-8') as f:
                 f.write(page_source)
                 
-            print(f"SUCCES: HTML sauvegardé dans {output_file}")
+            print(f"[WORKER] Terminé. Fichier sauvegardé : {output_file}")
             exit_code = 0
     except Exception as e:
         print(f"ERREUR CRITIQUE: {e}")

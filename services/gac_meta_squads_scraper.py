@@ -68,16 +68,17 @@ class GacMetaSquadsScraper:
         soup = BeautifulSoup(html, 'html.parser')
         squads = []
 
-        # Cherche la table
-        table = soup.find('table')
-        if not table:
+        # On cherche toutes les tables (puisqu'on concatène potentiellement plusieurs saisons HTML)
+        tables = soup.find_all('table')
+        if not tables:
             return squads
 
-        tbody = table.find('tbody')
-        if not tbody:
-            return squads
+        for table in tables:
+            tbody = table.find('tbody')
+            if not tbody:
+                continue
 
-        for row in tbody.find_all('tr'):
+            for row in tbody.find_all('tr'):
             cols = row.find_all('td')
             if len(cols) >= 4:
                 # 1. Units

@@ -40,13 +40,17 @@ async def build_portrait_cache() -> None:
 
 def _load_data():
     global _unit_data
-    if ALL_UNITS_FILE.exists():
-        try:
-            with open(ALL_UNITS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                _unit_data = {u["base_id"].upper(): u for u in data}
-        except Exception:
-            pass
+    try:
+        import sqlite3
+        conn = sqlite3.connect("database/bot.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT base_id, name, type FROM game_characters")
+        rows = cursor.fetchall()
+        _unit_data = {row["base_id"].upper(): dict(row) for row in rows}
+        conn.close()
+    except Exception as e:
+        log.error(f"Erreur _load_data depuis SQLite: {e}")
 
 def get_unit_name(base_id: str) -> str:
     """Retourne le nom lisible d'un personnage à partir de son base_id."""

@@ -200,14 +200,27 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                 zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
     # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT
-    leftovers = [
+    # Tier 1 : Personnages non réservés à l'attaque
+    leftovers_t1 = [
         m for m, data in enemy_index.items() 
         if m not in used_base_ids 
         and m not in offense_only_chars
         and data.get("combat_type", 1) == 1
     ]
-    # Trier par puissance de base
-    leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    # Tier 2 : Personnages réservés à l'attaque (on les utilise en dernier recours plutôt que de laisser un trou)
+    leftovers_t2 = [
+        m for m, data in enemy_index.items()
+        if m not in used_base_ids
+        and m in offense_only_chars
+        and data.get("combat_type", 1) == 1
+    ]
+    
+    # Trier chaque tier par puissance de base
+    leftovers_t1.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    leftovers_t2.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+    
+    # Combiner les tiers (T1 d'abord, puis T2)
+    leftovers = leftovers_t1 + leftovers_t2
     
     # Construire le graphe de synergie basé sur la méta connue (dynamic_teams)
     synergy_graph = {}

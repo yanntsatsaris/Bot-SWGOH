@@ -68,10 +68,19 @@ def scrape(target_url, output_file, format_type, mode):
             # 1. Obtenir l'URL de la bonne saison
             print(f"[WORKER] Recherche de la saison pour le format {format_type}...")
             
-            # Pas besoin de cliquer sur le menu, les liens <a> sont déjà dans le DOM !
-            # On cherche directement le lien <a> qui correspond à la saison
-            season_link = sb.find_element(f"a:contains('- {format_type}')")
-            season_href = season_link.get_attribute("href")
+            # Les liens sont cachés dans le menu déroulant, find_element() va timeout car ils ne sont pas visibles.
+            # On utilise BeautifulSoup pour lire le DOM brut sans se soucier de la visibilité !
+            from bs4 import BeautifulSoup
+            soup = BeautifulSoup(sb.get_page_source(), 'html.parser')
+            season_href = None
+            for a in soup.find_all('a'):
+                if a.string and f"- {format_type}" in a.string:
+                    season_href = a.get('href')
+                    break
+            
+            if not season_href:
+                raise Exception(f"Lien pour le format {format_type} introuvable dans le DOM.")
+                
             print(f"[WORKER] URL de saison trouvée : {season_href}")
             
             # 2. Ajouter le paramètre perspective si on est en attaque
@@ -82,6 +91,10 @@ def scrape(target_url, output_file, format_type, mode):
                 else:
                     final_url += "?perspective=attack"
                     
+            # Sécurité: si l'URL est relative, on s'assure d'avoir l'absolue
+            if final_url.startswith('/'):
+                final_url = "https://swgoh.gg" + final_url
+                
             print(f"[WORKER] Navigation vers l'URL finale : {final_url}")
             # On navigue vers la nouvelle page (qui va recharger entièrement)
             sb.uc_open_with_reconnect(final_url, reconnect_time=4)

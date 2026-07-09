@@ -64,42 +64,40 @@ def scrape(target_url, output_file, format_type, mode):
 
             print(f"[WORKER] Interaction avec l'UI pour {format_type} et {mode}...")
             
-            # 1. Sélection du Mode (Attack ou Defense)
-            # Fait en premier car ça recharge parfois des éléments
-            try:
-                target_text = "Attack" if mode.lower() == "attack" else "Defense"
-                # Sélecteur qui cherche exactement le texte complet "Attack" ou "Defense"
-                # Dans l'UI swgoh.gg, ce sont des boutons groupés
-                sb.click(f'button:contains("{target_text}")')
-                print(f"[WORKER] Bouton de mode '{target_text}' cliqué.")
-            except Exception as e:
-                print(f"[WORKER] Avertissement: Impossible de changer le mode: {e}")
-                
-            sb.sleep(2)
+            # Le site n'est PAS une SPA, ce sont des liens <a> normaux !
+            # 1. Obtenir l'URL de la bonne saison
+            print(f"[WORKER] Recherche de la saison pour le format {format_type}...")
             
-            # 2. Sélection de la saison (3v3 ou 5v5)
-            # Le dropdown affiche "Season XX - 5v5" par défaut.
-            try:
-                # Cherche un select
-                if sb.is_element_visible("select"):
-                    sb.select_option_by_text("select", format_type, "partial")
-                    print(f"[WORKER] Option de saison contenant '{format_type}' cliquée (select natif).")
+            # On ouvre le menu déroulant
+            trigger = sb.find_element("*:contains('Season:')")
+            if trigger:
+                trigger.click()
+                sb.sleep(1)
+            
+            # On cherche le lien <a> qui correspond à la saison
+            season_link = sb.find_element(f"a:contains('- {format_type}')")
+            season_href = season_link.get_attribute("href")
+            print(f"[WORKER] URL de saison trouvée : {season_href}")
+            
+            # 2. Ajouter le paramètre perspective si on est en attaque
+            final_url = season_href
+            if mode.lower() == "attack":
+                if "?" in final_url:
+                    final_url += "&perspective=attack"
                 else:
-                    print("[WORKER] Pas de <select> visible, tentative de clic sur menu personnalisé...")
-                    # On cherche l'élément qui affiche "Season: " pour ouvrir le menu
-                    trigger = sb.find_element("*:contains('Season:')")
-                    if trigger:
-                        trigger.click()
-                        sb.sleep(1) # Attendre l'animation du menu
-                        # Cliquer sur la première option contenant "- 3v3" ou "- 5v5"
-                        # En CSS: *:contains('- 3v3') trouvera le texte. On prend le premier.
-                        sb.click(f"*:contains('- {format_type}')")
-                        print(f"[WORKER] Option de saison contenant '{format_type}' cliquée (menu custom).")
-            except Exception as e:
-                print(f"[WORKER] Avertissement: Impossible de changer la saison (format): {e}")
+                    final_url += "?perspective=attack"
+                    
+            print(f"[WORKER] Navigation vers l'URL finale : {final_url}")
+            # On navigue vers la nouvelle page (qui va recharger entièrement)
+            sb.uc_open_with_reconnect(final_url, reconnect_time=4)
+            
+            # Attente active du chargement du tableau sur la nouvelle page
+            for _ in range(20):
+                if sb.is_element_visible("table.stat-table"):
+                    break
+                sb.sleep(0.5)
                 
-            print("[WORKER] Attente du rafraîchissement JS...")
-            sb.sleep(4)
+            sb.sleep(2) # Petit buffer
             
             print("[WORKER] Récupération du code source final HTML...")
             page_source = sb.get_page_source()

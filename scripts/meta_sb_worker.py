@@ -68,13 +68,8 @@ def scrape(target_url, output_file, format_type, mode):
             # 1. Obtenir l'URL de la bonne saison
             print(f"[WORKER] Recherche de la saison pour le format {format_type}...")
             
-            # On ouvre le menu déroulant
-            trigger = sb.find_element("*:contains('Season:')")
-            if trigger:
-                trigger.click()
-                sb.sleep(1)
-            
-            # On cherche le lien <a> qui correspond à la saison
+            # Pas besoin de cliquer sur le menu, les liens <a> sont déjà dans le DOM !
+            # On cherche directement le lien <a> qui correspond à la saison
             season_link = sb.find_element(f"a:contains('- {format_type}')")
             season_href = season_link.get_attribute("href")
             print(f"[WORKER] URL de saison trouvée : {season_href}")

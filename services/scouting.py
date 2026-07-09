@@ -317,7 +317,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
             used_base_ids.add(cap)
             f["source"] = "leftover"
             
-        while len(f["members_ids"]) < f.get("target_size", 5) and leftover_ships:
+        while len(f["members_ids"]) < f.get("target_size", 6) and leftover_ships:
             filler = leftover_ships.pop(0)
             f["members_ids"].append(filler)
             used_base_ids.add(filler)
@@ -446,7 +446,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             used_base_ids.add(cap)
             f["source"] = "leftover"
             
-        while len(f["members_ids"]) < f.get("target_size", 5) and leftover_ships:
+        while len(f["members_ids"]) < f.get("target_size", 6) and leftover_ships:
             filler = leftover_ships.pop(0)
             f["members_ids"].append(filler)
             used_base_ids.add(filler)

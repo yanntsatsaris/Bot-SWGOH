@@ -25,10 +25,11 @@ class GacMetaSquadsScraper:
         
         # Ce code sera exécuté sur le VPS.
         import subprocess
+        import sys
         try:
             # Lancement du worker SeleniumBase spécial SPA
             process = await asyncio.create_subprocess_exec(
-                "python3", "scripts/meta_sb_worker.py", target_url, output_file, format_type, mode,
+                sys.executable, "scripts/meta_sb_worker.py", target_url, output_file, format_type, mode,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
             )

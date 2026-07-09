@@ -37,7 +37,7 @@ class GacMetaSquadsScraper:
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                logger.error(f"Erreur meta_sb_worker: {stderr.decode()}")
+                logger.error(f"Erreur meta_sb_worker (Code {process.returncode})\nSTDOUT: {stdout.decode()}\nSTDERR: {stderr.decode()}")
                 return False
 
             if not os.path.exists(output_file):

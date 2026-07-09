@@ -99,11 +99,34 @@ def scrape(target_url, output_file, format_type, mode):
             # On navigue vers la nouvelle page (qui va recharger entièrement)
             sb.uc_open_with_reconnect(final_url, reconnect_time=4)
             
+            # On revérifie si Cloudflare nous a bloqué au rechargement de page
+            quick_check_2 = sb.get_page_source()
+            cloudflare_present_2 = (
+                "Just a moment" in quick_check_2
+                or "cf-turnstile" in quick_check_2
+                or "Checking your browser" in quick_check_2
+            )
+            
+            if cloudflare_present_2:
+                print("[WORKER] Cloudflare détecté après navigation, tentative de clic...")
+                try:
+                    sb.uc_gui_click_captcha()
+                except:
+                    pass
+                sb.sleep(8)
+            else:
+                sb.sleep(3)
+            
             # Attente active du chargement du tableau sur la nouvelle page
+            table_found = False
             for _ in range(20):
                 if sb.is_element_visible("table.stat-table"):
+                    table_found = True
                     break
                 sb.sleep(0.5)
+                
+            if not table_found:
+                raise Exception(f"La table 'table.stat-table' n'est jamais apparue sur l'URL {final_url}. Possible blocage Cloudflare ou erreur de rendu.")
                 
             sb.sleep(2) # Petit buffer
             

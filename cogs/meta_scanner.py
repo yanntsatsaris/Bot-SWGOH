@@ -12,7 +12,7 @@ from discord.ext import commands, tasks
 
 from database.db import get_db
 from services.comlink import scan_all_leaderboards, get_player
-from services.scouting import get_omicron_dict, _build_roster_index, _predict_zones
+from services.scouting import get_omicron_dict, _build_roster_index, _predict_zones, get_ship_base_ids
 from utils.gac_config import get_gac_quotas
 
 log = logging.getLogger(__name__)
@@ -28,7 +28,8 @@ async def analyze_player_meta(ally_code: str | None = None, player_id: str | Non
         return []
     
     omicron_dict = await get_omicron_dict()
-    index = _build_roster_index(roster, omicron_dict)
+    ship_base_ids = await get_ship_base_ids()
+    index = _build_roster_index(roster, omicron_dict, ship_base_ids)
     
     # On utilise les quotas correspondant à la ligue
     quotas = get_gac_quotas(league_name, fmt)

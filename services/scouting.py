@@ -31,7 +31,18 @@ async def get_omicron_dict() -> dict:
 def _is_gac_ready(unit: dict) -> bool:
     return unit.get("relic_tier", 0) > 0 or unit.get("gear_tier", 0) >= 11
 
-def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
+async def get_ship_base_ids() -> set:
+    ships = set()
+    try:
+        async with get_db() as db:
+            async with db.execute("SELECT base_id FROM game_units WHERE combat_type = 2") as cursor:
+                async for row in cursor:
+                    ships.add(row["base_id"])
+    except Exception as e:
+        log.warning(f"Erreur chargement des vaisseaux: {e}")
+    return ships
+
+def _build_roster_index(raw_roster: list, omicron_dict: dict, ship_base_ids: set) -> dict:
     roster = {}
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
@@ -40,21 +51,24 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict) -> dict:
         relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
         
         has_omicron = False
-        for sk in unit.get("skill", []):
-            sid = sk.get("id")
-            tier = sk.get("tier", 0)
-            req_tier = omicron_dict.get(sid)
-            if req_tier and tier >= req_tier:
-                has_omicron = True
-                break
-                
+        if omicron_dict:
+            unit_skills = (unit.get("skill") or [])
+            for skill in unit_skills:
+                skill_id = skill.get("id")
+                skill_tier = skill.get("tier", 0)
+                if skill_id in omicron_dict and skill_tier >= omicron_dict[skill_id]:
+                    has_omicron = True
+                    break
+                    
+        combat_type = 2 if base_id in ship_base_ids else unit.get("combatType", 1)
+
         roster[base_id] = {
             "base_id": base_id,
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
             "has_omicron": has_omicron,
-            "combat_type": unit.get("combatType", 1)
+            "combat_type": combat_type
         }
     return roster
 
@@ -477,7 +491,8 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         
     quotas = get_gac_quotas(league_name, fmt)
     omicron_dict = await get_omicron_dict()
-    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict)
+    ship_base_ids = await get_ship_base_ids()
+    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict, ship_base_ids)
     
     from services.gac_scout_analyzer import GacScoutAnalyzer
     habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
@@ -499,7 +514,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_clean = str(my_ally_code).replace("-", "").strip()
         my_profile = await get_player(my_clean)
         if my_profile:
-            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict)
+            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, ship_base_ids)
             my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)

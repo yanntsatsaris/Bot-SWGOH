@@ -165,7 +165,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             has_history = False
             async with get_db() as db:
                 cursor = await db.execute(
-                    "SELECT 1 FROM gac_history WHERE enemy_id = ? AND format = ? LIMIT 1", 
+                    "SELECT 1 FROM gac_rounds WHERE player_code = ? AND format = ? LIMIT 1", 
                     (clean_code, format_gac.value)
                 )
                 has_history = await cursor.fetchone() is not None

@@ -39,17 +39,29 @@ async def build_portrait_cache() -> None:
         log.error("Erreur chargement cache portraits depuis DB: %s", e)
 
 def _load_data():
-    global _unit_data
+    global _unit_data, _db_image_paths, _validated_image_paths
     try:
         import sqlite3
         from config import DATABASE_PATH
         conn = sqlite3.connect(DATABASE_PATH)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        # On inclut thumbnail_name pour les images personnalisées
-        cursor.execute("SELECT base_id, name, type, thumbnail_name FROM game_characters")
+        
+        # Charger les données des unités
+        cursor.execute("SELECT base_id, name, type, thumbnail_name, image_path, is_image_valid FROM game_characters")
         rows = cursor.fetchall()
         _unit_data = {row["base_id"].upper(): dict(row) for row in rows}
+        
+        # Charger les chemins d'images validés manuellement
+        _db_image_paths = {
+            row["base_id"].upper(): row["image_path"]
+            for row in rows if row["is_image_valid"] == 1 and row["image_path"]
+        }
+        _validated_image_paths = {
+            Path(row["image_path"]).as_posix()
+            for row in rows if row["is_image_valid"] == 1 and row["image_path"]
+        }
+        
         conn.close()
     except Exception as e:
         log.error(f"Erreur _load_data depuis SQLite: {e}")

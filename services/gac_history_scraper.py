@@ -78,7 +78,7 @@ class GACHistoryScraper:
                 
                 if interaction:
                     try:
-                        await interaction.followup.send(ephemeral=True, content=f"🔍 Début de l'extraction de l'historique pour {ally_code} (Patientez ~20s)...")
+                        await interaction.edit_original_response(content=f"⏳ **[■■■□□□□□□□] 30%** : Démarrage de l'extraction pour l'ally code **{ally_code}**...")
                     except:
                         pass
                 
@@ -160,7 +160,7 @@ class GACHistoryScraper:
                                     
                                     if interaction:
                                         try:
-                                            await interaction.followup.send(ephemeral=True, content=f"📂 Historique GAC détecté ! J'ai mis {len(parsed_data['hub_links'])} matchs dans la file d'attente. Le bot va les traiter silencieusement en arrière-plan (cela prendra quelques minutes).")
+                                            await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(parsed_data['hub_links'])} matchs trouvés ! Traitement en arrière-plan...")
                                         except:
                                             pass
                                     continue
@@ -172,7 +172,7 @@ class GACHistoryScraper:
                                 if interaction:
                                     try:
                                         nb_matchs = len(parsed_data.get("matches", []))
-                                        await interaction.followup.send(ephemeral=True, content=f"🏆 Succès ! {nb_matchs} matchs ont été extraits et sauvegardés dans la base de données pour {clean_code} !")
+                                        await interaction.edit_original_response(content=f"⏳ **[■■■■■■■■■□] 90%** : {nb_matchs} combats extraits avec succès ! Préparation de l'analyse...")
                                     except:
                                         pass
                             else:
@@ -181,7 +181,7 @@ class GACHistoryScraper:
                             logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
                             if interaction:
                                 try:
-                                    await interaction.followup.send(ephemeral=True, content=f"❌ Le scraping a échoué (regarde la console).")
+                                    await interaction.edit_original_response(content=f"❌ **Erreur** : Le scraping a échoué.")
                                 except:
                                     pass
                     except asyncio.TimeoutError:
@@ -189,7 +189,7 @@ class GACHistoryScraper:
                         logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 60 secondes.")
                         if interaction:
                             try:
-                                await interaction.followup.send(ephemeral=True, content=f"❌ Timeout : Cloudflare a fait planter le navigateur.")
+                                await interaction.edit_original_response(content=f"❌ **Timeout** : Cloudflare a fait planter le navigateur.")
                             except:
                                 pass
                 finally:

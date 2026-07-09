@@ -104,7 +104,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         """Commande principale pour scouter un ennemi."""
         # On met le message initial en éphémère (silencieux) pour masquer le processus
         await interaction.response.defer(ephemeral=True)
-        await interaction.followup.send("🔍 Vérification de l'historique en cours... Le résultat sera posté publiquement ici dès que c'est prêt !", ephemeral=True)
+        await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Initialisation du scraper GAC...")
         
         try:
             # Fonction callback qui sera appelée quand le scraper aura fini
@@ -151,6 +151,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     if not my_ally_code:
                         msg += "\n*Astuce : Utilise `/register` pour que le bot te propose aussi une défense sur mesure !*"
                         
+                    await inter.edit_original_response(content="✅ **[■■■■■■■■■■] 100%** : Analyse terminée ! Le résultat est posté ci-dessous.")
                     await inter.channel.send(content=msg, files=files)
                 except Exception as e:
                     log.exception("Erreur lors de la génération de l'image de scouting : %s", e)

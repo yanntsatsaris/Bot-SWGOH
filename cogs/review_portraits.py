@@ -255,9 +255,14 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
             )
             await db.commit()
             
+        # Vider le cache pour forcer la relecture
+        from services.portrait_cache import get_portrait_path, _load_data
+        get_portrait_path.cache_clear()
+        _load_data()  # Recharger la BDD en mémoire
+            
         embed = discord.Embed(
             title="✅ Portrait Corrigé",
-            description=f"L'image de **{name}** a été remplacée par `{nom_image}` dans le dossier `{folder}`.",
+            description=f"L'image de **{name}** a été remplacée par `{nom_image}` dans le dossier `{folder}`.\n*(Cache vidé avec succès !)*",
             color=discord.Color.green()
         )
         

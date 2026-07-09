@@ -237,7 +237,10 @@ def get_portrait_path(base_id: str) -> Path:
         clean = str(t).replace(".png", "").replace("tex.avatars_", "")
         for pref in prefixes:
             path = target_dir / f"{pref}{clean}.png"
-            if path.exists() and is_path_available(path): 
+            # Pour les correspondances directes (nom exact ou manuel), on ignore is_path_available
+            # car si l'utilisateur a fait une erreur de validation sur un autre perso, 
+            # ça ne doit pas bloquer la correspondance exacte.
+            if path.exists(): 
                 return path
 
     # Recherche floue intelligente améliorée

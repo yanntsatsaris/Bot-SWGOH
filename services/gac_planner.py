@@ -55,17 +55,15 @@ class GacPlanner:
 
         # 2. Récupérer la meta de la BDD
         async with get_db() as db:
-            # Pour la défense, on trie par hold_percent. Pour l'attaque, par seen ou un ratio.
+            # Pour la défense, on se base sur hold_percent, pour l'attaque sur seen
             order_by = "hold_percent DESC" if mode == "defense" else "seen DESC"
             
+            # On récupère plus de lignes pour avoir une bonne base statistique par leader
             async with db.execute(
-                f"SELECT squad_units, seen, hold_percent, avg_banners FROM gac_global_meta WHERE format = ? AND mode = ? ORDER BY {order_by} LIMIT 100",
+                f"SELECT squad_units, seen, hold_percent, avg_banners FROM gac_global_meta WHERE format = ? AND mode = ? ORDER BY {order_by} LIMIT 500",
                 (format_type, mode)
             ) as cur:
                 meta_rows = await cur.fetchall()
-
-        suggestions = []
-        used_characters = set() # Pour éviter de suggérer deux équipes avec le même personnage clé
 
         from services.portrait_cache import get_unit_name
         import re
@@ -78,27 +76,67 @@ class GacPlanner:
                 slug_to_base[computed_slug] = base_id
             slug_to_base[base_id.lower()] = base_id
 
-        # 3. Évaluer chaque squad de la meta par rapport au roster du joueur
+        # 3. Grouper par Leader et calculer les scores des membres
+        leaders_data = {}
+        
         for row in meta_rows:
             raw_units = json.loads(row["squad_units"])
-            if not raw_units:
+            if not raw_units or len(raw_units) == 0:
                 continue
 
-            # Traduire les slugs en base_ids
             units = []
             for slug in raw_units:
                 base = slug_to_base.get(slug.lower())
                 if not base:
-                    # Fallback on removing hyphens
                     base = slug_to_base.get(slug.lower().replace("-", ""))
                 if base:
                     units.append(base)
                 else:
-                    units.append(slug.upper()) # fallback
+                    units.append(slug.upper())
 
             leader_id = units[0]
+            members = units[1:]
+            seen = row["seen"] or 0
+            hold_percent = row["hold_percent"] or 0
+
+            if leader_id not in leaders_data:
+                leaders_data[leader_id] = {
+                    "leader_score": hold_percent if mode == "defense" else seen,
+                    "members_freq": {},
+                    "best_hold": hold_percent,
+                    "best_banners": row["avg_banners"]
+                }
             
-            # Vérifier si le joueur possède le leader avec un niveau minimum
+            # Mettre à jour le score global du leader (le max)
+            if mode == "defense" and hold_percent > leaders_data[leader_id]["leader_score"]:
+                leaders_data[leader_id]["leader_score"] = hold_percent
+                leaders_data[leader_id]["best_hold"] = hold_percent
+                leaders_data[leader_id]["best_banners"] = row["avg_banners"]
+            elif mode == "attack" and seen > leaders_data[leader_id]["leader_score"]:
+                leaders_data[leader_id]["leader_score"] = seen
+                leaders_data[leader_id]["best_hold"] = hold_percent
+                leaders_data[leader_id]["best_banners"] = row["avg_banners"]
+
+            # Ajouter la fréquence d'apparition pour chaque membre
+            for m in members:
+                if m not in leaders_data[leader_id]["members_freq"]:
+                    leaders_data[leader_id]["members_freq"][m] = 0
+                leaders_data[leader_id]["members_freq"][m] += seen
+
+        # 4. Trier les leaders par leur score global
+        sorted_leaders = sorted(
+            leaders_data.items(), 
+            key=lambda x: x[1]["leader_score"], 
+            reverse=True
+        )
+
+        suggestions = []
+        used_characters = set()
+        target_team_size = 5 if format_type == "5v5" else 3
+
+        # 5. Construire les équipes en piochant dans les personnages disponibles
+        for leader_id, l_data in sorted_leaders:
+            # Vérifier si le joueur possède le leader au bon niveau
             if leader_id not in player_units:
                 continue
                 
@@ -108,54 +146,52 @@ class GacPlanner:
             if leader_stats["gear"] < min_gear:
                 continue
             
-            # Vérifier que le leader n'a pas déjà été utilisé dans une suggestion précédente
             if leader_id in used_characters:
                 continue
                 
-            # Calculer la complétion de l'équipe
-            missing_units = []
+            # Trier les candidats pour ce leader par fréquence d'apparition (les plus utilisés d'abord)
+            sorted_candidates = sorted(
+                l_data["members_freq"].items(),
+                key=lambda x: x[1],
+                reverse=True
+            )
+            
             valid_members = []
             
-            for unit_id in units:
-                if unit_id not in player_units:
-                    missing_units.append(unit_id)
-                else:
-                    stats = player_units[unit_id]
-                    if (min_relic >= 0 and stats["relic"] < min_relic) or (stats["gear"] < min_gear):
-                        missing_units.append(unit_id)
-                    else:
-                        valid_members.append(unit_id)
-
-            # Ne proposer que les équipes où le joueur a la majorité des personnages au bon niveau
-            max_missing = 1 if format_type == "5v5" else 0
-            if len(missing_units) <= max_missing:
-                # Vérifier qu'aucun autre personnage clé (ex: Galactic Legends) n'est réutilisé
-                # Une approche simple : on marque tous les personnages de l'équipe comme utilisés
-                # (Dans une v2, on pourrait n'interdire que les Core members)
-                conflict = False
-                for u in valid_members:
-                    if u in used_characters:
-                        conflict = True
-                        break
+            for candidate_id, _ in sorted_candidates:
+                if candidate_id not in player_units:
+                    continue
                 
-                if conflict:
+                stats = player_units[candidate_id]
+                if min_relic >= 0 and stats["relic"] < min_relic:
+                    continue
+                if stats["gear"] < min_gear:
                     continue
                     
+                if candidate_id in used_characters:
+                    continue
+                    
+                valid_members.append(candidate_id)
+                if len(valid_members) == target_team_size - 1:
+                    break # On a assez de membres
+            
+            # En défense, on exige une équipe complète (0 trou). 
+            # En attaque, on pourrait tolérer un trou, mais pour l'instant on garde la même exigence pour avoir des bonnes suggestions.
+            if len(valid_members) == target_team_size - 1:
                 suggestions.append({
                     "leader": leader_id,
-                    "members": units[1:], # tous les autres
-                    "valid_members": valid_members,
-                    "missing_units": missing_units,
-                    "seen": row["seen"],
-                    "hold_percent": row["hold_percent"],
-                    "avg_banners": row["avg_banners"]
+                    "members": valid_members,
+                    "valid_members": [leader_id] + valid_members,
+                    "missing_units": [], # Par définition, il n'y a plus de "missing" car on compose avec ce qu'on a
+                    "seen": l_data["leader_score"] if mode == "attack" else 0, # Juste pour info
+                    "hold_percent": l_data["best_hold"],
+                    "avg_banners": l_data["best_banners"]
                 })
                 
-                # Marquer les personnages comme utilisés pour ne pas les suggérer 2 fois
+                used_characters.add(leader_id)
                 for u in valid_members:
                     used_characters.add(u)
                 
-                # On limite le nombre de suggestions
                 if len(suggestions) >= 15:
                     break
                     

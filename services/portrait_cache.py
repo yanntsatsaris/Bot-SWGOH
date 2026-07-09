@@ -52,13 +52,13 @@ def _load_data():
         rows = cursor.fetchall()
         _unit_data = {row["base_id"].upper(): dict(row) for row in rows}
         
-        # Charger les chemins d'images validés manuellement
+        # Charger les chemins d'images validés manuellement avec correction des slash
         _db_image_paths = {
-            row["base_id"].upper(): row["image_path"]
+            row["base_id"].upper(): row["image_path"].replace("\\", "/")
             for row in rows if row["is_image_valid"] == 1 and row["image_path"]
         }
         _validated_image_paths = {
-            Path(row["image_path"]).as_posix()
+            Path(row["image_path"].replace("\\", "/")).as_posix()
             for row in rows if row["is_image_valid"] == 1 and row["image_path"]
         }
         

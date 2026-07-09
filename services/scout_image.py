@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 
 H_ZONE_TITLE = 40
 
-def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_name: str, source: str) -> io.BytesIO:
+def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_name: str, source: str, roster_index: dict = None) -> io.BytesIO:
     """
     Génère l'image PNG de la carte GAC scannée.
     """
@@ -56,11 +56,17 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             
             x = PADDING + 20
             
+            def get_unit_details(uid):
+                if not uid or not roster_index or uid not in roster_index:
+                    return None, None
+                return roster_index[uid].get("relic_tier"), roster_index[uid].get("gear_tier")
+            
             if zname == "Fleet":
                 # Dessine 1 capital, espace, 3 ligne de front, espace, 4 renforts (total 8 max)
                 slots = 8
                 # Capital
-                _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)
+                rel, gr = get_unit_details(leader_id)
+                _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, True)
                 x += PORTRAIT_CELL + PORTRAIT_GAP * 3
                 
                 # Membres
@@ -69,7 +75,8 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                     if member_id == leader_id and member_id is not None:
                         continue # Evite le doublon si le leader est déjà dans la liste
                         
-                    _draw_portrait_cell(canvas, x, y, member_id, None, None, True, True, True)
+                    rel, gr = get_unit_details(member_id)
+                    _draw_portrait_cell(canvas, x, y, member_id, rel, gr, True, True, True)
                     x += PORTRAIT_CELL + PORTRAIT_GAP
                     if i == 3: # Espace après les 3 fronts
                         x += PORTRAIT_GAP * 2
@@ -77,14 +84,16 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                 slots = 3 if fmt == "3v3" else 5
                 
                 # Leader
-                _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)
+                rel, gr = get_unit_details(leader_id)
+                _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, True)
                 x += PORTRAIT_CELL + PORTRAIT_GAP
                 
                 # Autres membres
                 drawn = 1
                 for m in members:
                     if m != leader_id and drawn < slots:
-                        _draw_portrait_cell(canvas, x, y, m, None, None, True, True, True)
+                        rel, gr = get_unit_details(m)
+                        _draw_portrait_cell(canvas, x, y, m, rel, gr, True, True, True)
                         x += PORTRAIT_CELL + PORTRAIT_GAP
                         drawn += 1
                         
@@ -93,6 +102,23 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                     _draw_portrait_cell(canvas, x, y, None, None, None, True, True, True)
                     x += PORTRAIT_CELL + PORTRAIT_GAP
                     drawn += 1
+            
+            # Écrire la source de l'équipe (Historique vs Prédictif)
+            team_source = t.get("source", "predictive")
+            if "Historique" in team_source:
+                source_label = team_source
+                label_color = C_GOLD
+            elif team_source == "leftover":
+                source_label = "Leftover"
+                label_color = C_MUTED
+            elif team_source == "empty":
+                source_label = "Vide"
+                label_color = C_MUTED
+            else:
+                source_label = "Prédiction"
+                label_color = C_MUTED
+                
+            draw.text((x + 20, y + PORTRAIT_CELL // 2 - 8), source_label, font=_get_font("bold", 13), fill=label_color)
 
             y += PORTRAIT_CELL + 10
             

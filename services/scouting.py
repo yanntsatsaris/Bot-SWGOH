@@ -184,6 +184,10 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = Non
                 if t["leader_id"] not in used_base_ids and t["leader_id"] != "USED":
                     valid_members = [m for m in t["members"] if m not in used_base_ids]
                     
+                    # Règle stricte min_size : l'équipe doit avoir assez de membres disponibles pour atteindre sa taille requise
+                    if len(valid_members) + 1 < t["target_size"]:
+                        continue
+                        
                     zones[zone].append({
                         "leader_id": t["leader_id"],
                         "members_ids": valid_members,
@@ -342,13 +346,15 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     
     enemy_zones = _predict_zones(enemy_index, quotas, fmt, habits)
     
+    has_habits = habits and habits.get("total_rounds", 0) > 0
     result = {
         "enemy_name": enemy_name,
         "league": league_name,
         "format": fmt,
-        "source": "Prédiction Offense/Défense",
+        "source": "Historique + Prédiction" if has_habits else "Prédiction Offense/Défense",
         "zones": enemy_zones,
-        "quotas": quotas
+        "quotas": quotas,
+        "roster_index": enemy_index
     }
     
     if my_ally_code:
@@ -359,5 +365,6 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
             my_zones = _predict_zones(my_index, quotas, fmt)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
+            result["my_roster_index"] = my_index
 
     return result

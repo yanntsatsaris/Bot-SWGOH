@@ -130,7 +130,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                         scout_data["league"], 
                         scout_data["format"], 
                         scout_data["enemy_name"] + " (Ennemi)", 
-                        scout_data["source"]
+                        scout_data["source"],
+                        scout_data.get("roster_index")
                     )
                     files.append(discord.File(enemy_img, filename="enemy_defense.png"))
                     
@@ -141,7 +142,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                             scout_data["league"], 
                             scout_data["format"], 
                             scout_data["my_name"] + " (Ta Défense Suggérée)", 
-                            "Contre-Défense Optimisée"
+                            "Contre-Défense Optimisée",
+                            scout_data.get("my_roster_index")
                         )
                         files.append(discord.File(my_img, filename="my_defense.png"))
                     

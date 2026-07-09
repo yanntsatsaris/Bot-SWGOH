@@ -9,9 +9,11 @@ class GacScoutAnalyzer:
         """
         Analyse les habitudes défensives d'un joueur.
         Retourne un dictionnaire groupé par zone (Top, Bottom, Back, Fleet).
+        Si aucune donnée n'est trouvée dans gac_round_teams, interroge gac_matches
+        (données issues du scraping de swgoh.gg) comme fallback.
         """
         async with get_db() as db:
-            # On cherche toutes les équipes de défense posées par ce joueur
+            # 1. On cherche toutes les équipes de défense dans gac_round_teams (saisie manuelle/brackets)
             query = """
                 SELECT t.zone, t.leader_id, t.members_ids, COUNT(*) as frequency
                 FROM gac_round_teams t
@@ -25,8 +27,7 @@ class GacScoutAnalyzer:
             async with db.execute(query, (format_type, ally_code, ally_code)) as cur:
                 rows = await cur.fetchall()
 
-            # On compte le nombre total de rounds où le joueur a joué en défense dans ce format
-            # Pour calculer les vrais pourcentages.
+            # On compte le nombre total de rounds où le joueur a joué en défense dans ce format dans gac_round_teams
             count_query = """
                 SELECT COUNT(DISTINCT r.id) as total_rounds
                 FROM gac_rounds r
@@ -39,9 +40,87 @@ class GacScoutAnalyzer:
                 count_row = await cur.fetchone()
                 total_rounds = count_row[0] if count_row else 0
 
+        # 2. Si aucune donnée dans gac_round_teams, on interroge gac_matches (données scrapées)
+        if total_rounds == 0:
+            async with get_db() as db:
+                async with db.execute(
+                    "SELECT COUNT(*) FROM gac_rounds WHERE player_code = ? AND format = ?",
+                    (ally_code, format_type)
+                ) as cur:
+                    row = await cur.fetchone()
+                    total_rounds = row[0] if row else 0
+                    
+                if total_rounds > 0:
+                    query_scraped = """
+                        SELECT m.defender_team, COUNT(*) as frequency
+                        FROM gac_matches m
+                        JOIN gac_rounds r ON m.round_id = r.id
+                        WHERE m.is_attack = 0
+                          AND r.format = ?
+                          AND r.player_code = ?
+                        GROUP BY m.defender_team
+                        ORDER BY frequency DESC
+                    """
+                    async with db.execute(query_scraped, (format_type, ally_code)) as cur:
+                        scraped_rows = await cur.fetchall()
+                        
+                    # Extraire et séparer terre/flottes
+                    land_teams = []
+                    fleet_teams = []
+                    
+                    import json
+                    from services.gac_meta import GAC_FLEETS
+                    
+                    for r_row in scraped_rows:
+                        try:
+                            members = json.loads(r_row["defender_team"])
+                        except:
+                            members = []
+                            
+                        if not members:
+                            continue
+                            
+                        leader_id = members[0]
+                        members_ids = members[1:]
+                        freq = r_row["frequency"]
+                        percent = round((freq / total_rounds) * 100, 1)
+                        
+                        is_fleet = leader_id in GAC_FLEETS or "CAPITAL" in leader_id
+                        
+                        team_info = {
+                            "leader_id": leader_id,
+                            "members": members_ids,
+                            "frequency": freq,
+                            "percent": percent
+                        }
+                        
+                        if is_fleet:
+                            fleet_teams.append(team_info)
+                        else:
+                            land_teams.append(team_info)
+                            
+                    habits = {
+                        "total_rounds": total_rounds,
+                        "zones": {
+                            "top": [],
+                            "bottom": [],
+                            "back": [],
+                            "fleet": fleet_teams
+                        }
+                    }
+                    
+                    # Répartir les équipes terrestres de manière équitable (round-robin)
+                    zones_cycle = ["top", "bottom", "back"]
+                    for idx, team in enumerate(land_teams):
+                        zone_name = zones_cycle[idx % 3]
+                        habits["zones"][zone_name].append(team)
+                        
+                    return habits
+
         if total_rounds == 0:
             return {"total_rounds": 0, "zones": {}}
 
+        # 3. Traiter le résultat de gac_round_teams
         habits = {
             "total_rounds": total_rounds,
             "zones": {

@@ -200,7 +200,6 @@ class GACHistoryScraper:
                             del self.pending_tasks[c_code]
                             saved_int = self.interactions.pop(c_code, None)
                             if saved_int and saved_int.get("callback"):
-                                import asyncio
                                 asyncio.create_task(saved_int["callback"](c_code, saved_int["interaction"]))
                 
                 # Petite pause entre chaque profil pour ne pas affoler Cloudflare

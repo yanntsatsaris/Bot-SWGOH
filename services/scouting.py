@@ -83,7 +83,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                         "leader_id": leader,
                         "members_ids": valid_members,
                         "source": f"Historique ({percent}%)",
-                        "target_size": expected_size if hz != "fleet" else 7
+                        "target_size": expected_size if hz != "fleet" else 8
                     })
                     used_base_ids.add(leader)
                     used_base_ids.update(valid_members)
@@ -293,14 +293,14 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                     "leader_id": f["leader_id"],
                     "members_ids": valid_members,
                     "source": "predictive",
-                    "target_size": 7
+                    "target_size": 8
                 })
                 used_base_ids.update(valid_members)
                 f["leader_id"] = "USED"
                 placed = True
                 break
         if not placed:
-            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 7})
+            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 8})
 
     # 2.5 BOUCHAGE FLOTTES
     leftover_capitals = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
@@ -317,7 +317,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
             used_base_ids.add(cap)
             f["source"] = "leftover"
             
-        while len(f["members_ids"]) < f.get("target_size", 7) and leftover_ships:
+        while len(f["members_ids"]) < f.get("target_size", 8) and leftover_ships:
             filler = leftover_ships.pop(0)
             f["members_ids"].append(filler)
             used_base_ids.add(filler)
@@ -422,14 +422,14 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                     "leader_id": f["leader_id"],
                     "members_ids": valid_members,
                     "source": "predictive",
-                    "target_size": 7
+                    "target_size": 8
                 })
                 used_base_ids.update(valid_members)
                 f["leader_id"] = "USED"
                 placed = True
                 break
         if not placed:
-            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 7})
+            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 8})
 
     # 2.5 BOUCHAGE FLOTTES
     leftover_capitals = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
@@ -446,7 +446,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             used_base_ids.add(cap)
             f["source"] = "leftover"
             
-        while len(f["members_ids"]) < f.get("target_size", 7) and leftover_ships:
+        while len(f["members_ids"]) < f.get("target_size", 8) and leftover_ships:
             filler = leftover_ships.pop(0)
             f["members_ids"].append(filler)
             used_base_ids.add(filler)

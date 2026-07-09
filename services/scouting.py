@@ -315,6 +315,104 @@ def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = Non
 
     return zones
 
+async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str) -> dict:
+    zones = {"North": [], "South": [], "Back": [], "Fleet": []}
+    used_base_ids = set()
+    expected_size = 3 if fmt == "3v3" else 5
+    
+    from services.gac_planner import GacPlanner
+    planner = GacPlanner()
+    suggestions = await planner.get_team_suggestions(
+        ally_code=ally_code,
+        format_type=fmt,
+        mode="defense",
+        min_relic=-1,
+        min_gear=12
+    )
+
+    # 1. Escouades au sol
+    for zone in ["North", "South", "Back"]:
+        q = quotas.get(zone, 0)
+        remaining_q = max(0, q - len(zones[zone]))
+        for _ in range(remaining_q):
+            placed = False
+            for sugg in suggestions:
+                leader_id = sugg["leader"]
+                if leader_id not in used_base_ids and leader_id != "USED":
+                    # Mettre uniquement les membres valides (qui ont au moins G12)
+                    valid_members = [m for m in sugg["valid_members"] if m not in used_base_ids and m != leader_id]
+                    
+                    zones[zone].append({
+                        "leader_id": leader_id,
+                        "members_ids": valid_members,
+                        "source": "Meta SWGOH.gg",
+                        "target_size": expected_size
+                    })
+                    used_base_ids.add(leader_id)
+                    used_base_ids.update(valid_members)
+                    sugg["leader"] = "USED" # On marque l'équipe comme consommée
+                    placed = True
+                    break
+            
+            if not placed:
+                zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
+
+    # 2. FLOTTES (identique à _predict_zones)
+    available_fleets = []
+    for cap_id, team_data in GAC_FLEETS.items():
+        if my_index.get(cap_id) and my_index[cap_id].get("rarity", 0) >= 5:
+            score = my_index[cap_id].get("relic_tier", 0) * 10 + my_index[cap_id].get("gear_tier", 0)
+            available_fleets.append({
+                "leader_id": cap_id,
+                "members": team_data["members"],
+                "defense": team_data.get("defense", 5),
+                "score": score
+            })
+            
+    available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
+    
+    fleet_quota = quotas.get("Fleet", 1)
+    remaining_fleet_q = max(0, fleet_quota - len(zones["Fleet"]))
+    for _ in range(remaining_fleet_q):
+        placed = False
+        for f in available_fleets:
+            if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
+                valid_members = [m for m in f["members"] if m not in used_base_ids and m in my_index]
+                zones["Fleet"].append({
+                    "leader_id": f["leader_id"],
+                    "members_ids": valid_members,
+                    "source": "predictive",
+                    "target_size": 5
+                })
+                used_base_ids.update(valid_members)
+                f["leader_id"] = "USED"
+                placed = True
+                break
+        if not placed:
+            zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 5})
+
+    # 2.5 BOUCHAGE FLOTTES
+    leftover_capitals = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
+    leftover_ships = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" not in m]
+    
+    leftover_capitals.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
+    leftover_ships.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
+    
+    for f in zones["Fleet"]:
+        if f["source"] == "empty" and leftover_capitals:
+            cap = leftover_capitals.pop(0)
+            f["leader_id"] = cap
+            f["members_ids"].append(cap)
+            used_base_ids.add(cap)
+            f["source"] = "leftover"
+            
+        while len(f["members_ids"]) < f.get("target_size", 5) and leftover_ships:
+            filler = leftover_ships.pop(0)
+            f["members_ids"].append(filler)
+            used_base_ids.add(filler)
+
+    return zones
+
 async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None) -> dict:
     clean_code = str(enemy_ally_code).replace("-", "").strip()
     profile = await get_player(clean_code)
@@ -362,7 +460,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_profile = await get_player(my_clean)
         if my_profile:
             my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict)
-            my_zones = _predict_zones(my_index, quotas, fmt)
+            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
             result["my_roster_index"] = my_index

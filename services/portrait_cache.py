@@ -146,6 +146,7 @@ def get_portrait_path(base_id: str) -> Path:
         "OLDBENKENOBI": "obiwanep4",
         "BISHOP": "colonelward",
         "RACCOON": "rotta",
+        "REYJEDITRAINING": "rey_tlj",
 
         # --- Vaisseaux ---
         "GEONOSIANSTARFIGHTER1": "geonosis_fighter_sunfac",
@@ -160,9 +161,10 @@ def get_portrait_path(base_id: str) -> Path:
         "JEDISTARFIGHTERPLOKOON": "jedi_fighter_bladeofdorin",
         "JEDISTARFIGHTERANAKIN": "jedi_fighter_anakin",
         "JEDISTARFIGHTERAHSOKA": "jedi_fighter_ahsoka",
+        "JEDISTARFIGHTERAHSOKATANO": "jedi_fighter_ahsoka",
         "JEDISTARFIGHTERCONSULAR": "jedi_fighter",
-        "CLONESERGEANTARC170": "arc170",
-        "REXARC170": "arc170_02",
+        "ARC170CLONESERGEANT": "arc170",
+        "ARC170REX": "arc170_02",
         "MEONECROW": "comeuppance",
         "SITHBOMBER": "b28extinctionclassbomber",
         "SITHINFILTRATOR": "sithinfiltrator",

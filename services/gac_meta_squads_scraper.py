@@ -82,11 +82,10 @@ class GacMetaSquadsScraper:
             if len(cols) >= 4:
                 # 1. Units
                 units = []
-                for a in cols[0].find_all('a'):
-                    href = a.get('href', '')
-                    if '/characters/' in href or '/ships/' in href:
-                        unit_id = href.strip('/').split('/')[-1]
-                        units.append(unit_id)
+                # Les unités ont l'attribut 'data-unit-def-tooltip-app' contenant le base_id
+                unit_divs = cols[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                for u in unit_divs:
+                    units.append(u['data-unit-def-tooltip-app'])
 
                 if not units:
                     continue

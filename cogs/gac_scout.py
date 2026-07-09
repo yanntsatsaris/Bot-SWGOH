@@ -86,8 +86,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         description="Scout le profil GAC d'un adversaire."
     )
     @app_commands.describe(
-        code_ennemi="Le code allié de l'ennemi (ex: 123-456-789)",
-        format_gac="Le format de la GAC (3v3 ou 5v5)"
+        code_ennemi="Code allié de l'ennemi (ex: 123-456-789)",
+        format_gac="Le format de la GAC en cours",
+        force_sync="Forcer la synchro depuis swgoh.gg (ignore le cache de la semaine)"
     )
     @app_commands.choices(
         format_gac=[
@@ -96,18 +97,19 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         ]
     )
     async def gac_scout(
-        self,
+        self, 
         interaction: discord.Interaction,
         code_ennemi: str,
-        format_gac: app_commands.Choice[str]
+        format_gac: app_commands.Choice[str],
+        force_sync: bool = False
     ) -> None:
         """Commande principale pour scouter un ennemi."""
         # On met le message initial en éphémère (silencieux) pour masquer le processus
         await interaction.response.defer(ephemeral=True)
-        await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Initialisation du scraper GAC...")
+        await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Vérification de l'historique GAC...")
         
         try:
-            # Fonction callback qui sera appelée quand le scraper aura fini
+            # Fonction callback qui sera appelée quand le scraper aura fini (ou immédiatement si données en cache)
             async def on_scrape_finished(ally_code: str, inter: discord.Interaction):
                 try:
                     my_ally_code = None
@@ -157,14 +159,27 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     log.exception("Erreur lors de la génération de l'image de scouting : %s", e)
                     await inter.channel.send(f"<@{inter.user.id}> ❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
 
-            # Lance le scraper en arrière-plan avec notre callback
             clean_code = code_ennemi.replace("-", "").strip()
             
-            if not hasattr(self.bot, "gac_scraper"):
-                await interaction.followup.send("❌ Le service d'extraction GAC (Scraper) n'est pas actif sur ce serveur.")
-                return
-                
-            await self.bot.gac_scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
+            # Vérification si on a déjà de l'historique pour ce joueur et ce format
+            has_history = False
+            async with get_db() as db:
+                cursor = await db.execute(
+                    "SELECT 1 FROM gac_history_matches WHERE ally_code = ? AND format = ? LIMIT 1", 
+                    (clean_code, format_gac.value)
+                )
+                has_history = await cursor.fetchone() is not None
+
+            if has_history and not force_sync:
+                await interaction.edit_original_response(content="⏳ Historique trouvé en base de données. Génération de la prédiction sans refaire de scrap...")
+                await on_scrape_finished(clean_code, interaction)
+            else:
+                if not hasattr(self.bot, "gac_scraper"):
+                    await interaction.followup.send("❌ Le service d'extraction GAC (Scraper) n'est pas actif sur ce serveur.")
+                    return
+                    
+                await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Scraping de l'historique swgoh.gg en cours...")
+                await self.bot.gac_scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
             
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)

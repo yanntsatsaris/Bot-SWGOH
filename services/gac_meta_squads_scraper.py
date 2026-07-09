@@ -79,52 +79,52 @@ class GacMetaSquadsScraper:
                 continue
 
             for row in tbody.find_all('tr'):
-            cols = row.find_all('td')
-            if len(cols) >= 4:
-                # 1. Units
-                units = []
-                # Les unités ont l'attribut 'data-unit-def-tooltip-app' contenant le base_id
-                unit_divs = cols[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                for u in unit_divs:
-                    units.append(u['data-unit-def-tooltip-app'])
+                cols = row.find_all('td')
+                if len(cols) >= 4:
+                    # 1. Units
+                    units = []
+                    # Les unités ont l'attribut 'data-unit-def-tooltip-app' contenant le base_id
+                    unit_divs = cols[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                    for u in unit_divs:
+                        units.append(u['data-unit-def-tooltip-app'])
 
-                if not units:
-                    continue
+                    if not units:
+                        continue
 
-                # 2. Seen
-                seen_str = cols[1].text.strip().replace(',', '')
-                # Gestion des "K" et "M" (ex: 83.7K)
-                seen = 0
-                if 'K' in seen_str:
-                    seen = int(float(seen_str.replace('K', '')) * 1000)
-                elif 'M' in seen_str:
-                    seen = int(float(seen_str.replace('M', '')) * 1000000)
-                else:
+                    # 2. Seen
+                    seen_str = cols[1].text.strip().replace(',', '')
+                    # Gestion des "K" et "M" (ex: 83.7K)
+                    seen = 0
+                    if 'K' in seen_str:
+                        seen = int(float(seen_str.replace('K', '')) * 1000)
+                    elif 'M' in seen_str:
+                        seen = int(float(seen_str.replace('M', '')) * 1000000)
+                    else:
+                        try:
+                            seen = int(seen_str)
+                        except ValueError:
+                            pass
+
+                    # 3. Hold % / Win %
+                    hold_str = cols[2].text.strip().replace('%', '')
                     try:
-                        seen = int(seen_str)
+                        hold_percent = float(hold_str)
                     except ValueError:
-                        pass
+                        hold_percent = 0.0
 
-                # 3. Hold % / Win %
-                hold_str = cols[2].text.strip().replace('%', '')
-                try:
-                    hold_percent = float(hold_str)
-                except ValueError:
-                    hold_percent = 0.0
+                    # 4. Banners
+                    banners_str = cols[3].text.strip()
+                    try:
+                        avg_banners = float(banners_str)
+                    except ValueError:
+                        avg_banners = 0.0
 
-                # 4. Banners
-                banners_str = cols[3].text.strip()
-                try:
-                    avg_banners = float(banners_str)
-                except ValueError:
-                    avg_banners = 0.0
-
-                squads.append({
-                    "units": units,
-                    "seen": seen,
-                    "hold_percent": hold_percent,
-                    "avg_banners": avg_banners
-                })
+                    squads.append({
+                        "units": units,
+                        "seen": seen,
+                        "hold_percent": hold_percent,
+                        "avg_banners": avg_banners
+                    })
 
         return squads
 

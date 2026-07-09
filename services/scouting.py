@@ -204,7 +204,6 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
         m for m, data in enemy_index.items() 
         if m not in used_base_ids 
         and m not in offense_only_chars
-        and _is_gac_ready(data) 
         and data.get("combat_type", 1) == 1
     ]
     # Trier par puissance de base

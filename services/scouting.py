@@ -369,6 +369,34 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             if not placed:
                 zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
+    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT
+    # Tier 1 : Personnages avec combat_type = 1
+    leftovers_t1 = [
+        m for m, data in my_index.items() 
+        if m not in used_base_ids 
+        and data.get("combat_type", 1) == 1
+    ]
+    
+    # Trier par puissance de base
+    leftovers_t1.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
+    
+    leftovers = leftovers_t1
+    
+    # Pour la synergie, on pourrait utiliser les suggestions mais pour aller vite on va juste boucher avec les plus forts
+    for zone in ["North", "South", "Back"]:
+        for t in zones[zone]:
+            target = t.get("target_size", expected_size)
+            while len(t["members_ids"]) < target - (1 if t.get("leader_id") else 0) and leftovers:
+                if not t.get("leader_id"):
+                    # Si c'est une équipe totalement vide
+                    filler = leftovers.pop(0)
+                    t["leader_id"] = filler
+                    t["source"] = "leftover"
+                else:
+                    filler = leftovers.pop(0)
+                    t["members_ids"].append(filler)
+                used_base_ids.add(filler)
+
     # 2. FLOTTES (identique à _predict_zones)
     available_fleets = []
     for cap_id, team_data in GAC_FLEETS.items():

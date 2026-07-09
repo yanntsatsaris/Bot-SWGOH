@@ -81,14 +81,20 @@ def scrape(target_url, output_file, format_type, mode):
             # Le dropdown affiche "Season XX - 5v5" par défaut.
             try:
                 # Cherche un select
-                if sb.is_element_present("select"):
-                    # On boucle sur tous les select (souvent y'a un select caché ou custom, mais Select() natif marche)
-                    # SeleniumBase a un raccourci très puissant :
+                if sb.is_element_visible("select"):
                     sb.select_option_by_text("select", format_type, "partial")
-                    print(f"[WORKER] Option de saison contenant '{format_type}' cliquée.")
+                    print(f"[WORKER] Option de saison contenant '{format_type}' cliquée (select natif).")
                 else:
-                    print("[WORKER] Pas de <select> trouvé, tentative manuelle...")
-                    # TODO: Si c'est un ul/li
+                    print("[WORKER] Pas de <select> visible, tentative de clic sur menu personnalisé...")
+                    # On cherche l'élément qui affiche "Season: " pour ouvrir le menu
+                    trigger = sb.find_element("*:contains('Season:')")
+                    if trigger:
+                        trigger.click()
+                        sb.sleep(1) # Attendre l'animation du menu
+                        # Cliquer sur la première option contenant "- 3v3" ou "- 5v5"
+                        # En CSS: *:contains('- 3v3') trouvera le texte. On prend le premier.
+                        sb.click(f"*:contains('- {format_type}')")
+                        print(f"[WORKER] Option de saison contenant '{format_type}' cliquée (menu custom).")
             except Exception as e:
                 print(f"[WORKER] Avertissement: Impossible de changer la saison (format): {e}")
                 

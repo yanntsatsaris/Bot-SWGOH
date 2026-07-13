@@ -354,11 +354,9 @@ class GACHistoryScraper:
             max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
             detected_format = "3v3" if max_size <= 3 else "5v5"
                 
-            from services.logger import logger
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits ! Ligue détectée : {parsed_league}")
             return {"matches": matches, "format": detected_format, "league": parsed_league}
             
         except Exception as e:
-            from services.logger import logger
             logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")
             return {"matches": []}

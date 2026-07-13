@@ -159,7 +159,8 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 json.dump(result, f, ensure_ascii=False)
             
             debug_log.close()
-            sys.exit(0)
+            
+        exit_code = 0
             
     except Exception as e:
         print(f"ERREUR CRITIQUE: {e}")

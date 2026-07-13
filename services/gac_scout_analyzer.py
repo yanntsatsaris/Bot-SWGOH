@@ -53,7 +53,8 @@ class GacScoutAnalyzer:
                 if total_rounds > 0:
                     query_scraped = """
                         SELECT 
-                            m.defender_team, 
+                            m.defender_team,
+                            COALESCE(m.zone, 'unknown') as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
                             CASE WHEN MAX(r.id) >= (
@@ -68,7 +69,7 @@ class GacScoutAnalyzer:
                         WHERE m.is_attack = 0
                           AND r.format = ?
                           AND r.player_code = ?
-                        GROUP BY m.defender_team
+                        GROUP BY m.defender_team, COALESCE(m.zone, 'unknown')
                         ORDER BY score DESC, frequency DESC
                     """
                     async with db.execute(query_scraped, (ally_code, format_type, format_type, ally_code)) as cur:
@@ -77,6 +78,16 @@ class GacScoutAnalyzer:
                     # Extraire et séparer terre/flottes
                     land_teams = []
                     fleet_teams = []
+                    
+                    habits = {
+                        "total_rounds": total_rounds,
+                        "zones": {
+                            "top": [],
+                            "bottom": [],
+                            "back": [],
+                            "fleet": fleet_teams
+                        }
+                    }
                     
                     import json
                     from services.gac_meta import GAC_FLEETS
@@ -94,6 +105,7 @@ class GacScoutAnalyzer:
                         members_ids = members[1:]
                         freq = r_row["frequency"]
                         percent = round((freq / total_rounds) * 100, 1)
+                        zone_val = r_row["zone"]
                         
                         is_fleet = leader_id in GAC_FLEETS or "CAPITAL" in leader_id
                         
@@ -113,19 +125,12 @@ class GacScoutAnalyzer:
                         if is_fleet:
                             fleet_teams.append(team_info)
                         else:
-                            land_teams.append(team_info)
-                            
-                    habits = {
-                        "total_rounds": total_rounds,
-                        "zones": {
-                            "top": [],
-                            "bottom": [],
-                            "back": [],
-                            "fleet": fleet_teams
-                        }
-                    }
-                    
-                    # Répartir les équipes terrestres de manière équitable (round-robin)
+                            if zone_val in ["top", "bottom", "back"]:
+                                habits["zones"][zone_val].append(team_info)
+                            else:
+                                land_teams.append(team_info)
+                                
+                    # Répartir les équipes terrestres de manière équitable (round-robin) POUR CELLES DONT LA ZONE EST UNKNOWN
                     zones_cycle = ["top", "bottom", "back"]
                     for idx, team in enumerate(land_teams):
                         zone_name = zones_cycle[idx % 3]

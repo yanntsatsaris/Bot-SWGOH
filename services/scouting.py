@@ -123,7 +123,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
         
         # RÈGLE D'OR STRATÉGIQUE : 
         # L'équipe doit avoir au moins (expected_size - 1) membres prêts (ex: 4/5 ou 2/3)
-        min_size = expected_size - 1 if expected_size > 3 else expected_size
+        min_size = expected_size - 1
         if len(core_ready) < min_size:
             continue
             
@@ -168,6 +168,26 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                 
                 valid_members = [m for m in members if m not in used_base_ids]
                 if leader not in used_base_ids:
+                    
+                    # FILTRE ANTI-GARBAGE (Équipes auto-déployées absurdes)
+                    if hz != "fleet":
+                        # On utilise TOUTES les compos Meta, pas juste celles du joueur, pour juger si la compo est absurde
+                        known_meta_for_leader = [mt for mt in ALL_META_TEAMS if mt["leader_id"] == leader and mt["format"] == format_gac]
+                        if known_meta_for_leader:
+                            # Le leader est censé avoir une équipe Meta.
+                            # On vérifie si les membres historiques partagent au moins 1 perso avec N'IMPORTE QUELLE variation de son équipe
+                            has_synergy = False
+                            for mt in known_meta_for_leader:
+                                meta_members_set = set(mt.get("core", []) + mt.get("subs", []))
+                                overlap = len(set(valid_members).intersection(meta_members_set))
+                                if overlap > 0:
+                                    has_synergy = True
+                                    break
+                            
+                            # Si c'est une horreur générée auto (0 synergie avec la vraie compo), on la jette !
+                            if not has_synergy and len(valid_members) > 0:
+                                continue
+
                     # Logique de remplacement (Upgrade)
                     best_upgrade = None
                     if hz != "fleet":

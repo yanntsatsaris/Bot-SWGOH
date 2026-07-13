@@ -40,7 +40,8 @@ async def init_db() -> None:
             "ALTER TABLE gac_rounds ADD COLUMN player_banners INTEGER",
             "ALTER TABLE gac_rounds ADD COLUMN opponent_banners INTEGER",
             "ALTER TABLE gac_rounds ADD COLUMN format TEXT NOT NULL DEFAULT '5v5'",
-            "ALTER TABLE gac_matches ADD COLUMN format TEXT"
+            "ALTER TABLE gac_matches ADD COLUMN format TEXT",
+            "ALTER TABLE gac_matches ADD COLUMN zone TEXT"
         ]
         for migration in migrations:
             try:
@@ -137,10 +138,11 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
             await db.execute(
                 """
                 INSERT INTO gac_matches 
-                (round_id, is_attack, attacker_team, defender_team, banners, outcome, format)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                (round_id, is_attack, attacker_team, defender_team, banners, outcome, format, zone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (round_id, match["is_attack"], attacker_json, defender_json, match["banners"], match["outcome"], detected_format)
+                (round_id, match["is_attack"], attacker_json, defender_json, 
+                 match.get("banners", 0), match.get("outcome", "Unknown"), detected_format, match.get("zone", "unknown"))
             )
         
         await db.commit()

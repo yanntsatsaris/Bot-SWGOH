@@ -291,7 +291,20 @@ class GACHistoryScraper:
                                 match_data["attempt"] = int(value) if value.isdigit() else 1
                             elif label == "outcome":
                                 match_data["outcome"] = value
-                                
+                            elif label == "zone":
+                                svg = value_el.find('svg')
+                                if svg:
+                                    paths = svg.find_all('path')
+                                    for i, path in enumerate(paths):
+                                        classes = path.get('class', [])
+                                        if isinstance(classes, str):
+                                            classes = classes.split()
+                                        if 'gac-zone-layout--is-active' in classes:
+                                            # Ordre des paths: 0=Nord, 1=Sud, 2=Flotte, 3=Back
+                                            zone_map = {0: "top", 1: "bottom", 2: "fleet", 3: "back"}
+                                            match_data["zone"] = zone_map.get(i, "unknown")
+                                            break
+                                            
                     parent = block.parent
                     if parent:
                         # Extraction des équipes complètes

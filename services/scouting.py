@@ -5,7 +5,7 @@ import logging
 from database.db import get_db
 from services.comlink import get_player
 from utils.gac_config import get_gac_quotas
-from services.gac_meta import GAC_FLEETS, ALL_META_TEAMS
+from services.gac_meta import GAC_FLEETS, GAC_TEAMS
 
 log = logging.getLogger(__name__)
 
@@ -172,7 +172,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                     # FILTRE ANTI-GARBAGE (Équipes auto-déployées absurdes)
                     if hz != "fleet":
                         # On utilise TOUTES les compos Meta, pas juste celles du joueur, pour juger si la compo est absurde
-                        known_meta_for_leader = [mt for mt in ALL_META_TEAMS if mt["leader_id"] == leader and mt["format"] == format_gac]
+                        known_meta_for_leader = [mt for mt in GAC_TEAMS.values() if mt["leader_id"] == leader and mt["format"] == format_gac]
                         if known_meta_for_leader:
                             # Le leader est censé avoir une équipe Meta.
                             # On vérifie si les membres historiques partagent au moins 1 perso avec N'IMPORTE QUELLE variation de son équipe

@@ -149,31 +149,33 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                         )
                         files.append(discord.File(my_img, filename="my_defense.png"))
                     
-                    # --- HACK TEMPORAIRE : Récupération HTML ---
+                    # --- PREPARATION DES COUNTERS EN ARRIERE PLAN ---
                     try:
                         from services.gac_counters_scraper import GacCountersScraper
-                        import os
-                        target_leader = None
+                        import asyncio
+                        
+                        leaders_to_scrape = set()
                         for zone, teams in scout_data["zones"].items():
                             if zone == "Fleet": continue
                             for team in teams:
                                 if team.get("leader_id"):
-                                    target_leader = team["leader_id"]
-                                    break
-                            if target_leader: break
+                                    leaders_to_scrape.add(team["leader_id"])
                         
-                        if target_leader:
-                            # Petit mapping rapide
-                            gl_map = {"REY": "GU-REY", "LORDVADER": "GU-LORDVADER", "JABBATHEHUTT": "GU-JABBA", "SUPREMELEADERKYLOREN": "GU-SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI": "GU-JEDIMASTERKENOBI"}
-                            slug = gl_map.get(target_leader, target_leader)
-                            html_path = f"{slug}_counters.html"
+                        if leaders_to_scrape:
                             scraper = GacCountersScraper()
-                            success = await scraper.fetch_html_for_leader(slug, html_path)
-                            if success and os.path.exists(html_path):
-                                files.append(discord.File(html_path, filename=html_path))
+                            async def background_scrape():
+                                for leader in leaders_to_scrape:
+                                    # Dans un vrai cas, on vérifierait d'abord l'âge en BDD
+                                    gl_map = {"REY": "GU-REY", "LORDVADER": "GU-LORDVADER", "JABBATHEHUTT": "GU-JABBA", "SUPREMELEADERKYLOREN": "GU-SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI": "GU-JEDIMASTERKENOBI"}
+                                    slug = gl_map.get(leader, leader)
+                                    await scraper.refresh_counters_for_leader(slug, leader, scout_data["format"])
+                            
+                            # On lance le scraping en tâche de fond pour ne pas bloquer
+                            asyncio.create_task(background_scrape())
                     except Exception as e:
-                        log.error(f"Erreur lors de la recup HTML : {e}")
+                        log.error(f"Erreur lors de la préparation des counters : {e}")
                     # -------------------------------------------
+
 
                     
                     msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !"

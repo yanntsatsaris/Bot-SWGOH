@@ -177,7 +177,7 @@ class GACHistoryScraper:
                                     
                                     if interaction:
                                         try:
-                                            await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(parsed_data['hub_links'])} matchs trouvés ! Traitement en arrière-plan...")
+                                            await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(parsed_data['hub_links'])} rounds trouvés ! Traitement en arrière-plan...")
                                         except:
                                             pass
                                     continue
@@ -231,7 +231,7 @@ class GACHistoryScraper:
                                 try:
                                     inter = self.interactions[c_code]["interaction"]
                                     if pending > 0:
-                                        await inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Traitement des matchs ({done}/{total} complétés)...")
+                                        await inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Traitement des rounds ({done}/{total} complétés)...")
                                 except:
                                     pass
                                 

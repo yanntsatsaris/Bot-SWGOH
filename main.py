@@ -14,11 +14,18 @@ from database.db import init_db
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
+import os
+import platform
+from logging.handlers import WatchedFileHandler
+
+# Chemin du log adapté selon l'OS (Linux vs Windows en dev)
+LOG_FILE = "/var/log/swgoh-bot/bot.log" if platform.system() == "Linux" else "bot.log"
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        logging.FileHandler("bot.log", encoding="utf-8"),
+        WatchedFileHandler(LOG_FILE, encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
     ],
 )

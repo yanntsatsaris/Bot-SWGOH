@@ -125,7 +125,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     async def cb(msg):
                         await inter.edit_original_response(content=msg)
 
-                    scout_data = await get_scout_data(enemy_ally_code, format_gac.value, my_ally_code, progress_callback=cb)
+                    scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code, progress_callback=cb)
                     
                     files = []
                     

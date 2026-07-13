@@ -19,7 +19,7 @@ import platform
 from logging.handlers import WatchedFileHandler
 
 # Chemin du log adapté selon l'OS (Linux vs Windows en dev)
-LOG_FILE = "/var/log/swgoh-bot/bot.log" if platform.system() == "Linux" else "bot.log"
+LOG_FILE = "/var/log/bot-swgoh/bot.log" if platform.system() == "Linux" else "bot.log"
 
 logging.basicConfig(
     level=logging.INFO,

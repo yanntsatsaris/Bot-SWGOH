@@ -67,7 +67,6 @@ class GacCountersScraper:
         stdout, stderr = await process.communicate()
         
         if process.returncode != 0:
-        if process.returncode != 0:
             log.error(f"Erreur worker counters {def_leader_slug}:\nSTDERR: {stderr.decode('utf-8', errors='ignore')}\nSTDOUT: {stdout.decode('utf-8', errors='ignore')}")
             return False
             

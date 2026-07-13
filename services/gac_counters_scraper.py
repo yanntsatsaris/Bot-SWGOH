@@ -49,16 +49,20 @@ class GacCountersScraper:
         project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         worker_path = os.path.join(project_dir, "scripts", "counters_sb_worker.py")
         
+        temp_dir = os.path.join(project_dir, "temp_counters")
+        os.makedirs(temp_dir, exist_ok=True)
+        out_file_path = os.path.join(temp_dir, f"counters_{real_leader_id}.json")
+        
         log.info(f"Scraping counters pour {def_leader_slug} ({format_type})...")
         
+        args = [
+            sys.executable, worker_path, def_leader_slug, out_file_path, format_type, season_id
+        ]
+        if d_members:
+            args.append(d_members)
+            
         process = await asyncio.create_subprocess_exec(
-            sys.executable,
-            worker_path,
-            def_leader_slug,
-            "None", # Pas de sauvegarde HTML
-            format_type,
-            season_id,
-            d_members,
+            *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=project_dir
@@ -70,13 +74,12 @@ class GacCountersScraper:
             log.error(f"Erreur worker counters {def_leader_slug}:\nSTDERR: {stderr.decode('utf-8', errors='ignore')}\nSTDOUT: {stdout.decode('utf-8', errors='ignore')}")
             return False
             
-        import os
-        import json
-        from database.db import save_counters_to_db
-        
         if not os.path.exists(out_file_path):
             log.error(f"Le fichier {out_file_path} n'a pas été généré.")
             return False
+            
+        import json
+        from database.db import save_counters_to_db
             
         try:
             with open(out_file_path, 'r', encoding='utf-8') as f:

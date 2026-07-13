@@ -349,6 +349,14 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
     if not suggestions:
         return await _predict_zones(my_index, quotas, fmt, None)
 
+    # Capturer la carte de synergie AVANT la boucle de placement (les leaders seront marqués "USED")
+    leader_synergy_map = {}
+    for sugg in suggestions:
+        ldr = sugg.get("leader")
+        if ldr and ldr != "USED":
+            meta_members = [m for m in sugg.get("valid_members", []) if m != ldr]
+            leader_synergy_map[ldr] = meta_members
+
     # 1. Escouades au sol
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
@@ -376,33 +384,104 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             if not placed:
                 zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
-    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT
-    # Tier 1 : Personnages avec combat_type = 1
+    # Enrichir la leader_synergy_map depuis la BDD pour les leaders placés
+    # non couverts par les suggestions initiales (qui étaient limitées à 500 lignes)
+    import json as _json
+    all_placed_leaders = {
+        t.get("leader_id")
+        for zone in ["North", "South", "Back"]
+        for t in zones[zone]
+        if t.get("leader_id")
+    }
+    missing_leaders = all_placed_leaders - set(leader_synergy_map.keys())
+    if missing_leaders:
+        async with get_db() as db:
+            async with db.execute(
+                "SELECT squad_units FROM gac_global_meta WHERE format = ? AND mode = 'defense' ORDER BY hold_percent DESC LIMIT 300",
+                (fmt,)
+            ) as cur:
+                db_rows = await cur.fetchall()
+        for row in db_rows:
+            try:
+                units = _json.loads(row["squad_units"])
+            except Exception:
+                continue
+            if not units:
+                continue
+            ldr = units[0]
+            if ldr in missing_leaders:
+                if ldr not in leader_synergy_map:
+                    leader_synergy_map[ldr] = []
+                for m in units[1:]:
+                    if m not in leader_synergy_map[ldr]:
+                        leader_synergy_map[ldr].append(m)
+
+    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) AVEC SYNERGIE — 3 niveaux
+    # Niveau 1 : Personnage avec synergie méta parmi les leftovers libres
+    # Niveau 2 : Personnage avec synergie méta réservé pour l'attaque → libération
+    # Niveau 3 : Fallback sur le personnage le plus puissant disponible
     leftovers_t1 = [
-        m for m, data in my_index.items() 
-        if m not in used_base_ids 
+        m for m, data in my_index.items()
+        if m not in used_base_ids
         and data.get("combat_type", 1) == 1
     ]
-    
-    # Trier par puissance de base
+
+    # Trier par puissance de base (fallback niveau 3)
     leftovers_t1.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
-    
+
     leftovers = leftovers_t1
-    
-    # Pour la synergie, on pourrait utiliser les suggestions mais pour aller vite on va juste boucher avec les plus forts
+
     for zone in ["North", "South", "Back"]:
         for t in zones[zone]:
             target = t.get("target_size", expected_size)
-            while len(t["members_ids"]) < target - (1 if t.get("leader_id") else 0) and leftovers:
-                if not t.get("leader_id"):
-                    # Si c'est une équipe totalement vide
+            leader_id = t.get("leader_id")
+            need = target - (1 if leader_id else 0)
+            while len(t["members_ids"]) < need:
+                if not leader_id:
+                    # Équipe totalement vide : prendre le plus fort
+                    if not leftovers:
+                        break
                     filler = leftovers.pop(0)
                     t["leader_id"] = filler
+                    leader_id = filler
                     t["source"] = "leftover"
+                    need = target - 1  # Recalcul après avoir trouvé un leader
                 else:
-                    filler = leftovers.pop(0)
+                    filler = None
+                    synergy_candidates = leader_synergy_map.get(leader_id, [])
+
+                    # Niveau 1 : synergie méta parmi les leftovers libres
+                    for candidate in synergy_candidates:
+                        if candidate in leftovers and candidate not in t["members_ids"]:
+                            filler = candidate
+                            leftovers.remove(candidate)
+                            break
+
+                    # Niveau 2 : libérer un perso réservé pour l'attaque (synergie confirmée)
+                    if filler is None:
+                        for candidate in synergy_candidates:
+                            if (
+                                candidate in my_index
+                                and candidate in used_base_ids
+                                and candidate not in t["members_ids"]
+                                and my_index[candidate].get("combat_type", 1) == 1
+                            ):
+                                filler = candidate
+                                used_base_ids.discard(candidate)
+                                log.debug(f"[HoleFill] {candidate} libéré de l'attaque → synergie {leader_id}")
+                                break
+
+                    # Niveau 3 : fallback — le plus puissant dispo dans les leftovers
+                    if filler is None and leftovers:
+                        filler = leftovers.pop(0)
+
+                    if filler is None:
+                        break  # Rien à placer pour cette équipe
+
                     t["members_ids"].append(filler)
-                used_base_ids.add(filler)
+
+                if filler:
+                    used_base_ids.add(filler)
 
     # 2. FLOTTES (identique à _predict_zones)
     available_fleets = []

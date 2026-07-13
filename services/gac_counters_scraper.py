@@ -133,5 +133,13 @@ class GacCountersScraper:
         if missing_leaders:
             log.info(f"Scraping nécessaire pour {len(missing_leaders)} leaders exacts : {list(missing_leaders.keys())}")
             for leader_id, members in missing_leaders.items():
-                # swgoh.gg utilise directement le base_id pour l'URL
+                # Protection : si la prédiction (venant de 5v5) donne trop de membres pour du 3v3, on annule d_members
+                # pour récupérer au moins les counters génériques du leader plutôt que 0 counter.
+                members_list = members.split(",") if members else []
+                max_members = 2 if format_type == "3v3" else 4
+                
+                if len(members_list) > max_members:
+                    log.info(f"L'équipe de {leader_id} a {len(members_list)} membres, ce qui est invalide pour du {format_type}. Scraping générique.")
+                    members = ""
+                    
                 await self.refresh_counters_for_leader(leader_id, leader_id, format_type, d_members=members)

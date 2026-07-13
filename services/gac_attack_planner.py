@@ -14,7 +14,8 @@ def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, forma
     result = []
     
     for counter in counters:
-        all_ids = [counter["atk_leader_id"]] + counter.get("atk_members_ids", [])
+        max_atk_members = 2 if format_type == "3v3" else 4
+        all_ids = [counter["atk_leader_id"]] + counter.get("atk_members_ids", [])[:max_atk_members]
         
         available = []
         missing = []

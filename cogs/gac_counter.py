@@ -108,62 +108,28 @@ class CounterSuggestionView(discord.ui.View):
         self.my_name = my_name
         self.current_index = current_index
 
-    async def _build_embed_and_file(self) -> tuple[discord.Embed, discord.File | None]:
+    async def _build_message_and_file(self) -> tuple[str, discord.File | None]:
         if self.current_index >= len(self.suggestions):
-            embed = discord.Embed(
-                title="❌ Plus de contres disponibles",
-                description="Aucun autre contre n'a été trouvé pour cette équipe avec ton roster.",
-                color=discord.Color.red()
-            )
-            return embed, None
+            return "❌ **Plus de contres disponibles**\nAucun autre contre n'a été trouvé pour cette équipe avec ton roster.", None
 
         sugg = self.suggestions[self.current_index]
         atk_leader = sugg["atk_leader_id"]
-        atk_members = sugg.get("atk_members_ids", [])
+        
+        # Limiter aux vrais membres selon le format
+        max_atk_members = 2 if self.format_type == "3v3" else 4
+        atk_members = sugg.get("atk_members_ids", [])[:max_atk_members]
         all_chars = [atk_leader] + atk_members
 
-        team_str = "\n".join(f"• **{get_name(cid)}**" for cid in all_chars)
         win_pct = sugg.get("win_pct", 0)
         composite = sugg.get("composite_score", 0)
-
-        # ── Construction de la défense ──
-        def_chars = [self.def_leader] + self.def_members
-        def_str_lines = []
-        for cid in def_chars:
-            name = get_name(cid)
-            if self.adv_roster and cid in self.adv_roster:
-                u = self.adv_roster[cid]
-                relic = f"R{u['relic_tier']}" if u['relic_tier'] > 0 else f"G{u['gear_tier']}"
-                def_str_lines.append(f"• **{name}** (`{relic}`)")
-            else:
-                def_str_lines.append(f"• **{name}**")
-        def_str = "\n".join(def_str_lines)
-
-        embed = discord.Embed(
-            title=f"🎯 Contre #{self.current_index + 1} — {get_name(self.def_leader)}",
-            description=f"**Format :** {self.format_type}",
-            color=discord.Color.blue()
-        )
-        
-        embed.add_field(name="Équipe Ennemie", value=def_str, inline=True)
-        embed.add_field(name="Équipe Proposée", value=team_str, inline=True)
-        embed.add_field(name="\u200b", value="\u200b", inline=False)
-        
-        embed.add_field(name="Win Rate (global)", value=f"{win_pct}%", inline=True)
-        embed.add_field(name="Score roster", value=f"{composite:.2f}", inline=True)
-
-        if sugg.get("missing"):
-            missing_str = ", ".join(get_name(m) for m in sugg["missing"])
-            embed.add_field(name="⚠️ Manquants / faibles", value=missing_str, inline=False)
-
         total_suggestions = len(self.suggestions)
-        embed.set_footer(text=f"Option {self.current_index + 1}/{total_suggestions} • ⚠️ Ce ne sont que des propositions du bot, des erreurs sont possibles.")
 
-        # ── Génération de l'image ──
+        # ── Construction de la défense (pour l'image) ──
+        all_def_chars = [self.def_leader] + self.def_members
         team_dict = {
             "leader_name": get_name(self.def_leader),
-            "members": [get_name(m) for m in self.def_members],
-            "members_base_ids": self.def_members,
+            "members": [get_name(m) for m in all_def_chars],
+            "members_base_ids": all_def_chars,
             "units_data": self.adv_roster or {}
         }
         
@@ -186,9 +152,19 @@ class CounterSuggestionView(discord.ui.View):
         mock_suggestions = [{"enemy_team": team_dict, "counters": counter_units}]
         
         img_file = generate_gac_report(self.my_name, self.adv_name, mock_suggestions, self.format_type)
-        embed.set_image(url=f"attachment://{img_file.filename}")
 
-        return embed, img_file
+        missing_str = ""
+        if sugg.get("missing"):
+            m_names = ", ".join(get_name(m) for m in sugg["missing"])
+            missing_str = f"\n⚠️ **Manquants / faibles :** {m_names}"
+
+        content = (
+            f"🎯 **Contre #{self.current_index + 1}/{total_suggestions}** — {get_name(self.def_leader)}\n"
+            f"📊 **Win Rate global :** {win_pct}% (Score roster: {composite:.2f}){missing_str}\n"
+            f"⚠️ *Ce ne sont que des propositions automatiques du bot, des erreurs sont possibles.*"
+        )
+
+        return content, img_file
 
     @discord.ui.button(label="✅ Victoire", style=discord.ButtonStyle.success)
     async def btn_victoire(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -204,13 +180,12 @@ class CounterSuggestionView(discord.ui.View):
         if self.current_index >= len(self.suggestions):
             for child in self.children:
                 child.disabled = True
-        embed, img_file = await self._build_embed_and_file()
+        content, img_file = await self._build_message_and_file()
         
-        # discord.py requires sending attachments again when editing message if we want to replace it
         if img_file:
-            await interaction.response.edit_message(embed=embed, view=self, attachments=[img_file])
+            await interaction.response.edit_message(content=content, embed=None, view=self, attachments=[img_file])
         else:
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.response.edit_message(content=content, embed=None, view=self)
 
     async def _handle_feedback(self, interaction: discord.Interaction, won: bool):
         if self.current_index >= len(self.suggestions):
@@ -228,14 +203,14 @@ class CounterSuggestionView(discord.ui.View):
         for child in self.children:
             child.disabled = True
 
-        embed, img_file = await self._build_embed_and_file()
-        embed.color = discord.Color.green() if won else discord.Color.red()
-        embed.set_footer(text=f"{'✅ Victoire' if won else '❌ Défaite'} enregistrée — merci !")
+        content, img_file = await self._build_message_and_file()
+        feedback_text = f"\n✅ **Victoire enregistrée — merci !**" if won else f"\n❌ **Défaite enregistrée — merci !**"
+        content += feedback_text
         
         if img_file:
-            await interaction.response.edit_message(embed=embed, view=self, attachments=[img_file])
+            await interaction.response.edit_message(content=content, embed=None, view=self, attachments=[img_file])
         else:
-            await interaction.response.edit_message(embed=embed, view=self)
+            await interaction.response.edit_message(content=content, embed=None, view=self)
 
 
 # ─── COG ─────────────────────────────────────────────────────────────────────
@@ -350,18 +325,18 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
             interaction, counters, leader_id, members_list, fmt,
             adv_roster, adv_name, my_roster, my_name
         )
-        embed, img_file = await view._build_embed_and_file()
+        content, img_file = await view._build_message_and_file()
 
         roster_info = f"Ton Roster : `{used_code}` • {len(counters)} option(s) trouvée(s)"
         if adv_roster and ally_code_adversaire:
             roster_info += f" | Adversaire : `{ally_code_adversaire}`"
             
-        embed.set_author(name=roster_info)
+        content = f"**{roster_info}**\n\n{content}"
 
         if img_file:
-            await interaction.followup.send(embed=embed, file=img_file, view=view)
+            await interaction.followup.send(content=content, file=img_file, view=view)
         else:
-            await interaction.followup.send(embed=embed, view=view)
+            await interaction.followup.send(content=content, view=view)
 
 
 async def setup(bot: commands.Bot) -> None:

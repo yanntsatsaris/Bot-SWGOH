@@ -176,11 +176,11 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 has_history = await cursor.fetchone() is not None
 
             if has_history and not force_sync:
-                await interaction.edit_original_response(content="⏳ Historique trouvé en base de données. Génération de la prédiction sans refaire de scrap...")
+                await interaction.edit_original_response(content="⏳ Historique trouvé en base de données. Génération de la prédiction sans refaire de scan...")
                 await on_scrape_finished(clean_code, interaction)
             else:
                 if not hasattr(self.bot, "gac_scraper"):
-                    await interaction.followup.send("❌ Le service d'extraction GAC (Scraper) n'est pas actif sur ce serveur.")
+                    await interaction.followup.send("❌ Le service d'extraction GAC (Scan) n'est pas actif sur ce serveur.")
                     return
                     
                 await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Analyse approfondie du profil GAC de l'adversaire...")

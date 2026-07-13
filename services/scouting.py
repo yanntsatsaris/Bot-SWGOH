@@ -189,7 +189,8 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                                     break
                             
                             # Si c'est une horreur générée auto (0 synergie avec la vraie compo), on la jette !
-                            if not has_synergy and len(valid_members) > 0:
+                            # MAIS on la garde si le joueur la pose souvent (percent >= 5.0) car c'est peut-être une compo "fromage" voulue (ex: Revan + Mission + Zaalbar)
+                            if not has_synergy and len(valid_members) > 0 and percent < 5.0:
                                 continue
 
                     # Logique de remplacement (Upgrade)

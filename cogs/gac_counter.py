@@ -2,7 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import logging
-from database.db import get_db, save_counter_feedback
+from database.db import get_db, record_counter_feedback
 from services.gac_attack_planner import get_best_counter_with_memory
 from services.unit_names import get_name
 from services.comlink import get_player
@@ -88,8 +88,9 @@ class CounterSuggestionView(discord.ui.View):
     async def _handle_feedback(self, interaction: discord.Interaction, won: bool):
         sugg = self.suggestions[self.current_index]
         atk_leader = sugg["atk_leader_id"]
+        atk_members = sugg.get("atk_members_ids", [])
         
-        await save_counter_feedback(str(interaction.user.id), atk_leader, self.def_leader, self.format_type, won)
+        await record_counter_feedback(self.def_leader, [], atk_leader, atk_members, self.format_type, "win" if won else "loss", str(interaction.user.id))
         
         # Désactiver les boutons
         for child in self.children:

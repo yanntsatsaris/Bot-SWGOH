@@ -262,8 +262,12 @@ class GACHistoryScraper:
             soup = BeautifulSoup(html, 'html.parser')
             
             matches = []
+            parsed_league = None
             
             def parse_section(section_div, is_attack: bool):
+                nonlocal parsed_league
+                if not section_div: return
+                
                 stats_blocks = section_div.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
                 for block in stats_blocks:
                     match_data = {
@@ -277,36 +281,44 @@ class GACHistoryScraper:
                         "is_attack": is_attack
                     }
                     
-                    # Extraction des statistiques
+                    if not parsed_league:
+                        parent_summary = block.find_parent('div', class_='gac-counters-battle-summary')
+                        if parent_summary:
+                            league_img = parent_summary.find('img', class_='gac-counters-battle-summary__league-icon-division')
+                            if league_img and 'src' in league_img.attrs:
+                                src = league_img['src'].lower()
+                                if 'bronzium' in src: parsed_league = 'BRONZIUM'
+                                elif 'chromium' in src: parsed_league = 'CHROMIUM'
+                                elif 'aurodium' in src: parsed_league = 'AURODIUM'
+                                elif 'kyber' in src: parsed_league = 'KYBER'
+                                elif 'carbonite' in src: parsed_league = 'CARBONITE'
+                                
                     stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
                     for stat in stats:
                         label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
                         value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
                         if label_el and value_el:
-                    stat_blocks = block.find_all('div', class_='gac-counters-battle-summary__stat')
-                    for stat in stat_blocks:
-                        label = stat.find('div', class_='gac-counters-battle-summary__stat-label')
-                        val = stat.find('div', class_='gac-counters-battle-summary__stat-value')
-                        if label and val:
-                            l_text = label.text.strip()
-                            v_text = val.text.strip()
-                            if l_text == "Banners":
-                                try: match_data["banners"] = int(v_text)
-                                except: pass
-                            elif l_text == "Outcome":
-                                match_data["outcome"] = v_text
-                            elif l_text == "Zone":
-                                svg = val.find('svg')
+                            label = label_el.get_text(strip=True).lower()
+                            value = value_el.get_text(strip=True)
+                            if label == "banners":
+                                match_data["banners"] = int(value) if value.isdigit() else 0
+                            elif label == "attempt":
+                                match_data["attempt"] = int(value) if value.isdigit() else 1
+                            elif label == "outcome":
+                                match_data["outcome"] = value
+                            elif label == "zone":
+                                svg = value_el.find('svg')
                                 if svg:
                                     paths = svg.find_all('path')
                                     for i, path in enumerate(paths):
                                         classes = path.get('class', [])
-                                        if isinstance(classes, str): classes = classes.split()
+                                        if isinstance(classes, str):
+                                            classes = classes.split()
                                         if 'gac-zone-layout--is-active' in classes:
                                             zone_map = {0: "top", 1: "bottom", 2: "fleet", 3: "back"}
                                             match_data["zone"] = zone_map.get(i, "unknown")
                                             break
-                    
+                                            
                     parent = block.parent
                     if parent:
                         squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout' in c)
@@ -342,9 +354,11 @@ class GACHistoryScraper:
             max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
             detected_format = "3v3" if max_size <= 3 else "5v5"
                 
+            from services.logger import logger
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits ! Ligue détectée : {parsed_league}")
             return {"matches": matches, "format": detected_format, "league": parsed_league}
             
         except Exception as e:
+            from services.logger import logger
             logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")
             return {"matches": []}

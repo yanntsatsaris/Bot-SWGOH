@@ -48,6 +48,25 @@ async def get_best_counter_with_memory(def_leader_id: str, def_members_ids: list
     """
     counters = await get_counters_from_db(def_leader_id, format_type)
     
+    # -------------------------------------------------------------
+    # Filtrage par composition exacte de l'ennemi (si on a les membres)
+    # -------------------------------------------------------------
+    if def_members_ids:
+        def_set = set(m.upper() for m in def_members_ids)
+        filtered_by_def = []
+        for c in counters:
+            c_def_set = set(m.upper() for m in c.get("def_members_ids", []))
+            
+            # On cherche une correspondance stricte ou quasi-stricte (tolérance d'1 perso différent)
+            # Car les stats swgoh.gg peuvent lister plusieurs variations
+            if len(def_set.intersection(c_def_set)) >= max(1, len(def_set) - 1):
+                filtered_by_def.append(c)
+                
+        # S'il a trouvé des counters spécifiques à CETTE équipe exacte, on les priorise
+        if filtered_by_def:
+            counters = filtered_by_def
+    # -------------------------------------------------------------
+    
     for counter in counters:
         feedback = await get_counter_feedback_stats(counter["atk_leader_id"], def_leader_id, format_type)
         counter["feedback_wins"] = feedback["wins"]

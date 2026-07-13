@@ -183,7 +183,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     await interaction.followup.send("❌ Le service d'extraction GAC (Scraper) n'est pas actif sur ce serveur.")
                     return
                     
-                await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Scraping de l'historique swgoh.gg en cours...")
+                await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Analyse approfondie du profil GAC de l'adversaire...")
                 await self.bot.gac_scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
             
         except Exception as e:

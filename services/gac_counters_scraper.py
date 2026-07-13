@@ -41,10 +41,10 @@ class GacCountersScraper:
         log.info(f"HTML sauvegardé dans {output_file}")
         return True
 
-    async def refresh_counters_for_leader(self, def_leader_slug: str, def_leader_id: str, format_type: str = "5v5", season_id: str = "current"):
+    async def refresh_counters_for_leader(self, def_leader_slug: str, real_leader_id: str, format_type: str, season_id: str = "current", d_members: str = "") -> None:
         """
-        Lance le worker pour scraper les counters d'un leader, récupère le JSON
-        en stdout, et enregistre les données dans gac_counters.
+        Lance le worker SeleniumBase pour scrapper les counters d'un leader défensif.
+        d_members: liste des IDs séparés par des virgules (ex: "CAPTAINREX,CHOPPERS3")
         """
         project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         worker_path = os.path.join(project_dir, "scripts", "counters_sb_worker.py")
@@ -58,6 +58,7 @@ class GacCountersScraper:
             "None", # Pas de sauvegarde HTML
             format_type,
             season_id,
+            d_members,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=project_dir
@@ -85,36 +86,32 @@ class GacCountersScraper:
             data = json.loads(match.group(1))
             counters = data.get("counters", [])
             if counters:
-                await save_counters_to_db(season_id, format_type, def_leader_id, counters)
-                log.info(f"{len(counters)} counters sauvegardés pour {def_leader_id} ({format_type}).")
+                await save_counters_to_db(season_id, format_type, real_leader_id, counters)
+                log.info(f"{len(counters)} counters sauvegardés pour {real_leader_id} ({format_type}).")
             else:
-                log.warning(f"Aucun counter trouvé pour {def_leader_id}.")
+                log.warning(f"Aucun counter trouvé pour {real_leader_id}.")
             return True
         except json.JSONDecodeError as e:
             log.error(f"Erreur de décodage JSON: {e}")
             return False
 
-    async def ensure_counters_available(self, def_leader_ids: list[str], format_type: str, max_age_days: int = 7) -> None:
+    async def ensure_counters_available(self, leaders_dict: dict, format_type: str) -> None:
         """
-        Vérifie si les counters sont présents et récents en BDD pour chaque leader.
-        Si manquant ou trop vieux, lance le scraping.
+        leaders_dict: dictionnaire { leader_id: "MEMBRE1,MEMBRE2,..." }
         """
         from database.db import get_db
         import datetime
         
-        missing_leaders = []
+        missing_leaders = {}
         async with get_db() as db:
-            for leader_id in def_leader_ids:
-                if not leader_id or leader_id in ["USED", "None"]:
+            for l_id, members in leaders_dict.items():
+                if not l_id or l_id in ["USED", "None"]:
                     continue
                     
+                # Vérifie si le leader existe avec un âge < 7 jours
                 cursor = await db.execute(
-                    """
-                    SELECT last_updated FROM gac_counters 
-                    WHERE def_leader_id = ? AND format = ?
-                    ORDER BY last_updated DESC LIMIT 1
-                    """,
-                    (leader_id, format_type)
+                    "SELECT last_updated FROM gac_counters WHERE def_leader_id = ? AND format = ? ORDER BY last_updated DESC LIMIT 1",
+                    (l_id, format_type)
                 )
                 row = await cursor.fetchone()
                 
@@ -124,16 +121,17 @@ class GacCountersScraper:
                     try:
                         last_updated = datetime.datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
                         age = (datetime.datetime.utcnow() - last_updated).days
-                        if age <= max_age_days:
+                        if age > 7:
+                            missing_leaders[l_id] = members
+                        else:
                             needs_scrape = False
-                    except Exception:
-                        pass
-                        
-                if needs_scrape:
-                    missing_leaders.append(leader_id)
+                    except Exception as e:
+                        log.error(f"Erreur date: {e}")
+                else:
+                    missing_leaders[l_id] = members
         
         if missing_leaders:
-            log.info(f"Scraping nécessaire pour {len(missing_leaders)} leaders : {missing_leaders}")
-            for leader_id in missing_leaders:
+            log.info(f"Scraping nécessaire pour {len(missing_leaders)} leaders exacts : {list(missing_leaders.keys())}")
+            for leader_id, members in missing_leaders.items():
                 # swgoh.gg utilise directement le base_id pour l'URL
-                await self.refresh_counters_for_leader(leader_id, leader_id, format_type)
+                await self.refresh_counters_for_leader(leader_id, leader_id, format_type, d_members=members)

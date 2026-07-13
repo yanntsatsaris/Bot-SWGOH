@@ -523,12 +523,14 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     # ---------------------------------------------------------------------
     if my_ally_code:
         try:
-            leaders_to_scrape = []
+            leaders_to_scrape = {}
             for zone, teams in enemy_zones.items():
                 if zone == "Fleet": continue
                 for team in teams:
                     if team.get("leader_id"):
-                        leaders_to_scrape.append(team["leader_id"])
+                        members = team.get("members_ids", [])
+                        members_str = ",".join(members)
+                        leaders_to_scrape[team["leader_id"]] = members_str
                         
             if leaders_to_scrape:
                 from services.gac_counters_scraper import GacCountersScraper
@@ -539,7 +541,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                 import datetime
                 missing_leaders = []
                 async with get_db() as db:
-                    for l_id in leaders_to_scrape:
+                    for l_id, members_str in leaders_to_scrape.items():
                         if not l_id or l_id in ["USED", "None"]: continue
                         cursor = await db.execute("SELECT last_updated FROM gac_counters WHERE def_leader_id = ? AND format = ? ORDER BY last_updated DESC LIMIT 1", (l_id, fmt))
                         row = await cursor.fetchone()
@@ -552,7 +554,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                             missing_leaders.append(l_id)
                 
                 if missing_leaders and progress_callback:
-                    await progress_callback(f"⏳ **Récupération des counters** : {len(missing_leaders)} équipes ennemies n'ont pas de données de counter récentes. Scraping en cours, cela peut prendre jusqu'à {len(missing_leaders) * 30} secondes. Merci de patienter...")
+                    await progress_callback(f"⏳ **Optimisation des données** : Calcul des meilleurs contres pour {len(missing_leaders)} équipes ennemies. Cette étape prend environ {len(missing_leaders) * 20} secondes. Merci de patienter...")
                 
                 await scraper.ensure_counters_available(leaders_to_scrape, fmt)
         except Exception as e:

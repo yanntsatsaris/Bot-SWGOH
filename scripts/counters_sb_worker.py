@@ -13,7 +13,13 @@ from pyvirtualdisplay import Display
 from seleniumbase import SB
 
 def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current", d_members=""):
-    print(f"[WORKER] Démarrage du scraping pour le leader {def_leader_slug} (membres: {d_members})...")
+    debug_log = open(output_file + ".debug.log", "w", encoding="utf-8")
+    def dprint(msg):
+        print(msg, flush=True)
+        debug_log.write(msg + "\n")
+        debug_log.flush()
+        
+    dprint(f"[WORKER] Démarrage du scraping pour le leader {def_leader_slug} (membres: {d_members})...")
     
     project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     if not os.path.exists(project_dir):
@@ -40,16 +46,15 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
         if d_members:
             import urllib.parse
             url += f"&d_member={urllib.parse.quote(d_members)}"
-            
-        print(f"[WORKER] URL cible : {url}", flush=True)
+        dprint(f"[WORKER] URL de base : {url}")
         
-        print(f"[WORKER] Lancement de SeleniumBase...")
+        dprint(f"[WORKER] Lancement de SeleniumBase...")
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             counters_data = []
             
             for page in range(1, 11):
                 page_url = url + f"&page={page}"
-                print(f"[WORKER] Navigation vers {page_url}...")
+                dprint(f"[WORKER] Navigation vers {page_url}...")
                 sb.uc_open_with_reconnect(page_url, reconnect_time=4)
                 
                 quick_check = sb.get_page_source()
@@ -60,7 +65,7 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 )
                 
                 if cloudflare_present:
-                    print(f"[WORKER] Page {page} : Cloudflare détecté, tentative de clic...")
+                    dprint(f"[WORKER] Page {page} : Cloudflare détecté, tentative de clic...")
                     try:
                         sb.uc_gui_click_captcha()
                     except:
@@ -69,15 +74,17 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 else:
                     sb.sleep(3)
                     
-                table_found = False
+                panels_found = False
                 for _ in range(20):
-                    if sb.is_element_visible("table"):
-                        table_found = True
+                    if sb.is_element_visible("div.panel"):
+                        panels_found = True
                         break
                     sb.sleep(0.5)
 
-                if not table_found:
-                    print(f"[WORKER] Page {page} : Aucune table trouvée (fin des résultats ou erreur).")
+                if not panels_found:
+                    dprint(f"[WORKER] Page {page} : Aucun panneau de counter trouvé (fin des résultats ou erreur).")
+                    # Pour aider au debug, on sauve un bout du HTML
+                    dprint(f"[DEBUG HTML snippet]: {quick_check[:500]}")
                     break
                     
                 sb.sleep(2)
@@ -88,6 +95,7 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 
                 page_counters = []
                 counter_panels = soup.select("div.grid.gap-y-1.mt-2 > div.panel")
+                dprint(f"[WORKER] Page {page} : {len(counter_panels)} panneaux trouvés.")
                 
                 for panel in counter_panels:
                     atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
@@ -129,14 +137,15 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                     })
                     
                 if not page_counters:
-                    print(f"[WORKER] Page {page} : 0 counters extraits, on arrête la pagination.")
+                    dprint(f"[WORKER] Page {page} : 0 counters extraits, on arrête la pagination.")
                     break
                     
                 counters_data.extend(page_counters)
-                print(f"[WORKER] Page {page} : {len(page_counters)} counters extraits. Total: {len(counters_data)}")
+                dprint(f"[WORKER] Page {page} : {len(page_counters)} counters extraits. Total: {len(counters_data)}")
                 
                 # Si swgoh.gg renvoie moins de 50 résultats, c'est la dernière page
                 if len(page_counters) < 50:
+                    dprint(f"[WORKER] Page {page} : moins de 50 résultats ({len(page_counters)}), fin.")
                     break
             
             import json
@@ -145,18 +154,12 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 "format": format_type,
                 "season_id": season_id
             }
+            dprint("[WORKER] Ecriture du résultat final.")
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(result, f, ensure_ascii=False)
             
-            print("---JSON_START---")
-            print(json.dumps(result))
-            print("---JSON_END---")
-            
-            if output_file and output_file != "None":
-                print(f"[WORKER] Sauvegarde du HTML dans {output_file}...")
-                with open(output_file, 'w', encoding='utf-8') as f:
-                    f.write(page_source)
-                
-            print("[WORKER] Terminé.")
-            exit_code = 0
+            debug_log.close()
+            sys.exit(0)
             
     except Exception as e:
         print(f"ERREUR CRITIQUE: {e}")

@@ -93,3 +93,48 @@ class GacCountersScraper:
         except json.JSONDecodeError as e:
             log.error(f"Erreur de décodage JSON: {e}")
             return False
+
+    async def ensure_counters_available(self, def_leader_ids: list[str], format_type: str, max_age_days: int = 7) -> None:
+        """
+        Vérifie si les counters sont présents et récents en BDD pour chaque leader.
+        Si manquant ou trop vieux, lance le scraping.
+        """
+        from database.db import get_db
+        import datetime
+        
+        missing_leaders = []
+        async with get_db() as db:
+            for leader_id in def_leader_ids:
+                if not leader_id or leader_id in ["USED", "None"]:
+                    continue
+                    
+                cursor = await db.execute(
+                    """
+                    SELECT last_updated FROM gac_counters 
+                    WHERE def_leader_id = ? AND format = ?
+                    ORDER BY last_updated DESC LIMIT 1
+                    """,
+                    (leader_id, format_type)
+                )
+                row = await cursor.fetchone()
+                
+                needs_scrape = True
+                if row:
+                    last_updated_str = row["last_updated"]
+                    try:
+                        last_updated = datetime.datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
+                        age = (datetime.datetime.utcnow() - last_updated).days
+                        if age <= max_age_days:
+                            needs_scrape = False
+                    except Exception:
+                        pass
+                        
+                if needs_scrape:
+                    missing_leaders.append(leader_id)
+        
+        if missing_leaders:
+            log.info(f"Scraping nécessaire pour {len(missing_leaders)} leaders : {missing_leaders}")
+            gl_map = {"REY": "GU-REY", "LORDVADER": "GU-LORDVADER", "JABBATHEHUTT": "GU-JABBA", "SUPREMELEADERKYLOREN": "GU-SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI": "GU-JEDIMASTERKENOBI"}
+            for leader_id in missing_leaders:
+                slug = gl_map.get(leader_id, leader_id)
+                await self.refresh_counters_for_leader(slug, leader_id, format_type)

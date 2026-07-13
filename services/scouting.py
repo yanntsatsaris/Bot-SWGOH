@@ -338,10 +338,29 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
 
     return zones
 
-async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str) -> dict:
+async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str, enemy_zones: dict = None) -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
+    
+    # --- NOUVEAUTÉ : Réservation des équipes d'attaque ---
+    if enemy_zones:
+        try:
+            from services.gac_attack_planner import get_best_counter_with_memory
+            for zone, teams in enemy_zones.items():
+                if zone == "Fleet": continue
+                for team in teams:
+                    leader = team.get("leader_id")
+                    members = team.get("members_ids", [])
+                    if leader and leader != "USED" and leader != "None":
+                        counters = await get_best_counter_with_memory(leader, members, fmt, my_index, used_base_ids)
+                        if counters:
+                            best_counter = counters[0]
+                            used_base_ids.add(best_counter["atk_leader_id"])
+                            used_base_ids.update(best_counter.get("atk_members_ids", []))
+        except Exception as e:
+            log.error(f"Erreur lors de la réservation des équipes d'attaque : {e}")
+
     
     from services.gac_planner import GacPlanner
     planner = GacPlanner()
@@ -467,7 +486,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
 
     return zones
 
-async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None) -> dict:
+async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None, progress_callback=None) -> dict:
     clean_code = str(enemy_ally_code).replace("-", "").strip()
     profile = await get_player(clean_code)
     
@@ -499,6 +518,47 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     
     enemy_zones = await _predict_zones(enemy_index, quotas, fmt, habits)
     
+    # ---------------------------------------------------------------------
+    # NOUVEAUTÉ : Attente SYCHRONE du scraping des counters manquants
+    # ---------------------------------------------------------------------
+    if my_ally_code:
+        try:
+            leaders_to_scrape = []
+            for zone, teams in enemy_zones.items():
+                if zone == "Fleet": continue
+                for team in teams:
+                    if team.get("leader_id"):
+                        leaders_to_scrape.append(team["leader_id"])
+                        
+            if leaders_to_scrape:
+                from services.gac_counters_scraper import GacCountersScraper
+                scraper = GacCountersScraper()
+                
+                # Check d'abord combien en ont besoin (pour le message Discord)
+                from database.db import get_db
+                import datetime
+                missing_leaders = []
+                async with get_db() as db:
+                    for l_id in leaders_to_scrape:
+                        if not l_id or l_id in ["USED", "None"]: continue
+                        cursor = await db.execute("SELECT last_updated FROM gac_counters WHERE def_leader_id = ? AND format = ? ORDER BY last_updated DESC LIMIT 1", (l_id, fmt))
+                        row = await cursor.fetchone()
+                        if row:
+                            try:
+                                age = (datetime.datetime.utcnow() - datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")).days
+                                if age > 7: missing_leaders.append(l_id)
+                            except: pass
+                        else:
+                            missing_leaders.append(l_id)
+                
+                if missing_leaders and progress_callback:
+                    await progress_callback(f"⏳ **Récupération des counters** : {len(missing_leaders)} équipes ennemies n'ont pas de données de counter récentes. Scraping en cours, cela peut prendre jusqu'à {len(missing_leaders) * 30} secondes. Merci de patienter...")
+                
+                await scraper.ensure_counters_available(leaders_to_scrape, fmt)
+        except Exception as e:
+            log.error(f"Erreur lors de l'attente du scraping des counters: {e}")
+    # ---------------------------------------------------------------------
+    
     has_habits = habits and habits.get("total_rounds", 0) > 0
     result = {
         "enemy_name": enemy_name,
@@ -515,7 +575,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_profile = await get_player(my_clean)
         if my_profile:
             my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, ship_base_ids)
-            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt)
+            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, enemy_zones)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
             result["my_roster_index"] = my_index

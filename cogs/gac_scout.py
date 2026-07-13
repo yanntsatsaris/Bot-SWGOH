@@ -122,7 +122,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     from services.scouting import get_scout_data
                     from services.scout_image import generate_scout_map
                     
-                    scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code)
+                    async def cb(msg):
+                        await inter.edit_original_response(content=msg)
+
+                    scout_data = await get_scout_data(enemy_ally_code, format_gac.value, my_ally_code, progress_callback=cb)
                     
                     files = []
                     
@@ -149,38 +152,11 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                         )
                         files.append(discord.File(my_img, filename="my_defense.png"))
                     
-                    # --- PREPARATION DES COUNTERS EN ARRIERE PLAN ---
-                    try:
-                        from services.gac_counters_scraper import GacCountersScraper
-                        import asyncio
-                        
-                        leaders_to_scrape = set()
-                        for zone, teams in scout_data["zones"].items():
-                            if zone == "Fleet": continue
-                            for team in teams:
-                                if team.get("leader_id"):
-                                    leaders_to_scrape.add(team["leader_id"])
-                        
-                        if leaders_to_scrape:
-                            scraper = GacCountersScraper()
-                            async def background_scrape():
-                                for leader in leaders_to_scrape:
-                                    # Dans un vrai cas, on vérifierait d'abord l'âge en BDD
-                                    gl_map = {"REY": "GU-REY", "LORDVADER": "GU-LORDVADER", "JABBATHEHUTT": "GU-JABBA", "SUPREMELEADERKYLOREN": "GU-SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI": "GU-JEDIMASTERKENOBI"}
-                                    slug = gl_map.get(leader, leader)
-                                    await scraper.refresh_counters_for_leader(slug, leader, scout_data["format"])
-                            
-                            # On lance le scraping en tâche de fond pour ne pas bloquer
-                            asyncio.create_task(background_scrape())
-                    except Exception as e:
-                        log.error(f"Erreur lors de la préparation des counters : {e}")
-                    # -------------------------------------------
-
-
-                    
                     msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !"
                     if not my_ally_code:
                         msg += "\n*Astuce : Utilise `/register` pour que le bot te propose aussi une défense sur mesure !*"
+                    else:
+                        msg += "\n*Astuce : Utilise ensuite `/gac-counter` pour obtenir les meilleurs contres contre sa défense !*"
                         
                     await inter.edit_original_response(content="✅ **[■■■■■■■■■■] 100%** : Analyse terminée ! Le résultat est posté ci-dessous.")
                     await inter.channel.send(content=msg, files=files)

@@ -14,18 +14,53 @@ class GacScoutAnalyzer:
         """
         async with get_db() as db:
             # 1. On cherche toutes les équipes de défense dans gac_round_teams (saisie manuelle/brackets)
-            query = """
-                SELECT t.zone, t.leader_id, t.members_ids, COUNT(*) as frequency
+            query_land = """
+                SELECT t.zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
+                    (COUNT(*) * 10) + 
+                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
+                        SELECT MIN(season_id || '-' || round_number) FROM (
+                            SELECT season_id, round_number FROM gac_rounds 
+                            WHERE format = ? 
+                              AND ((player_code = ? AND t.owner = 'player') OR (opponent_code = ? AND t.owner = 'opponent'))
+                            ORDER BY season_id DESC, round_number DESC LIMIT 3
+                        )
+                    ) THEN 10000 ELSE 0 END as score
                 FROM gac_round_teams t
                 JOIN gac_rounds r ON t.round_id = r.id
                 WHERE t.side = 'defense'
                   AND r.format = ?
+                  AND t.zone != 'fleet'
                   AND ((r.player_code = ? AND t.owner = 'player') OR (r.opponent_code = ? AND t.owner = 'opponent'))
                 GROUP BY t.zone, t.leader_id, t.members_ids
-                ORDER BY t.zone, frequency DESC
+                ORDER BY t.zone, score DESC, frequency DESC
             """
-            async with db.execute(query, (format_type, ally_code, ally_code)) as cur:
-                rows = await cur.fetchall()
+            
+            query_fleet = """
+                SELECT 'fleet' as zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
+                    (COUNT(*) * 10) + 
+                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
+                        SELECT MIN(season_id || '-' || round_number) FROM (
+                            SELECT season_id, round_number FROM gac_rounds 
+                            WHERE ((player_code = ? AND t.owner = 'player') OR (opponent_code = ? AND t.owner = 'opponent'))
+                            ORDER BY season_id DESC, round_number DESC LIMIT 3
+                        )
+                    ) THEN 10000 ELSE 0 END as score
+                FROM gac_round_teams t
+                JOIN gac_rounds r ON t.round_id = r.id
+                WHERE t.side = 'defense'
+                  AND (t.zone = 'fleet' OR t.leader_id LIKE '%CAPITAL%')
+                  AND ((r.player_code = ? AND t.owner = 'player') OR (r.opponent_code = ? AND t.owner = 'opponent'))
+                GROUP BY t.leader_id, t.members_ids
+                ORDER BY score DESC, frequency DESC
+            """
+            
+            async with db.execute(query_land, (format_type, ally_code, ally_code, format_type, ally_code, ally_code)) as cur:
+                land_rows = await cur.fetchall()
+                
+            async with db.execute(query_fleet, (ally_code, ally_code, ally_code, ally_code)) as cur:
+                fleet_rows = await cur.fetchall()
+                
+            rows = land_rows + fleet_rows
 
             # On compte le nombre total de rounds où le joueur a joué en défense dans ce format dans gac_round_teams
             count_query = """
@@ -58,11 +93,11 @@ class GacScoutAnalyzer:
                             COALESCE(m.zone, 'unknown') as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.id) >= (
-                                SELECT MIN(id) FROM (
-                                    SELECT id FROM gac_rounds 
+                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
+                                SELECT MIN(season_id || '-' || round_number) FROM (
+                                    SELECT season_id, round_number FROM gac_rounds 
                                     WHERE player_code = ? AND format = ? 
-                                    ORDER BY id DESC LIMIT 3
+                                    ORDER BY season_id DESC, round_number DESC LIMIT 3
                                 )
                             ) THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
@@ -82,11 +117,11 @@ class GacScoutAnalyzer:
                             'fleet' as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.id) >= (
-                                SELECT MIN(id) FROM (
-                                    SELECT id FROM gac_rounds 
+                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
+                                SELECT MIN(season_id || '-' || round_number) FROM (
+                                    SELECT season_id, round_number FROM gac_rounds 
                                     WHERE player_code = ? 
-                                    ORDER BY id DESC LIMIT 3
+                                    ORDER BY season_id DESC, round_number DESC LIMIT 3
                                 )
                             ) THEN 10000 ELSE 0 END as score
                         FROM gac_matches m

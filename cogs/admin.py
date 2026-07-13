@@ -47,6 +47,49 @@ class AdminCog(commands.Cog, name="Admin"):
                 "Erreur lors de la synchronisation.", ephemeral=True
             )
 
+    @app_commands.command(name="logs", description="Affiche les 15 dernières lignes de bot.log")
+    async def logs(self, inter: discord.Interaction):
+        if inter.user.id not in ADMIN_IDS:
+            await inter.response.send_message("❌ Réservé aux admins.", ephemeral=True)
+            return
+
+        try:
+            with open("bot.log", "r", encoding="utf-8") as f:
+                lines = f.readlines()
+                last_lines = lines[-15:]
+                content = "".join(last_lines)
+            
+            if not content.strip():
+                await inter.response.send_message("Le fichier log est vide.", ephemeral=True)
+            else:
+                await inter.response.send_message(f"```log\n{content}\n```", ephemeral=True)
+        except FileNotFoundError:
+            await inter.response.send_message("Fichier bot.log introuvable.", ephemeral=True)
+            
+    @app_commands.command(name="dump-html", description="Télécharge et envoie le HTML d'une URL SWGOH.GG")
+    async def dump_html(self, inter: discord.Interaction, url: str):
+        if inter.user.id not in ADMIN_IDS:
+            await inter.response.send_message("❌ Réservé aux admins.", ephemeral=True)
+            return
+            
+        await inter.response.defer()
+        import aiohttp
+        from bs4 import BeautifulSoup
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as r:
+                    html = await r.text()
+            
+            soup = BeautifulSoup(html, "html.parser")
+            pretty_html = soup.prettify()
+            
+            import io
+            file_obj = io.BytesIO(pretty_html.encode('utf-8'))
+            file = discord.File(file_obj, filename="swgoh_round.html")
+            await inter.followup.send(f"Voici le code HTML pour {url} :", file=file)
+        except Exception as e:
+            await inter.followup.send(f"Erreur lors du téléchargement : {e}")
+
     # ------------------------------------------------------------------
     # /reset-player-history — Réinitialisation des données GAC scrapées
     # ------------------------------------------------------------------

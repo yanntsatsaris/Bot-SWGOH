@@ -134,7 +134,6 @@ class GacCountersScraper:
         
         if missing_leaders:
             log.info(f"Scraping nécessaire pour {len(missing_leaders)} leaders : {missing_leaders}")
-            gl_map = {"REY": "GU-REY", "LORDVADER": "GU-LORDVADER", "JABBATHEHUTT": "GU-JABBA", "SUPREMELEADERKYLOREN": "GU-SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI": "GU-JEDIMASTERKENOBI"}
             for leader_id in missing_leaders:
-                slug = gl_map.get(leader_id, leader_id)
-                await self.refresh_counters_for_leader(slug, leader_id, format_type)
+                # swgoh.gg utilise directement le base_id pour l'URL
+                await self.refresh_counters_for_leader(leader_id, leader_id, format_type)

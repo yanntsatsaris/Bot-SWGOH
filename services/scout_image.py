@@ -113,6 +113,11 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             if "Historique" in team_source:
                 source_label = team_source
                 label_color = C_GOLD
+            elif "Upgrade" in team_source:
+                source_label = team_source
+                # On utilise un violet ou vert clair pour marquer l'amélioration (on a C_GOLD, on peut mettre une couleur hex directement)
+                label_color = "#b967ff"  # Violet néon
+
             elif team_source == "leftover":
                 source_label = "Leftover"
                 label_color = C_MUTED

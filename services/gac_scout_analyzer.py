@@ -52,16 +52,26 @@ class GacScoutAnalyzer:
                     
                 if total_rounds > 0:
                     query_scraped = """
-                        SELECT m.defender_team, COUNT(DISTINCT r.id) as frequency
+                        SELECT 
+                            m.defender_team, 
+                            COUNT(DISTINCT r.id) as frequency,
+                            (COUNT(DISTINCT r.id) * 10) + 
+                            CASE WHEN MAX(r.id) >= (
+                                SELECT MIN(id) FROM (
+                                    SELECT id FROM gac_rounds 
+                                    WHERE player_code = ? AND format = ? 
+                                    ORDER BY id DESC LIMIT 3
+                                )
+                            ) THEN 100 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE m.is_attack = 0
                           AND r.format = ?
                           AND r.player_code = ?
                         GROUP BY m.defender_team
-                        ORDER BY frequency DESC
+                        ORDER BY score DESC, frequency DESC
                     """
-                    async with db.execute(query_scraped, (format_type, ally_code)) as cur:
+                    async with db.execute(query_scraped, (ally_code, format_type, format_type, ally_code)) as cur:
                         scraped_rows = await cur.fetchall()
                         
                     # Extraire et séparer terre/flottes

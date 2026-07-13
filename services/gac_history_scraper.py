@@ -344,7 +344,9 @@ class GACHistoryScraper:
                     return {"matches": [], "hub_links": hub_links_sorted}
                 
             # Détection du format 5v5 vs 3v3
-            max_size = max((len(m["attacker_team"]) for m in matches if m["attacker_team"]), default=5)
+            # On se base sur la taille des équipes terrestres en défense (car l'attaquant peut utiliser des solos/duos)
+            land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]
+            max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
             detected_format = "3v3" if max_size <= 3 else "5v5"
                 
             logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")

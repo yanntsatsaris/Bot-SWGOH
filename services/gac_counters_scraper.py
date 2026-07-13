@@ -67,23 +67,21 @@ class GacCountersScraper:
         stdout, stderr = await process.communicate()
         
         if process.returncode != 0:
-            log.error(f"Erreur worker counters {def_leader_slug}: {stderr.decode('utf-8', errors='ignore')}")
+        if process.returncode != 0:
+            log.error(f"Erreur worker counters {def_leader_slug}:\nSTDERR: {stderr.decode('utf-8', errors='ignore')}\nSTDOUT: {stdout.decode('utf-8', errors='ignore')}")
             return False
             
-        output_str = stdout.decode('utf-8', errors='ignore')
-        
-        # Extraire le JSON entre ---JSON_START--- et ---JSON_END---
-        import re
+        import os
         import json
         from database.db import save_counters_to_db
         
-        match = re.search(r'---JSON_START---\n(.*?)\n---JSON_END---', output_str, re.DOTALL)
-        if not match:
-            log.error(f"Impossible de trouver le JSON dans la sortie du worker pour {def_leader_slug}.")
+        if not os.path.exists(out_file_path):
+            log.error(f"Le fichier {out_file_path} n'a pas été généré.")
             return False
             
         try:
-            data = json.loads(match.group(1))
+            with open(out_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
             counters = data.get("counters", [])
             if counters:
                 await save_counters_to_db(season_id, format_type, real_leader_id, counters)

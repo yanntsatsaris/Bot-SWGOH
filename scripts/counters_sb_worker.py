@@ -54,16 +54,15 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 
                 quick_check = sb.get_page_source()
                 cloudflare_present = (
-                    "Enable JavaScript and cookies to continue" in quick_check or
-                    "Checking if the site connection is secure" in quick_check or
-                    "Just a moment..." in quick_check or
-                    "cf-browser-verification" in quick_check
+                    "Just a moment" in quick_check
+                    or "cf-turnstile" in quick_check
+                    or "Checking your browser" in quick_check
                 )
                 
                 if cloudflare_present:
-                    print(f"[WORKER] Page {page} : Cloudflare détecté, attente prolongée...")
+                    print(f"[WORKER] Page {page} : Cloudflare détecté, tentative de clic...")
                     try:
-                        sb.wait_for_element_not_visible("div#cf-please-wait", timeout=15)
+                        sb.uc_gui_click_captcha()
                     except:
                         pass
                     sb.sleep(8)

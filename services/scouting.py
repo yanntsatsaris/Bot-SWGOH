@@ -172,7 +172,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                     # FILTRE ANTI-GARBAGE (Équipes auto-déployées absurdes)
                     if hz != "fleet":
                         # On utilise TOUTES les compos Meta, pas juste celles du joueur, pour juger si la compo est absurde
-                        known_meta_for_leader = [mt for mt in GAC_TEAMS.values() if mt["leader_id"] == leader and mt["format"] == format_gac]
+                        known_meta_for_leader = [mt for mt in GAC_TEAMS.values() if mt["leader_id"] == leader and mt["format"] == fmt]
                         if known_meta_for_leader:
                             # Le leader est censé avoir une équipe Meta.
                             # On vérifie si les membres historiques partagent au moins 1 perso avec N'IMPORTE QUELLE variation de son équipe

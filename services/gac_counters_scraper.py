@@ -139,7 +139,8 @@ class GacCountersScraper:
                 max_members = 2 if format_type == "3v3" else 4
                 
                 if len(members_list) > max_members:
-                    log.info(f"L'équipe de {leader_id} a {len(members_list)} membres, ce qui est invalide pour du {format_type}. Scraping générique.")
-                    members = ""
+                    members_list = members_list[:max_members]
+                    members = ",".join(members_list)
+                    log.info(f"L'équipe de {leader_id} a été tronquée à {max_members} membres pour coller au format {format_type}.")
                     
                 await self.refresh_counters_for_leader(leader_id, leader_id, format_type, d_members=members)

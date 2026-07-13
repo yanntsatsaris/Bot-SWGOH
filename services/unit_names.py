@@ -36,7 +36,7 @@ async def build_name_cache() -> None:
     try:
         from database.db import get_db
         async with get_db() as db:
-            cursor = await db.execute("SELECT base_id, name FROM units_directory")
+            cursor = await db.execute("SELECT base_id, name FROM game_characters")
             rows = await cursor.fetchall()
             if rows:
                 _cache = {row["base_id"].upper(): row["name"] for row in rows}

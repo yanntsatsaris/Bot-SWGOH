@@ -359,7 +359,7 @@ def generate_gac_report(
         # Noms sous les portraits ennemis
         xe = PADDING
         for m in team["members"]:
-            name_short = m[:10] + "…" if len(m) > 10 else m
+            name_short = m[:12] + "…" if len(m) > 12 else m
             draw.text((xe, y + PORTRAIT_CELL + 4), name_short, font=small_font, fill=C_MUTED)
             xe += PORTRAIT_CELL + PORTRAIT_GAP
         y += H_PORTRAIT_ROW
@@ -379,7 +379,7 @@ def generate_gac_report(
             _draw_portrait_row(canvas, counters, y, is_enemy=False)
             xc = PADDING
             for c in counters:
-                name_short = c["name"][:10] + "…" if len(c["name"]) > 10 else c["name"]
+                name_short = c["name"][:12] + "…" if len(c["name"]) > 12 else c["name"]
                 color = C_READY if c.get("ready") and c.get("owned") else (C_WARN if c.get("owned") else C_MISSING)
                 draw.text((xc, y + PORTRAIT_CELL + 4), name_short, font=small_font, fill=color)
                 xc += PORTRAIT_CELL + PORTRAIT_GAP

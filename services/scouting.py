@@ -243,114 +243,11 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                         used_base_ids.add(leader)
                         used_base_ids.update(valid_members)
     
-    # Identification des personnages strictement réservés à l'attaque
-    offense_only_chars = set()
-    for t in available_teams:
-        if t["defense"] <= 2:
-            if t["leader_id"]:
-                offense_only_chars.add(t["leader_id"])
-            for c in t.get("members", []):
-                offense_only_chars.add(c)
-    
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
         remaining_q = max(0, q - len(zones[zone]))
         for _ in range(remaining_q):
-            placed = False
-            for t in available_teams:
-                # Interdiction de placer une équipe d'Attaque pure (Défense <= 2) en Défense
-                if t["defense"] <= 2:
-                    continue
-                    
-                # Vérifier que le leader et les membres sont dispos
-                if t["leader_id"] not in used_base_ids and t["leader_id"] != "USED":
-                    valid_members = [m for m in t["members"] if m not in used_base_ids]
-                    
-                    # Règle stricte min_size : l'équipe doit avoir assez de membres disponibles pour atteindre sa taille requise
-                    if len(valid_members) + 1 < t["target_size"]:
-                        continue
-                        
-                    zones[zone].append({
-                        "leader_id": t["leader_id"],
-                        "members_ids": valid_members,
-                        "source": "predictive",
-                        "target_size": t["target_size"]
-                    })
-                    used_base_ids.update(valid_members)
-                    t["leader_id"] = "USED" # On marque l'équipe comme consommée
-                    placed = True
-                    break
-            if not placed:
-                zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
-
-    # 1.5 BOUCHAGE DE TROUS (Hole-Filling) INTELLIGENT
-    # Tier 1 : Personnages non réservés à l'attaque
-    leftovers_t1 = [
-        m for m, data in enemy_index.items() 
-        if m not in used_base_ids 
-        and m not in offense_only_chars
-        and data.get("combat_type", 1) == 1
-    ]
-    # Tier 2 : Personnages réservés à l'attaque (on les utilise en dernier recours plutôt que de laisser un trou)
-    leftovers_t2 = [
-        m for m, data in enemy_index.items()
-        if m not in used_base_ids
-        and m in offense_only_chars
-        and data.get("combat_type", 1) == 1
-    ]
-    
-    # Trier chaque tier par puissance de base
-    leftovers_t1.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-    leftovers_t2.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-    
-    # Combiner les tiers (T1 d'abord, puis T2)
-    leftovers = leftovers_t1 + leftovers_t2
-    
-    # Construire le graphe de synergie basé sur la méta connue (dynamic_teams)
-    synergy_graph = {}
-    for team_data in dynamic_teams:
-        all_members = team_data.get("core", [])
-        for m1 in all_members:
-            if m1 not in synergy_graph:
-                synergy_graph[m1] = set()
-            for m2 in all_members:
-                if m1 != m2:
-                    synergy_graph[m1].add(m2)
-    
-    for zone in ["North", "South", "Back"]:
-        for t in zones[zone]:
-            target = t.get("target_size", expected_size)
-            while len(t["members_ids"]) < target and leftovers:
-                if len(t["members_ids"]) == 0:
-                    # Le premier membre est le plus fort disponible
-                    filler = leftovers.pop(0)
-                else:
-                    # Choisir le personnage ayant la meilleure synergie avec le reste de l'équipe
-                    best_filler = None
-                    best_score = -1
-                    best_idx = 0
-                    
-                    for i, cand in enumerate(leftovers):
-                        cand_synergy = synergy_graph.get(cand, set())
-                        # 1 point de synergie par membre de l'équipe actuelle avec qui il est connecté dans la méta
-                        synergy_score = sum(1 for m in t["members_ids"] if m in cand_synergy)
-                        
-                        # Pondération : La synergie est reine. En cas d'égalité, on prend celui avec le plus de GP (l'index i le plus bas)
-                        weighted_score = synergy_score * 1000 - i
-                        
-                        if weighted_score > best_score:
-                            best_score = weighted_score
-                            best_filler = cand
-                            best_idx = i
-                            
-                    filler = leftovers.pop(best_idx)
-
-                t["members_ids"].append(filler)
-                used_base_ids.add(filler)
-                
-            if t["source"] == "empty" and t["members_ids"]:
-                t["leader_id"] = t["members_ids"][0]
-                t["source"] = "leftover"
+            zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
     # 2. FLOTTES
     available_fleets = []

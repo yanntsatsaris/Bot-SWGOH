@@ -146,23 +146,9 @@ def _detect_enemy_meta_teams(
 
 
 async def _get_counters_from_db(leader_name: str, fmt: str) -> list[str]:
-    """Cherche les contres dans meta_teams pour un leader donné."""
-    try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                """
-                SELECT counters FROM meta_teams
-                WHERE leader_name = ? AND format = ?
-                LIMIT 1
-                """,
-                (leader_name, fmt),
-            )
-            row = await cursor.fetchone()
-        if row and row["counters"]:
-            return json.loads(row["counters"])
-    except Exception:
-        log.debug("Pas de contre trouvé en BDD pour %s", leader_name)
-    return []
+    # Ancienne fonction, conservée pour rétro-compatibilité si besoin,
+    # mais la vraie logique est maintenant dans gac_attack_planner.
+    pass
 
 
 def _get_counters_hardcoded(leader_id: str) -> list[str]:
@@ -238,20 +224,33 @@ async def analyze_matchup(
     # Détecter les équipes méta de l'ennemi
     enemy_teams = _detect_enemy_meta_teams(enemy_index, fmt)
 
+    from services.gac_attack_planner import get_best_counter_with_memory
+
     # Pour chaque équipe, chercher les contres
     suggestions = []
     for team in enemy_teams:
-        # BDD d'abord, hardcoded en fallback
-        counters_names = await _get_counters_from_db(team["leader_name"], fmt)
-        if not counters_names:
+        counters = await get_best_counter_with_memory(
+            def_leader_id=team["leader_id"],
+            def_members_ids=team["members_base_ids"],
+            format_type=fmt,
+            my_roster_index=my_index
+        )
+        
+        if counters:
+            suggestions.append({
+                "enemy_team": team,
+                "counters": counters,
+                "source": "swgoh.gg"
+            })
+        else:
+            # Fallback
             counters_names = _get_counters_hardcoded(team["leader_id"])
-
-        counters_with_status = _filter_owned_counters(counters_names, my_index)
-
-        suggestions.append({
-            "enemy_team": team,
-            "counters":   counters_with_status,
-        })
+            counters_with_status = _filter_owned_counters(counters_names, my_index)
+            suggestions.append({
+                "enemy_team": team,
+                "counters": counters_with_status,
+                "source": "hardcoded"
+            })
 
     return {
         "enemy_name":  enemy_name,

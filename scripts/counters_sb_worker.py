@@ -78,9 +78,69 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current")
             # Récupération du code source complet
             page_source = sb.get_page_source()
             
-            print(f"[WORKER] Sauvegarde du HTML dans {output_file}...")
-            with open(output_file, 'w', encoding='utf-8') as f:
-                f.write(page_source)
+            from bs4 import BeautifulSoup
+            import json
+            
+            soup = BeautifulSoup(page_source, "html.parser")
+            counters_data = []
+            
+            counter_panels = soup.select("div.grid.gap-y-1.mt-2 > div.panel")
+            for panel in counter_panels:
+                # 1. Attaquants
+                atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
+                if not atk_container: continue
+                atk_units = [div.get("data-unit-def-tooltip-app") for div in atk_container.select("[data-unit-def-tooltip-app]")]
+                if not atk_units: continue
+                atk_leader = atk_units[0]
+                atk_members = atk_units[1:]
+                
+                # 2. Défenseurs
+                def_container = panel.select_one("div.justify-center.lg\\:justify-start")
+                if not def_container: continue
+                def_units = [div.get("data-unit-def-tooltip-app") for div in def_container.select("[data-unit-def-tooltip-app]")]
+                if not def_units: continue
+                def_leader = def_units[0]
+                def_members = def_units[1:]
+                
+                # 3. Stats
+                stats_container = panel.select_one("div.whitespace-nowrap")
+                seen = 0
+                win_pct = 0.0
+                avg_banners = 0.0
+                if stats_container:
+                    stat_divs = stats_container.select("div.flex-1 > div.font-bold")
+                    if len(stat_divs) >= 3:
+                        try:
+                            seen = int(stat_divs[0].text.strip().replace(",", ""))
+                            win_pct = float(stat_divs[1].text.strip().replace("%", ""))
+                            avg_banners = float(stat_divs[2].text.strip())
+                        except ValueError:
+                            pass
+                            
+                counters_data.append({
+                    "atk_leader_id": atk_leader,
+                    "atk_members_ids": atk_members,
+                    "def_leader_id": def_leader,
+                    "def_members_ids": def_members,
+                    "seen": seen,
+                    "win_pct": win_pct,
+                    "avg_banners": avg_banners
+                })
+                
+            result = {
+                "counters": counters_data,
+                "format": format_type,
+                "season_id": season_id
+            }
+            
+            print("---JSON_START---")
+            print(json.dumps(result))
+            print("---JSON_END---")
+            
+            if output_file and output_file != "None":
+                print(f"[WORKER] Sauvegarde du HTML dans {output_file}...")
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write(page_source)
                 
             print("[WORKER] Terminé.")
             exit_code = 0

@@ -40,6 +40,7 @@ async def init_db() -> None:
             "ALTER TABLE gac_rounds ADD COLUMN player_banners INTEGER",
             "ALTER TABLE gac_rounds ADD COLUMN opponent_banners INTEGER",
             "ALTER TABLE gac_rounds ADD COLUMN format TEXT NOT NULL DEFAULT '5v5'",
+            "ALTER TABLE gac_rounds ADD COLUMN league TEXT",
             "ALTER TABLE gac_matches ADD COLUMN format TEXT",
             "ALTER TABLE gac_matches ADD COLUMN zone TEXT"
         ]
@@ -121,12 +122,14 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
         # 2. Insertion du Round
         # On utilise le format détecté dans _parse_html (défaut '5v5')
         detected_format = parsed_data.get("format", "5v5")
+        detected_league = parsed_data.get("league")
+        
         cursor = await db.execute(
             """
-            INSERT INTO gac_rounds (season_id, round_number, player_code, opponent_name, format)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO gac_rounds (season_id, round_number, player_code, opponent_name, format, league)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (season_id, round_number, real_ally_code, opponent_name, detected_format)
+            (season_id, round_number, real_ally_code, opponent_name, detected_format, detected_league)
         )
         round_id = cursor.lastrowid
         

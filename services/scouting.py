@@ -469,14 +469,21 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     enemy_name = profile.get("name", clean_code)
     
     league_name = "CARBONITE"
-    season_status = profile.get("seasonStatus", [])
-    if season_status:
-        last_season = season_status[-1]
-        league_val = last_season.get("league", "CARBONITE")
-        if isinstance(league_val, str):
-            league_name = league_val.split("_")[-1].upper()
+    from database.db import get_db
+    async with get_db() as db:
+        cursor = await db.execute("SELECT league FROM gac_rounds WHERE player_code = ? AND league IS NOT NULL ORDER BY id DESC LIMIT 1", (clean_code,))
+        row = await cursor.fetchone()
+        if row and row["league"]:
+            league_name = row["league"].upper()
         else:
-            league_name = LEAGUE_MAP.get(league_val, "CARBONITE")
+            season_status = profile.get("seasonStatus", [])
+            if season_status:
+                last_season = season_status[-1]
+                league_val = last_season.get("league", "CARBONITE")
+                if isinstance(league_val, str):
+                    league_name = league_val.split("_")[-1].upper()
+                else:
+                    league_name = LEAGUE_MAP.get(league_val, "CARBONITE")
             
     if league_name not in ["CARBONITE", "BRONZIUM", "CHROMIUM", "AURODIUM", "KYBER"]:
         league_name = "CARBONITE"

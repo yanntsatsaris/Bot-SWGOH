@@ -283,40 +283,39 @@ class GACHistoryScraper:
                         label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
                         value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
                         if label_el and value_el:
-                            label = label_el.get_text(strip=True).lower()
-                            value = value_el.get_text(strip=True)
-                            if label == "banners":
-                                match_data["banners"] = int(value) if value.isdigit() else 0
-                            elif label == "attempt":
-                                match_data["attempt"] = int(value) if value.isdigit() else 1
-                            elif label == "outcome":
-                                match_data["outcome"] = value
-                            elif label == "zone":
-                                svg = value_el.find('svg')
+                    stat_blocks = block.find_all('div', class_='gac-counters-battle-summary__stat')
+                    for stat in stat_blocks:
+                        label = stat.find('div', class_='gac-counters-battle-summary__stat-label')
+                        val = stat.find('div', class_='gac-counters-battle-summary__stat-value')
+                        if label and val:
+                            l_text = label.text.strip()
+                            v_text = val.text.strip()
+                            if l_text == "Banners":
+                                try: match_data["banners"] = int(v_text)
+                                except: pass
+                            elif l_text == "Outcome":
+                                match_data["outcome"] = v_text
+                            elif l_text == "Zone":
+                                svg = val.find('svg')
                                 if svg:
                                     paths = svg.find_all('path')
                                     for i, path in enumerate(paths):
                                         classes = path.get('class', [])
-                                        if isinstance(classes, str):
-                                            classes = classes.split()
+                                        if isinstance(classes, str): classes = classes.split()
                                         if 'gac-zone-layout--is-active' in classes:
-                                            # Ordre des paths: 0=Nord, 1=Sud, 2=Flotte, 3=Back
                                             zone_map = {0: "top", 1: "bottom", 2: "fleet", 3: "back"}
                                             match_data["zone"] = zone_map.get(i, "unknown")
                                             break
-                                            
+                    
                     parent = block.parent
                     if parent:
-                        # Extraction des équipes complètes
-                        squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout--character' in c)
+                        squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout' in c)
                         if squad_containers and len(squad_containers) >= 2:
-                            # Attaquant
                             a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
                             match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
                             if match_data["attacker_team"]:
                                 match_data["attacker_lead"] = match_data["attacker_team"][0]
                                 
-                            # Défenseur
                             d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
                             match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
                             if match_data["defender_team"]:
@@ -324,46 +323,27 @@ class GACHistoryScraper:
                                 
                     matches.append(match_data)
 
-            # Analyse des deux sections
-            attack_div = soup.find('div', id='battles-attack')
-            if attack_div:
-                parse_section(attack_div, is_attack=True)
+            parse_section(soup.find('div', id='battles-attack'), is_attack=True)
+            parse_section(soup.find('div', id='battles-defense'), is_attack=False)
                 
-            defense_div = soup.find('div', id='battles-defense')
-            if defense_div:
-                parse_section(defense_div, is_attack=False)
-                
-            # On vérifie si c'est vraiment la page HUB (l'URL se termine par gac-history/)
             is_hub_page = target_url.endswith('gac-history/') if target_url else not matches
-            
             if is_hub_page:
-                # On est sur la page HUB générale (la liste de toutes les saisons)
-                # On cherche les liens vers les matchs individuels
                 hub_links = []
                 for a in soup.find_all('a', href=True):
                     href = a['href']
                     if "/gac-history/" in href and (href.endswith('/1/') or href.endswith('/2/') or href.endswith('/3/')):
                         full_url = f"https://swgoh.gg{href}" if href.startswith('/') else href
-                        if full_url not in hub_links:
-                            hub_links.append(full_url)
-                            
-                            
+                        if full_url not in hub_links: hub_links.append(full_url)
                 if hub_links:
-                    # L'utilisateur souhaite extraire la totalité de l'historique disponible.
-                    # On trie pour prendre les plus récentes (les IDs sont des timestamps)
                     hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
-                    # On ne limite plus, on prend toutes les saisons trouvées
-                    logger.info(f"🔗 Page Hub détectée, {len(hub_links_sorted)} sous-liens de matchs trouvés ! (Toutes les saisons)")
                     return {"matches": [], "hub_links": hub_links_sorted}
                 
-            # Détection du format 5v5 vs 3v3
-            # On se base sur la taille des équipes terrestres en défense (car l'attaquant peut utiliser des solos/duos)
             land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]
             max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
             detected_format = "3v3" if max_size <= 3 else "5v5"
                 
-            logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits !")
-            return {"matches": matches, "format": detected_format}
+            logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits ! Ligue détectée : {parsed_league}")
+            return {"matches": matches, "format": detected_format, "league": parsed_league}
             
         except Exception as e:
             logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")

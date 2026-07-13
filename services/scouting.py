@@ -5,7 +5,7 @@ import logging
 from database.db import get_db
 from services.comlink import get_player
 from utils.gac_config import get_gac_quotas
-from services.gac_meta import GAC_FLEETS
+from services.gac_meta import GAC_FLEETS, ALL_META_TEAMS
 
 log = logging.getLogger(__name__)
 

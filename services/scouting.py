@@ -161,7 +161,11 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
             teams = habits["zones"].get(hz, [])
             quota = quotas.get(h_name, 0)
             
-            for t in teams[:quota]:
+            placed_in_zone = 0
+            for t in teams:
+                if placed_in_zone >= quota:
+                    break
+                    
                 leader = t["leader_id"]
                 members = t["members"]
                 percent = t["percent"]
@@ -230,6 +234,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                         })
                         used_base_ids.add(upgrade_leader)
                         used_base_ids.update(upgrade_members)
+                        placed_in_zone += 1
                         # On retire l'équipe Meta des available_teams pour ne pas la réutiliser
                         best_upgrade["leader_id"] = "USED"
                     else:
@@ -242,6 +247,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                         })
                         used_base_ids.add(leader)
                         used_base_ids.update(valid_members)
+                        placed_in_zone += 1
     
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)

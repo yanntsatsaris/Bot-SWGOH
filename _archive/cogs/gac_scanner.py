@@ -16,17 +16,20 @@ log = logging.getLogger(__name__)
 class GacScannerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.daily_top50.start()   # Cron quotidien Top 50
+        # CRON DÉSACTIVÉ — redondant avec le scraping swgoh.gg (gac_global_meta).
+        # Le scan Top 50 reste disponible via /gac-scan-top50.
+        # self.daily_top50.start()
 
     def cog_unload(self):
-        self.daily_top50.cancel()
+        if self.daily_top50.is_running():
+            self.daily_top50.cancel()
 
     # ─── CRON QUOTIDIEN ────────────────────────────────────────────────────
 
     import datetime
-    @tasks.loop(time=datetime.time(hour=12, minute=0, tzinfo=datetime.timezone.utc))
+    @tasks.loop(time=datetime.time(hour=4, minute=0, tzinfo=datetime.timezone.utc))  # Nuit lundi→mardi à 4h00 UTC
     async def daily_top50(self):
-        """Scan automatique du Top 50 chaque jour à midi UTC."""
+        """Scan automatique du Top 50 chaque semaine (nuit lundi→mardi) après la fin du dernier combat GAC."""
         log.info("[CRON] Démarrage du scan Top 50 quotidien...")
         result = await run_top50_scan()
         log.info(f"[CRON] Top 50 terminé : {result}")

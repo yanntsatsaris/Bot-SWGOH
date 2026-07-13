@@ -35,16 +35,12 @@ log = logging.getLogger(__name__)
 # Extensions (cogs) à charger au démarrage
 # ---------------------------------------------------------------------------
 INITIAL_EXTENSIONS = [
-    "cogs.gac",
+    "cogs.gac",           # /register (primordial)
     "cogs.admin",
-    "cogs.gac_test",
     "cogs.gac_counter",
-    "cogs.gac_history",
     "cogs.review_portraits",
     "cogs.gac_scout",
-    "cogs.meta_scanner",
-    "cogs.meta_manager",
-    "cogs.gac_scanner",
+    "cogs.meta_scanner",  # cron désactivé, /meta-scan-force disponible
     "cogs.gac_global_meta",
 ]
 

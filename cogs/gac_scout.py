@@ -152,7 +152,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                         )
                         files.append(discord.File(my_img, filename="my_defense.png"))
                     
-                    msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !"
+                    msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !\n"
+                    msg += "⚠️ *Note : Les prédictions sont générées automatiquement. Des erreurs de placement ou d'optimisation sont possibles.*\n"
                     if not my_ally_code:
                         msg += "\n*Astuce : Utilise `/register` pour que le bot te propose aussi une défense sur mesure !*"
                     else:

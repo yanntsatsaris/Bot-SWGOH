@@ -110,16 +110,19 @@ class MetaScannerCog(commands.Cog, name="MetaScanner"):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.daily_meta_scan.start()
+        # CRON DÉSACTIVÉ — redondant avec le scraping swgoh.gg (gac_global_meta).
+        # Le scan Comlink reste disponible via la commande /meta-scan-force.
+        # self.daily_meta_scan.start()
 
     def cog_unload(self) -> None:
-        self.daily_meta_scan.cancel()
+        if self.daily_meta_scan.is_running():
+            self.daily_meta_scan.cancel()
 
     import datetime
 
-    @tasks.loop(time=datetime.time(hour=12, minute=0, tzinfo=datetime.timezone.utc))
+    @tasks.loop(time=datetime.time(hour=3, minute=0, tzinfo=datetime.timezone.utc))  # Nuit lundi→mardi à 3h00 UTC
     async def daily_meta_scan(self) -> None:
-        """Scan les classements de chaque ligue et reconstruit les statistiques méta."""
+        """Scan les classements de chaque ligue et reconstruit les statistiques méta. Exécuté une fois par semaine la nuit de lundi à mardi (après la fin du dernier combat GAC)."""
         log.info("Démarrage du scan méta quotidien...")
         
         leagues = {

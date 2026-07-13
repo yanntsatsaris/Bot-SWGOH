@@ -18,7 +18,7 @@ class GacGlobalMetaCog(commands.Cog):
     def cog_unload(self):
         self.daily_meta_update.cancel()
 
-    @tasks.loop(time=datetime.time(hour=3, minute=0)) # Exécution tous les jours à 3h00 du matin
+    @tasks.loop(time=datetime.time(hour=0, minute=0))  # Minuit UTC (2h FR) — nuit lundi→mardi, après fin du dernier combat GAC
     async def daily_meta_update(self):
         """
         Tâche de fond quotidienne pour mettre à jour la Meta GAC globale (Attack & Defense pour 5v5 et 3v3).

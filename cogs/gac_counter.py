@@ -1,128 +1,244 @@
+"""
+cogs/gac_counter.py — Commande /gac-counter
+Trouve les meilleurs counters pour une équipe ennemie en GAC.
+"""
+import logging
+
 import discord
 from discord import app_commands
 from discord.ext import commands
-import logging
-from database.db import get_db, record_counter_feedback
+
+from database.db import get_db, get_counters_from_db, record_counter_feedback
 from services.gac_attack_planner import get_best_counter_with_memory
+from services.gac_counters_scraper import GacCountersScraper
 from services.unit_names import get_name
 from services.comlink import get_player
+from services.image_generator import generate_gac_report
 
 log = logging.getLogger(__name__)
 
-async def get_my_roster_index(user_id: int):
-    async with get_db() as db:
-        cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(user_id),))
-        row = await cursor.fetchone()
-        if not row:
-            return None
-        
-        my_clean = row["ally_code"]
-        my_profile = await get_player(my_clean)
-        if not my_profile:
-            return None
-            
-        roster = {}
-        for unit in my_profile.get("rosterUnit", []):
-            def_id = unit.get("definitionId", "")
-            base_id = def_id.split(":")[0] if ":" in def_id else def_id
-            raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
-            relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
-            roster[base_id] = {
-                "base_id": base_id,
-                "gear_tier": unit.get("currentTier", 0),
-                "relic_tier": relic_tier,
-                "rarity": unit.get("currentRarity", 0),
-            }
-        return roster
+_scraper = GacCountersScraper()
 
-class CounterSuggestionView(discord.ui.View):
-    def __init__(self, interaction: discord.Interaction, suggestions: list, def_leader: str, format_type: str, current_index: int = 0, excluded_chars: set = None):
-        super().__init__(timeout=600) # 10 minutes timeout
-        self.original_interaction = interaction
-        self.suggestions = suggestions
-        self.def_leader = def_leader
-        self.format_type = format_type
-        self.current_index = current_index
-        self.excluded_chars = excluded_chars or set()
-        
-    async def get_current_suggestion_embed(self) -> discord.Embed:
-        if self.current_index >= len(self.suggestions):
-            return discord.Embed(title="❌ Plus de contres disponibles", description="Aucun autre contre n'a été trouvé pour cette équipe avec votre roster actuel.", color=discord.Color.red())
-            
-        sugg = self.suggestions[self.current_index]
-        atk_leader = sugg["atk_leader_id"]
-        atk_members = sugg.get("atk_members_ids", [])
-        all_chars = [atk_leader] + atk_members
-        names = [get_name(cid) for cid in all_chars]
-        team_str = "\n".join([f"• **{name}**" for name in names])
-        
-        embed = discord.Embed(
-            title=f"🎯 Contre Suggéré #{self.current_index + 1}",
-            description=f"Voici le contre optimal proposé pour battre **{get_name(self.def_leader)}** :",
-            color=discord.Color.blue()
-        )
-        embed.add_field(name="Équipe Proposée", value=team_str, inline=False)
-        embed.add_field(name="Score Composite", value=f"{sugg.get('composite_score', 0):.2f}", inline=True)
-        embed.add_field(name="Taux de Victoire (Global)", value=f"{sugg.get('win_pct', 0)}%", inline=True)
-        
-        if "missing" in sugg and sugg["missing"]:
-            missing_names = [get_name(m) for m in sugg["missing"]]
-            embed.add_field(name="⚠️ Personnages Manquants / Faibles", value=", ".join(missing_names), inline=False)
-            
-        embed.set_footer(text="Que s'est-il passé lors de l'attaque ?")
-        return embed
-        
-    @discord.ui.button(label="Victoire", style=discord.ButtonStyle.success, emoji="✅")
-    async def btn_victoire(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_feedback(interaction, True)
-        
-    @discord.ui.button(label="Défaite", style=discord.ButtonStyle.danger, emoji="❌")
-    async def btn_defaite(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_feedback(interaction, False)
 
-    @discord.ui.button(label="Autre Option", style=discord.ButtonStyle.secondary, emoji="🔄")
-    async def btn_autre(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current_index += 1
-        await self.update_message(interaction)
-        
-    async def _handle_feedback(self, interaction: discord.Interaction, won: bool):
-        sugg = self.suggestions[self.current_index]
-        atk_leader = sugg["atk_leader_id"]
-        atk_members = sugg.get("atk_members_ids", [])
-        
-        await record_counter_feedback(self.def_leader, [], atk_leader, atk_members, self.format_type, "win" if won else "loss", str(interaction.user.id))
-        
-        # Désactiver les boutons
-        for child in self.children:
-            child.disabled = True
-            
-        status = "✅ Victoire enregistrée" if won else "❌ Défaite enregistrée"
-        embed = await self.get_current_suggestion_embed()
-        embed.color = discord.Color.green() if won else discord.Color.red()
-        embed.set_footer(text=f"Résultat : {status}")
-        
-        await interaction.response.edit_message(embed=embed, view=self)
+# ─── HELPERS ────────────────────────────────────────────────────────────────
 
-    async def update_message(self, interaction: discord.Interaction):
-        embed = await self.get_current_suggestion_embed()
-        if self.current_index >= len(self.suggestions):
-            for child in self.children:
-                child.disabled = True
-        await interaction.response.edit_message(embed=embed, view=self)
+async def _build_roster(ally_code: str) -> dict | None:
+    """Récupère le roster Comlink pour un ally_code donné et le transforme en index."""
+    try:
+        profile = await get_player(ally_code.replace("-", ""))
+    except Exception as e:
+        log.warning(f"[gac-counter] Impossible de récupérer le roster pour {ally_code}: {e}")
+        return None
 
-async def unit_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    current = current.lower()
+    if not profile:
+        return None
+
+    roster = {}
+    for unit in profile.get("rosterUnit", []):
+        def_id = unit.get("definitionId", "")
+        base_id = def_id.split(":")[0] if ":" in def_id else def_id
+        if not base_id:
+            continue
+        raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
+        relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
+        roster[base_id] = {
+            "base_id": base_id,
+            "gear_tier": unit.get("currentTier", 0),
+            "relic_tier": relic_tier,
+            "rarity": unit.get("currentRarity", 0),
+        }
+    return roster or None
+
+
+async def _get_my_roster(interaction: discord.Interaction) -> tuple[dict | None, str | None, str | None]:
+    """
+    Récupère le roster du joueur uniquement via la BDD (lié à son compte Discord).
+    Retourne (roster, ally_code, username)
+    """
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT base_id, name FROM game_characters WHERE name LIKE ? OR base_id LIKE ? LIMIT 25",
-            (f"%{current}%", f"%{current}%")
+            "SELECT ally_code, username FROM players WHERE discord_id = ?",
+            (str(interaction.user.id),)
+        )
+        row = await cursor.fetchone()
+
+    if not row:
+        return None, None, None
+
+    clean = row["ally_code"].replace("-", "")
+    roster = await _build_roster(clean)
+    return roster, clean, row["username"]
+
+
+# ─── AUTOCOMPLETE ────────────────────────────────────────────────────────────
+
+async def unit_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    if not current:
+        return []
+    current_lower = current.lower()
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT base_id, name FROM game_characters WHERE LOWER(name) LIKE ? OR LOWER(base_id) LIKE ? LIMIT 25",
+            (f"%{current_lower}%", f"%{current_lower}%")
         )
         rows = await cursor.fetchall()
-        
     return [
         app_commands.Choice(name=f"{row['name']} ({row['base_id']})", value=row["base_id"])
         for row in rows
     ]
+
+
+# ─── VUE INTERACTIVE ────────────────────────────────────────────────────────
+
+class CounterSuggestionView(discord.ui.View):
+    def __init__(
+        self, interaction: discord.Interaction, suggestions: list, def_leader: str,
+        def_members: list, format_type: str, adv_roster: dict | None,
+        adv_name: str, my_roster: dict, my_name: str, current_index: int = 0
+    ):
+        super().__init__(timeout=600)
+        self.original_interaction = interaction
+        self.suggestions = suggestions
+        self.def_leader = def_leader
+        self.def_members = def_members
+        self.format_type = format_type
+        self.adv_roster = adv_roster
+        self.adv_name = adv_name
+        self.my_roster = my_roster
+        self.my_name = my_name
+        self.current_index = current_index
+
+    async def _build_embed_and_file(self) -> tuple[discord.Embed, discord.File | None]:
+        if self.current_index >= len(self.suggestions):
+            embed = discord.Embed(
+                title="❌ Plus de contres disponibles",
+                description="Aucun autre contre n'a été trouvé pour cette équipe avec ton roster.",
+                color=discord.Color.red()
+            )
+            return embed, None
+
+        sugg = self.suggestions[self.current_index]
+        atk_leader = sugg["atk_leader_id"]
+        atk_members = sugg.get("atk_members_ids", [])
+        all_chars = [atk_leader] + atk_members
+
+        team_str = "\n".join(f"• **{get_name(cid)}**" for cid in all_chars)
+        win_pct = sugg.get("win_pct", 0)
+        composite = sugg.get("composite_score", 0)
+
+        # ── Construction de la défense ──
+        def_chars = [self.def_leader] + self.def_members
+        def_str_lines = []
+        for cid in def_chars:
+            name = get_name(cid)
+            if self.adv_roster and cid in self.adv_roster:
+                u = self.adv_roster[cid]
+                relic = f"R{u['relic_tier']}" if u['relic_tier'] > 0 else f"G{u['gear_tier']}"
+                def_str_lines.append(f"• **{name}** (`{relic}`)")
+            else:
+                def_str_lines.append(f"• **{name}**")
+        def_str = "\n".join(def_str_lines)
+
+        embed = discord.Embed(
+            title=f"🎯 Contre #{self.current_index + 1} — {get_name(self.def_leader)}",
+            description=f"**Format :** {self.format_type}",
+            color=discord.Color.blue()
+        )
+        
+        embed.add_field(name="Équipe Ennemie", value=def_str, inline=True)
+        embed.add_field(name="Équipe Proposée", value=team_str, inline=True)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
+        
+        embed.add_field(name="Win Rate (global)", value=f"{win_pct}%", inline=True)
+        embed.add_field(name="Score roster", value=f"{composite:.2f}", inline=True)
+
+        if sugg.get("missing"):
+            missing_str = ", ".join(get_name(m) for m in sugg["missing"])
+            embed.add_field(name="⚠️ Manquants / faibles", value=missing_str, inline=False)
+
+        total_suggestions = len(self.suggestions)
+        embed.set_footer(text=f"Option {self.current_index + 1}/{total_suggestions} • ⚠️ Ce ne sont que des propositions du bot, des erreurs sont possibles.")
+
+        # ── Génération de l'image ──
+        team_dict = {
+            "leader_name": get_name(self.def_leader),
+            "members": [get_name(m) for m in self.def_members],
+            "members_base_ids": self.def_members,
+            "units_data": self.adv_roster or {}
+        }
+        
+        counter_units = []
+        for cid in all_chars:
+            u = self.my_roster.get(cid)
+            relic = u["relic_tier"] if u else None
+            gear = u["gear_tier"] if u else None
+            is_ready = True if u and (relic >= 5 or gear >= 13) else False
+            
+            counter_units.append({
+                "base_id": cid,
+                "name": get_name(cid),
+                "relic_tier": relic,
+                "gear_tier": gear,
+                "ready": is_ready,
+                "owned": True if u else False
+            })
+            
+        mock_suggestions = [{"enemy_team": team_dict, "counters": counter_units}]
+        
+        img_file = generate_gac_report(self.my_name, self.adv_name, mock_suggestions, self.format_type)
+        embed.set_image(url=f"attachment://{img_file.filename}")
+
+        return embed, img_file
+
+    @discord.ui.button(label="✅ Victoire", style=discord.ButtonStyle.success)
+    async def btn_victoire(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_feedback(interaction, True)
+
+    @discord.ui.button(label="❌ Défaite", style=discord.ButtonStyle.danger)
+    async def btn_defaite(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._handle_feedback(interaction, False)
+
+    @discord.ui.button(label="🔄 Autre option", style=discord.ButtonStyle.secondary)
+    async def btn_autre(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.current_index += 1
+        if self.current_index >= len(self.suggestions):
+            for child in self.children:
+                child.disabled = True
+        embed, img_file = await self._build_embed_and_file()
+        
+        # discord.py requires sending attachments again when editing message if we want to replace it
+        if img_file:
+            await interaction.response.edit_message(embed=embed, view=self, attachments=[img_file])
+        else:
+            await interaction.response.edit_message(embed=embed, view=self)
+
+    async def _handle_feedback(self, interaction: discord.Interaction, won: bool):
+        if self.current_index >= len(self.suggestions):
+            return
+        sugg = self.suggestions[self.current_index]
+        atk_leader = sugg["atk_leader_id"]
+        atk_members = sugg.get("atk_members_ids", [])
+
+        await record_counter_feedback(
+            self.def_leader, [], atk_leader, atk_members,
+            self.format_type, "win" if won else "loss",
+            str(interaction.user.id)
+        )
+
+        for child in self.children:
+            child.disabled = True
+
+        embed, img_file = await self._build_embed_and_file()
+        embed.color = discord.Color.green() if won else discord.Color.red()
+        embed.set_footer(text=f"{'✅ Victoire' if won else '❌ Défaite'} enregistrée — merci !")
+        
+        if img_file:
+            await interaction.response.edit_message(embed=embed, view=self, attachments=[img_file])
+        else:
+            await interaction.response.edit_message(embed=embed, view=self)
+
+
+# ─── COG ─────────────────────────────────────────────────────────────────────
 
 class GACCounterCog(commands.Cog, name="GACCounter"):
     def __init__(self, bot: commands.Bot) -> None:
@@ -130,47 +246,123 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
 
     @app_commands.command(
         name="gac-counter",
-        description="Trouve le meilleur contre pour une équipe ennemie."
+        description="Trouve le meilleur contre pour une équipe ennemie en GAC."
     )
     @app_commands.describe(
-        leader_ennemi="Le leader de l'équipe ennemie",
-        membres_ennemi="Les membres (optionnel, IDs séparés par des virgules)",
-        format_gac="Le format (3v3 ou 5v5)"
+        leader="Leader de l'équipe ennemie (autocomplétion disponible)",
+        format_gac="Format du combat",
+        ally_code_adversaire="Ally code de l'adversaire (pour afficher les reliques de sa défense)",
+        membre_2="2ème personnage de l'équipe ennemie",
+        membre_3="3ème personnage (optionnel)",
+        membre_4="4ème personnage (5v5 uniquement)",
+        membre_5="5ème personnage (5v5 uniquement)",
     )
-    @app_commands.choices(
-        format_gac=[
-            app_commands.Choice(name="3 contre 3", value="3v3"),
-            app_commands.Choice(name="5 contre 5", value="5v5"),
-        ]
+    @app_commands.choices(format_gac=[
+        app_commands.Choice(name="3v3", value="3v3"),
+        app_commands.Choice(name="5v5", value="5v5"),
+    ])
+    @app_commands.autocomplete(
+        leader=unit_autocomplete,
+        membre_2=unit_autocomplete,
+        membre_3=unit_autocomplete,
+        membre_4=unit_autocomplete,
+        membre_5=unit_autocomplete,
     )
-    @app_commands.autocomplete(leader_ennemi=unit_autocomplete)
     async def gac_counter(
         self,
         interaction: discord.Interaction,
-        leader_ennemi: str,
+        leader: str,
         format_gac: app_commands.Choice[str],
-        membres_ennemi: str = None
+        ally_code_adversaire: str | None = None,
+        membre_2: str | None = None,
+        membre_3: str | None = None,
+        membre_4: str | None = None,
+        membre_5: str | None = None,
     ) -> None:
         await interaction.response.defer()
-        
-        leader_clean = leader_ennemi.strip().upper()
-        members_list = [m.strip().upper() for m in membres_ennemi.split(",")] if membres_ennemi else []
-        
-        my_roster_index = await get_my_roster_index(interaction.user.id)
-        if not my_roster_index:
-            await interaction.followup.send("❌ Impossible de trouver ton profil. As-tu utilisé `/register` ?")
+
+        fmt = format_gac.value
+        leader_id = leader.strip().upper()
+
+        # ── 1. Roster du joueur (via BDD /register uniquement) ───────────────
+        my_roster, used_code, my_name = await _get_my_roster(interaction)
+        if not my_roster:
+            await interaction.followup.send(
+                "❌ Impossible de trouver ton roster. "
+                "Tu dois d'abord lier ton compte avec `/register`.",
+                ephemeral=True
+            )
             return
-            
-        counters = await get_best_counter_with_memory(leader_clean, members_list, format_gac.value, my_roster_index)
         
+        my_name = my_name or interaction.user.display_name
+
+        # ── 2. Membres ennemis selon le format ───────────────────────────────
+        max_members = 2 if fmt == "3v3" else 4
+        raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5] if m]
+        members_list = [m.strip().upper() for m in raw_members[:max_members]]
+
+        # ── 3. Roster adversaire (Optionnel) ─────────────────────────────────
+        adv_roster = None
+        adv_name = "Adversaire Inconnu"
+        if ally_code_adversaire:
+            adv_clean = ally_code_adversaire.replace("-", "").strip()
+            try:
+                profile = await get_player(adv_clean)
+                if profile:
+                    adv_name = profile.get("name", "Adversaire")
+                adv_roster = await _build_roster(adv_clean)
+            except Exception as e:
+                log.warning(f"Impossible de récupérer l'adversaire {adv_clean}: {e}")
+
+        # ── 4. Vérifier les données en BDD ───────────────────────────────────
+        existing = await get_counters_from_db(leader_id, fmt)
+
+        if not existing:
+            # Scraping à la demande
+            await interaction.followup.send(
+                f"⏳ Aucune donnée pour **{get_name(leader_id)}** en {fmt}. "
+                f"Scraping en cours sur swgoh.gg (~20s)...",
+                ephemeral=True
+            )
+            members_str = ",".join(members_list)
+            await _scraper.ensure_counters_available({leader_id: members_str}, fmt)
+            existing = await get_counters_from_db(leader_id, fmt)
+
+        if not existing:
+            await interaction.followup.send(
+                f"❌ Aucun counter trouvé pour **{get_name(leader_id)}** en {fmt}. "
+                "swgoh.gg ne répertorie peut-être pas encore ce leader."
+            )
+            return
+
+        # ── 5. Filtrer par roster et trier ───────────────────────────────────
+        counters = await get_best_counter_with_memory(leader_id, members_list, fmt, my_roster)
+
         if not counters:
-            await interaction.followup.send(f"❌ Aucun contre n'a été trouvé pour **{get_name(leader_clean)}** dans ce format.")
+            await interaction.followup.send(
+                f"❌ Aucun contre disponible avec ton roster actuel pour **{get_name(leader_id)}** en {fmt}.\n"
+                "Tu n'as peut-être pas les personnages requis à un niveau suffisant."
+            )
             return
+
+        # ── 6. Afficher ───────────────────────────────────────────────────────
+        view = CounterSuggestionView(
+            interaction, counters, leader_id, members_list, fmt,
+            adv_roster, adv_name, my_roster, my_name
+        )
+        embed, img_file = await view._build_embed_and_file()
+
+        roster_info = f"Ton Roster : `{used_code}` • {len(counters)} option(s) trouvée(s)"
+        if adv_roster and ally_code_adversaire:
+            roster_info += f" | Adversaire : `{ally_code_adversaire}`"
             
-        view = CounterSuggestionView(interaction, counters, leader_clean, format_gac.value)
-        embed = await view.get_current_suggestion_embed()
-        
-        await interaction.followup.send(embed=embed, view=view)
+        embed.set_author(name=roster_info)
+
+        if img_file:
+            await interaction.followup.send(embed=embed, file=img_file, view=view)
+        else:
+            await interaction.followup.send(embed=embed, view=view)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(GACCounterCog(bot))

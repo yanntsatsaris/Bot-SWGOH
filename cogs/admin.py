@@ -68,10 +68,6 @@ class AdminCog(commands.Cog, name="Admin"):
             
     @app_commands.command(name="dump-html", description="Télécharge et envoie le HTML d'une URL SWGOH.GG")
     async def dump_html(self, inter: discord.Interaction, url: str):
-        if inter.user.id not in ADMIN_IDS:
-            await inter.response.send_message("❌ Réservé aux admins.", ephemeral=True)
-            return
-            
         await inter.response.defer()
         import aiohttp
         from bs4 import BeautifulSoup

@@ -197,5 +197,51 @@ CREATE_TABLES_SQL: list[str] = [
         avg_banners  REAL,
         updated_at   TEXT DEFAULT (datetime('now'))
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_counters (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        season_id       TEXT    NOT NULL,
+        format          TEXT    NOT NULL,
+        def_leader_id   TEXT    NOT NULL,
+        def_members_ids TEXT    NOT NULL,
+        atk_leader_id   TEXT    NOT NULL,
+        atk_members_ids TEXT    NOT NULL,
+        seen            INTEGER DEFAULT 0,
+        win_pct         REAL    DEFAULT 0.0,
+        avg_banners     REAL    DEFAULT 0.0,
+        last_updated    TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(season_id, format, def_leader_id, def_members_ids, atk_leader_id, atk_members_ids)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_counters_def    ON gac_counters(def_leader_id, format, season_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_counters_season ON gac_counters(season_id, format)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS counter_feedback (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        def_leader_id   TEXT    NOT NULL,
+        def_members_ids TEXT    NOT NULL,
+        format          TEXT    NOT NULL,
+        atk_leader_id   TEXT    NOT NULL,
+        atk_members_ids TEXT    NOT NULL,
+        outcome         TEXT    NOT NULL CHECK(outcome IN ('win', 'loss')),
+        player_discord_id TEXT,
+        avg_relic_tier  REAL,
+        recorded_at     TEXT    NOT NULL DEFAULT (datetime('now'))
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_feedback_def ON counter_feedback(def_leader_id, format)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_unit_slugs (
+        base_id     TEXT PRIMARY KEY,
+        swgoh_slug  TEXT NOT NULL,
+        FOREIGN KEY(base_id) REFERENCES game_characters(base_id)
+    )
     """
 ]

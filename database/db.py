@@ -145,3 +145,106 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
         
         await db.commit()
         log.info(f"✅ {len(parsed_data['matches'])} matchs sauvegardés en BDD pour {real_ally_code} (Round ID: {round_id})")
+
+async def save_counters_to_db(season_id: str, format_type: str, def_leader_id: str, counters_data: list[dict]):
+    """
+    Sauvegarde les counters extraits de swgoh.gg en base de données.
+    """
+    async with get_db() as db:
+        for counter in counters_data:
+            def_members_json = json.dumps(counter.get("def_members_ids", []))
+            atk_leader_id = counter.get("atk_leader_id", "")
+            atk_members_json = json.dumps(counter.get("atk_members_ids", []))
+            
+            # Upsert
+            await db.execute(
+                """
+                INSERT INTO gac_counters (
+                    season_id, format, def_leader_id, def_members_ids,
+                    atk_leader_id, atk_members_ids, seen, win_pct, avg_banners, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(season_id, format, def_leader_id, def_members_ids, atk_leader_id, atk_members_ids)
+                DO UPDATE SET
+                    seen = excluded.seen,
+                    win_pct = excluded.win_pct,
+                    avg_banners = excluded.avg_banners,
+                    last_updated = excluded.last_updated
+                """,
+                (
+                    season_id, format_type, def_leader_id, def_members_json,
+                    atk_leader_id, atk_members_json, counter.get("seen", 0),
+                    counter.get("win_pct", 0.0), counter.get("avg_banners", 0.0)
+                )
+            )
+        await db.commit()
+
+async def get_counters_from_db(def_leader_id: str, format_type: str) -> list[dict]:
+    """
+    Récupère tous les counters pour un leader défensif donné.
+    Retourne les données aggrégées/les plus récentes.
+    """
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT season_id, def_members_ids, atk_leader_id, atk_members_ids, seen, win_pct, avg_banners
+            FROM gac_counters
+            WHERE def_leader_id = ? AND format = ?
+            ORDER BY seen DESC
+            """,
+            (def_leader_id, format_type)
+        )
+        rows = await cursor.fetchall()
+        
+    results = []
+    for row in rows:
+        results.append({
+            "season_id": row["season_id"],
+            "def_leader_id": def_leader_id,
+            "def_members_ids": json.loads(row["def_members_ids"]),
+            "atk_leader_id": row["atk_leader_id"],
+            "atk_members_ids": json.loads(row["atk_members_ids"]),
+            "seen": row["seen"],
+            "win_pct": row["win_pct"],
+            "avg_banners": row["avg_banners"]
+        })
+    return results
+
+async def record_counter_feedback(def_leader_id: str, def_members_ids: list[str], atk_leader_id: str, atk_members_ids: list[str], format_type: str, outcome: str, player_discord_id: str):
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO counter_feedback (
+                def_leader_id, def_members_ids, format,
+                atk_leader_id, atk_members_ids, outcome, player_discord_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                def_leader_id, json.dumps(sorted(def_members_ids)), format_type,
+                atk_leader_id, json.dumps(sorted(atk_members_ids)), outcome, player_discord_id
+            )
+        )
+        await db.commit()
+
+async def get_counter_feedback_stats(atk_leader_id: str, def_leader_id: str, format_type: str) -> dict:
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins
+            FROM counter_feedback
+            WHERE atk_leader_id = ? AND def_leader_id = ? AND format = ?
+            """,
+            (atk_leader_id, def_leader_id, format_type)
+        )
+        row = await cursor.fetchone()
+        
+    total = row["total"] if row else 0
+    wins = row["wins"] if row else 0
+    win_rate = (wins / total) if total > 0 else None
+    
+    return {
+        "total": total,
+        "wins": wins,
+        "win_rate": win_rate
+    }

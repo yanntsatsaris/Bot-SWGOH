@@ -321,7 +321,7 @@ class GACHistoryScraper:
                                             
                     parent = block.parent
                     if parent:
-                        squad_containers = parent.find_all('div', class_=lambda c: c and 'gac-battle-portrait-layout' in c)
+                        squad_containers = parent.find_all('div', class_='gac-battle-portrait-layout')
                         if squad_containers and len(squad_containers) >= 2:
                             a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
                             match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]

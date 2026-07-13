@@ -87,6 +87,12 @@ class GacScoutAnalyzer:
                         
                         is_fleet = leader_id in GAC_FLEETS or "CAPITAL" in leader_id
                         
+                        # Sécurité absolue : ignorer les équipes qui ne respectent pas la taille du format (ex: équipes de 4 ou 5 personnages taggées par erreur en 3v3)
+                        if format_type == "3v3" and not is_fleet and len(members) > 3:
+                            continue
+                        if format_type == "5v5" and not is_fleet and len(members) > 5:
+                            continue
+                        
                         team_info = {
                             "leader_id": leader_id,
                             "members": members_ids,

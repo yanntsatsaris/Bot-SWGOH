@@ -110,10 +110,20 @@ GAC_TEAMS = {
         "core": ["LORDVADER", "MAULS7"],
         "subs": ["GRANDADMIRALTHRAWN", "ROYALGUARD", "VADER", "STORMTROOPER"]
     },
+    "LORDVADER_CLONES_5V5": {
+        "leader_id": "LORDVADER", "format": "5v5", "offense": 9, "defense": 9,
+        "core": ["LORDVADER"],
+        "subs": ["APPO", "CC1119APPO", "DISGUISEDCLONETROOPER", "OPERATIVE", "CX2", "SCORCH", "RC1262SCORCH"]
+    },
+    "TARKIN_CLONES_5V5": {
+        "leader_id": "GRANDMOFFTARKIN", "format": "5v5", "offense": 8, "defense": 8,
+        "core": ["GRANDMOFFTARKIN"],
+        "subs": ["APPO", "CC1119APPO", "DISGUISEDCLONETROOPER", "OPERATIVE", "CX2", "SCORCH", "RC1262SCORCH"]
+    },
     "LORDVADER_CLONES_3V3": {
         "leader_id": "LORDVADER", "format": "3v3", "offense": 9, "defense": 9,
         "core": ["LORDVADER"],
-        "subs": ["CX2", "CC1119APPO", "ROYALGUARD", "STORMTROOPER"]
+        "subs": ["CX2", "OPERATIVE", "CC1119APPO", "APPO", "ROYALGUARD", "STORMTROOPER"]
     },
     "LORDVADER_MAUL_3V3": {
         "leader_id": "LORDVADER", "format": "3v3", "offense": 8, "defense": 7,

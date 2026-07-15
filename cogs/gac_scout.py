@@ -36,8 +36,20 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         force_sync: bool = False
     ) -> None:
         """Commande principale pour scouter un ennemi."""
-        # On met le message initial en éphémère (silencieux) pour masquer le processus
         await interaction.response.defer(ephemeral=True)
+        
+        # Vérification obligatoire de l'enregistrement de l'utilisateur
+        my_ally_code = None
+        async with get_db() as db:
+            cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(interaction.user.id),))
+            row = await cursor.fetchone()
+            if row:
+                my_ally_code = row["ally_code"]
+                
+        if not my_ally_code:
+            await interaction.edit_original_response(content="❌ **Erreur** : Tu dois d'abord lier ton compte avec `/register <ton_ally_code>` pour utiliser le scouting ! Le bot a besoin de connaître ta ligue pour calibrer l'analyse.")
+            return
+
         await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Vérification de l'historique GAC...")
         
         try:

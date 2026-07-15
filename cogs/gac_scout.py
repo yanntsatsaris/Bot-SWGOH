@@ -50,7 +50,16 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             await interaction.edit_original_response(content="❌ **Erreur** : Tu dois d'abord lier ton compte avec `/register <ton_ally_code>` pour utiliser le scouting ! Le bot a besoin de connaître ta ligue pour calibrer l'analyse.")
             return
 
-        await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Vérification de l'historique GAC...")
+        # Récupération de la taille de la file d'attente
+        from services.gac_history_scraper import GAC_HISTORY_SCRAPER
+        qsize = GAC_HISTORY_SCRAPER.queue.qsize()
+        if qsize > 0:
+            attente_estimee = qsize * 2
+            msg_attente = f"⏳ **[■□□□□□□□□□] 10%** : File d'attente : tu es en position **{qsize + 1}** (~{attente_estimee} min d'attente)..."
+        else:
+            msg_attente = "⏳ **[■□□□□□□□□□] 10%** : Vérification de l'historique GAC..."
+            
+        await interaction.edit_original_response(content=msg_attente)
         
         try:
             # Fonction callback qui sera appelée quand le scraper aura fini (ou immédiatement si données en cache)

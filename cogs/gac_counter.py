@@ -304,11 +304,19 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
 
         if not existing:
             # Scraping à la demande
-            await interaction.followup.send(
-                f"⏳ Aucune donnée pour **{get_name(leader_id)}** en {fmt}. "
-                f"Extraction en cours sur swgoh.gg (~20s)...",
-                ephemeral=True
-            )
+            qsize = _scraper.waiting_jobs
+            if qsize > 0:
+                msg_attente = (
+                    f"⏳ **File d'attente** : tu es en position **{qsize + 1}** (~{int(qsize * 1.5)} min d'attente).\n"
+                    f"Extraction de **{get_name(leader_id)}** en {fmt} en cours..."
+                )
+            else:
+                msg_attente = (
+                    f"⏳ Aucune donnée pour **{get_name(leader_id)}** en {fmt}. "
+                    f"Extraction en cours sur swgoh.gg (~20s)..."
+                )
+            
+            await interaction.followup.send(msg_attente, ephemeral=True)
             members_str = ",".join(members_list)
             await _scraper.ensure_counters_available({leader_id: members_str}, fmt)
             existing = await get_counters_from_db(leader_id, fmt)

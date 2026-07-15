@@ -10,6 +10,11 @@ import logging
 log = logging.getLogger(__name__)
 
 class GacCountersScraper:
+    def __init__(self):
+        # On autorise 2 navigateurs en simultané max pour exploiter la grosse RAM sans exploser
+        self.semaphore = asyncio.Semaphore(2)
+        self.waiting_jobs = 0
+
     async def fetch_html_for_leader(self, def_leader_slug: str, output_file: str):
         """
         Lance le worker pour récupérer le HTML de la page des counters
@@ -135,15 +140,20 @@ class GacCountersScraper:
         args = [
             sys.executable, worker_path, "--batch", batch_config_path, format_type, season_id
         ]
-            
-        process = await asyncio.create_subprocess_exec(
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=project_dir
-        )
         
-        stdout, stderr = await process.communicate()
+        # On incrémente le compteur des requêtes en attente
+        self.waiting_jobs += 1
+        
+        async with self.semaphore:
+            self.waiting_jobs -= 1
+            process = await asyncio.create_subprocess_exec(
+                *args,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=project_dir
+            )
+            
+            stdout, stderr = await process.communicate()
         
         if process.returncode != 0:
             log.error(f"Erreur worker counters BATCH:\nSTDERR: {stderr.decode('utf-8', errors='ignore')}\nSTDOUT: {stdout.decode('utf-8', errors='ignore')}")

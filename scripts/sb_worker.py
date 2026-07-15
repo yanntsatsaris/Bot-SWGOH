@@ -57,7 +57,12 @@ def scrape(target_url, ally_code):
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             for i, current_url in enumerate(urls_to_scrape):
                 print(f"[WORKER] ({i+1}/{len(urls_to_scrape)}) Chargement de la page : {current_url}")
-                sb.uc_open_with_reconnect(current_url, reconnect_time=4)
+                if i == 0:
+                    # La première page nécessite parfois une reconnexion CDP pour berner Cloudflare
+                    sb.uc_open_with_reconnect(current_url, reconnect_time=4)
+                else:
+                    # Pour les pages suivantes (même domaine), uc_open est instantané
+                    sb.uc_open(current_url)
                 
                 # Check rapide : est-ce que Cloudflare est présent ?
                 quick_check = sb.get_page_source()

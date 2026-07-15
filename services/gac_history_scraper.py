@@ -142,10 +142,21 @@ class GACHistoryScraper:
                                         logger.info(f"{msg}")
                                         if interaction:
                                             try:
-                                                if "Cloudflare détecté" in msg or "Pas de Cloudflare" in msg:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■□□□□□] 50%** : Extraction de l'historique GAC en cours...")
+                                                import re
+                                                progress_match = re.search(r"\((\d+)/(\d+)\) Chargement", msg)
+                                                if progress_match:
+                                                    current = int(progress_match.group(1))
+                                                    total = int(progress_match.group(2))
+                                                    # Màj tous les 5 matchs ou au début/fin pour éviter le rate-limit
+                                                    if current == 1 or current == total or current % 5 == 0:
+                                                        pct = int((current / total) * 30) + 60
+                                                        bars = int((pct / 100) * 10)
+                                                        bar_str = "■" * bars + "□" * (10 - bars)
+                                                        await interaction.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Scraping continu en cours ({current}/{total})...")
+                                                elif "Cloudflare détecté" in msg or "Pas de Cloudflare" in msg:
+                                                    pass # On ignore pour ne pas spammer pendant le batch
                                                 elif "Contenu GAC détecté" in msg:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : Historique récupéré, chargement des données...")
+                                                    pass # Idem
                                             except:
                                                 pass
 

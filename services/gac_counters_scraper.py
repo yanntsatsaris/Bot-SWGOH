@@ -183,30 +183,7 @@ class GacCountersScraper:
                 try:
                     await progress_callback(f"⏳ **[{bar_str}] {pct}%** : Extraction des contres en batch ({i+1}/{total})...")
                 except Exception as e:
-                    pass        import json
-        from database.db import save_counters_to_db
-            
-        try:
-            with open(out_file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                
-            try:
-                os.remove(out_file_path)
-                if os.path.exists(out_file_path + ".debug.log"):
-                    os.remove(out_file_path + ".debug.log")
-            except Exception as e:
-                log.error(f"Erreur lors de la suppression des temp files counters: {e}")
-                
-            counters = data.get("counters", [])
-            if counters:
-                await save_counters_to_db(season_id, format_type, real_leader_id, counters)
-                log.info(f"{len(counters)} counters sauvegardés pour {real_leader_id} ({format_type}).")
-            else:
-                log.warning(f"Aucun counter trouvé pour {real_leader_id}.")
-            return True
-        except json.JSONDecodeError as e:
-            log.error(f"Erreur de décodage JSON: {e}")
-            return False
+                    pass
 
     async def ensure_counters_available(self, leaders_dict: dict, format_type: str, progress_callback=None) -> None:
         """

@@ -97,6 +97,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                 if len(units) > expected_max:
                     continue
                     
+                leader_id = units[0]
                 # On utilise une échelle 0-10 basée sur le % de holds pour la défense
                 def_score = min(10, int((row["hold_percent"] or 0) / 10))
                 dynamic_teams.append({

@@ -21,10 +21,11 @@ Voici les commandes principales que tu peux utiliser :
 
 🔍 **`/gac-scout <code_allié_ennemi> <format>`**
 > Scanne l'historique de ton adversaire et te génère un rapport visuel. Il va faire une **estimation** des équipes qu'il a l'habitude de poser en défense (les données peuvent être incomplètes).
-> *Attention : la récupération de l'historique peut être longue (plusieurs minutes) en fonction de la ligue et du nombre de personnes dans la file d'attente. Patiente un peu !*
+> *Attention : cette commande utilise une **file d'attente**. La récupération de l'historique peut être longue (plusieurs minutes) en fonction de la ligue et de ta position dans la file. Patiente un peu !*
 
 ⚔️ **`/gac-counter <leader_ennemi> <format> [membres...]`**
 > Tu bloques sur une équipe ? Cette commande va chercher les meilleurs contres possibles en tenant compte **de ton propre roster** ! Il ne te proposera que des personnages que tu possèdes.
+> *Note : s'il doit chercher de nouveaux contres, il te placera également dans une petite **file d'attente** si beaucoup de joueurs l'utilisent.*
 
 🔄 **Boutons interactifs**
 > Sur les suggestions de contres, utilise **[Victoire]** ou **[Défaite]** pour enregistrer le résultat de tes combats en base de données. Clique sur **[Autre option]** pour faire défiler les contres.

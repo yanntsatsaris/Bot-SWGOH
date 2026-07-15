@@ -88,6 +88,11 @@ class SwgohBot(commands.Bot):
             self.tree.copy_global_to(guild=guild)
             await self.tree.sync(guild=guild)
             log.info("Slash commands synchronisées sur le serveur %s", self.guild_id)
+            # Nettoyage des commandes globales résiduelles (d'une ancienne synchro sans guild_id)
+            # Cela évite les doublons visibles quand Discord affiche global + guild en même temps.
+            self.tree.clear_commands(guild=None)
+            await self.tree.sync()
+            log.info("Commandes globales résiduelles effacées")
         else:
             # Synchro globale (~1h de propagation ; recommandé en production)
             await self.tree.sync()

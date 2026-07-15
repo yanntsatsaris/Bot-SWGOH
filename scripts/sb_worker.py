@@ -40,57 +40,74 @@ def scrape(target_url, ally_code):
         else:
             print("[WORKER] Environnement Windows détecté, pas d'écran virtuel Xvfb.")
         
-        # On définit un profil Chrome spécifique à l'intérieur du projet pour éviter
-        # que Chrome n'essaie d'écrire dans /home/botswgoh qui n'existe peut-être pas
+        # On définit un profil Chrome spécifique à l'intérieur du projet
         profile_dir = os.path.join(project_dir, "chrome_profile")
         
         print(f"[WORKER] Lancement de SeleniumBase (Profil: {profile_dir})...")
+        
+        if target_url.endswith('.txt') and os.path.exists(target_url):
+            with open(target_url, 'r') as f:
+                urls_to_scrape = [line.strip() for line in f if line.strip()]
+            print(f"[WORKER] Fichier détecté. {len(urls_to_scrape)} URLs à scraper.")
+        else:
+            urls_to_scrape = [target_url]
+            
+        all_htmls = []
+        
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
-            print("[WORKER] Navigateur démarré. Chargement de la page avec Reconnect...")
-            sb.uc_open_with_reconnect(target_url, reconnect_time=4)
+            for i, current_url in enumerate(urls_to_scrape):
+                print(f"[WORKER] ({i+1}/{len(urls_to_scrape)}) Chargement de la page : {current_url}")
+                sb.uc_open_with_reconnect(current_url, reconnect_time=4)
+                
+                # Check rapide : est-ce que Cloudflare est présent ?
+                quick_check = sb.get_page_source()
+                
+                cloudflare_present = (
+                    "Just a moment" in quick_check
+                    or "cf-turnstile" in quick_check
+                    or "Checking your browser" in quick_check
+                )
+                
+                if cloudflare_present:
+                    print("[WORKER] ⚠️ Cloudflare détecté, clic en cours...")
+                    try:
+                        sb.uc_gui_click_captcha()
+                        print("[WORKER] ✅ Clic effectué")
+                    except Exception as e:
+                        print(f"[WORKER] Clic échoué : {e}")
+                    wait_time = 8  # Attente longue après challenge
+                else:
+                    print("[WORKER] ✅ Pas de Cloudflare")
+                    wait_time = 2  # Attente courte pour rendu JS
+                
+                # Attente adaptive : poll au lieu de sleep fixe
+                for _ in range(wait_time * 2):  # Check toutes les 500ms
+                    sb.sleep(0.5)
+                    source = sb.get_page_source()
+                    # On check soit le bloc stat, soit l'accueil des historiques
+                    if "gac-counters-battle-summary" in source or "class=\"col-sm-6 col-md-6\"" in source:
+                        print("[WORKER] ✅ Contenu GAC détecté, stop de l'attente !")
+                        break
+                
+                page_source = sb.get_page_source()
+                
+                if "Just a moment" in page_source or "Cloudflare" in page_source:
+                    print(f"[WORKER] ECHEC: Toujours bloqué par Cloudflare sur {current_url}.")
+                    # On ne sort pas, on passe au lien suivant
+                    continue
+                
+                # Injection de l'URL pour le parser
+                marker = f"<!-- URL: {current_url} -->\n"
+                all_htmls.append(marker + page_source)
             
-            # Check rapide : est-ce que Cloudflare est présent ?
-            quick_check = sb.get_page_source()
-            
-            cloudflare_present = (
-                "Just a moment" in quick_check
-                or "cf-turnstile" in quick_check
-                or "Checking your browser" in quick_check
-            )
-            
-            if cloudflare_present:
-                print("[WORKER] ⚠️ Cloudflare détecté, clic en cours...")
-                try:
-                    sb.uc_gui_click_captcha()
-                    print("[WORKER] ✅ Clic effectué")
-                except Exception as e:
-                    print(f"[WORKER] Clic échoué : {e}")
-                wait_time = 8  # Attente longue après challenge
-            else:
-                print("[WORKER] ✅ Pas de Cloudflare")
-                wait_time = 2  # Attente courte pour rendu JS
-            
-            # Attente adaptive : poll au lieu de sleep fixe
-            print(f"[WORKER] Attente adaptative jusqu'à {wait_time}s pour chargement...")
-            for _ in range(wait_time * 2):  # Check toutes les 500ms
-                sb.sleep(0.5)
-                source = sb.get_page_source()
-                # On check soit le bloc stat, soit l'accueil des historiques
-                if "gac-counters-battle-summary" in source or "class=\"col-sm-6 col-md-6\"" in source:
-                    print("[WORKER] ✅ Contenu GAC détecté, stop de l'attente !")
-                    break
-            
-            print("[WORKER] Récupération du code source HTML...")
-            page_source = sb.get_page_source()
-            
-            if "Just a moment" in page_source or "Cloudflare" in page_source:
-                print("ECHEC: Toujours bloqué par Cloudflare.")
+            if not all_htmls:
+                print("[WORKER] ECHEC TOTAL: Aucune page HTML valide récupérée.")
                 exit_code = 1
                 return
-            
+                
             safe_name = ally_code.replace("/", "_").replace(":", "")
             with open(f"gac_history_{safe_name}.html", "w", encoding="utf-8") as f:
-                f.write(page_source)
+                f.write("\n<hr>\n".join(all_htmls))
                 
             print(f"SUCCES: HTML sauvegardé (gac_history_{safe_name}.html)")
             exit_code = 0

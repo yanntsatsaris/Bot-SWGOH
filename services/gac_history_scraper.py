@@ -87,7 +87,10 @@ class GACHistoryScraper:
                 
                 # Exécute la fonction bloquante SeleniumBase dans un processus séparé isolé !
                 # Ça évite tous les deadlocks liés à asyncio / Xvfb
-                if ally_code.startswith("http"):
+                if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
+                    target_url = ally_code
+                    clean_code = ally_code.replace("batch_", "").replace(".txt", "")
+                elif ally_code.startswith("http"):
                     target_url = ally_code
                     clean_code = "custom_url"
                 else:
@@ -95,8 +98,12 @@ class GACHistoryScraper:
                     clean_code = ally_code
                 
                 # Définir le code utilisateur cible pour le suivi de la tâche de fin
-                r_info = self._extract_round_info_from_url(target_url)
-                c_code = r_info["ally_code"] if r_info else clean_code
+                if target_url.endswith('.txt'):
+                    r_info = None
+                    c_code = clean_code
+                else:
+                    r_info = self._extract_round_info_from_url(target_url)
+                    c_code = r_info["ally_code"] if r_info else clean_code
 
                 try:
                     # Vérification anti-doublon AVANT scraping
@@ -166,30 +173,58 @@ class GACHistoryScraper:
                                     html_content = f.read()
                                     
                                 logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
-                                parsed_data = self._parse_html(html_content, clean_code, target_url)
+                                parsed_results = self._parse_html(html_content, clean_code, target_url)
                                 
-                                # Si on a atterri sur la page d'accueil GAC, on remet les matchs trouvés dans la file d'attente
-                                if parsed_data.get("hub_links"):
-                                    logger.info("🔗 Page d'accueil détectée. Ajout automatique des sous-liens GAC dans la file d'attente...")
-                                    for link in parsed_data["hub_links"]:
-                                        # On met interaction=None pour ne pas spammer le channel Discord à chaque sous-lien
-                                        await self.queue_scrape(link, interaction=None)
+                                total_matchs = 0
+                                for parsed_data in parsed_results:
+                                    # Si on a atterri sur la page d'accueil GAC, on filtre et on batch
+                                    if parsed_data.get("hub_links"):
+                                        logger.info("🔗 Page d'accueil détectée. Filtrage des rounds existants...")
+                                        from database.db import get_db
+                                        links_to_scrape = []
+                                        async with get_db() as db:
+                                            for link in parsed_data["hub_links"]:
+                                                r_info = self._extract_round_info_from_url(link)
+                                                if r_info:
+                                                    cursor = await db.execute(
+                                                        "SELECT id FROM gac_rounds WHERE player_code=? AND season_id=? AND round_number=?",
+                                                        (r_info["ally_code"], r_info["season_id"], r_info["round"])
+                                                    )
+                                                    if not await cursor.fetchone():
+                                                        links_to_scrape.append(link)
+                                        
+                                        if links_to_scrape:
+                                            logger.info(f"🔗 {len(links_to_scrape)} nouveaux rounds à scraper. Création du batch...")
+                                            batch_file = f"batch_{clean_code}.txt"
+                                            with open(batch_file, "w") as bf:
+                                                bf.write("\n".join(links_to_scrape))
+                                                
+                                            # On met le fichier texte dans la file
+                                            await self.queue_scrape(batch_file, interaction=None)
+                                            
+                                            if interaction:
+                                                try:
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(links_to_scrape)} nouveaux rounds trouvés ! Lancement du scraping continu...")
+                                                except:
+                                                    pass
+                                        else:
+                                            logger.info("✅ Aucun nouveau round à scraper (tous déjà en BDD).")
+                                            if interaction:
+                                                try:
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■■■■□] 90%** : Historique déjà à jour !")
+                                                except:
+                                                    pass
+                                        continue
                                     
-                                    if interaction:
-                                        try:
-                                            await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(parsed_data['hub_links'])} rounds trouvés ! Traitement en arrière-plan...")
-                                        except:
-                                            pass
-                                    continue
+                                    # Sinon c'est un match normal, on sauvegarde en base de données
+                                    from database.db import save_gac_history_to_db
+                                    url_for_db = parsed_data.get("url", target_url)
+                                    await save_gac_history_to_db(parsed_data, url_for_db)
+                                    total_matchs += len(parsed_data.get("matches", []))
                                 
-                                # Sinon c'est un match normal, on sauvegarde en base de données
-                                from database.db import save_gac_history_to_db
-                                await save_gac_history_to_db(parsed_data, target_url)
-                                
-                                if interaction:
+                                if interaction and total_matchs > 0:
                                     try:
-                                        nb_matchs = len(parsed_data.get("matches", []))
-                                        await interaction.edit_original_response(content=f"⏳ **[■■■■■■■■■□] 90%** : {nb_matchs} combats extraits avec succès ! Préparation de l'analyse...")
+                                        await interaction.edit_original_response(content=f"⏳ **[■■■■■■■■■□] 90%** : {total_matchs} combats extraits avec succès ! Préparation de l'analyse...")
                                     except:
                                         pass
                             else:
@@ -252,111 +287,128 @@ class GACHistoryScraper:
                 logger.error(f"Erreur critique dans le worker GAC Scraper : {e}")
                 await asyncio.sleep(5)
 
-    def _parse_html(self, html: str, ally_code: str, target_url: str = "") -> dict:
+    def _parse_html(self, html: str, ally_code: str, default_target_url: str = "") -> list[dict]:
         """
         Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes complètes.
-        Sépare les attaques et les défenses.
+        Supporte les fichiers contenant plusieurs pages séparées par <hr>.
         """
-        try:
-            from bs4 import BeautifulSoup
-            soup = BeautifulSoup(html, 'html.parser')
-            
-            matches = []
-            parsed_league = None
-            
-            def parse_section(section_div, is_attack: bool):
-                nonlocal parsed_league
-                if not section_div: return
+        import re
+        from bs4 import BeautifulSoup
+        
+        results = []
+        chunks = html.split('<hr>')
+        
+        for chunk in chunks:
+            chunk = chunk.strip()
+            if not chunk:
+                continue
                 
-                stats_blocks = section_div.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
-                for block in stats_blocks:
-                    match_data = {
-                        "banners": 0,
-                        "attempt": 1,
-                        "outcome": "Unknown",
-                        "attacker_lead": "UNKNOWN",
-                        "defender_lead": "UNKNOWN",
-                        "attacker_team": [],
-                        "defender_team": [],
-                        "is_attack": is_attack
-                    }
+            target_url = default_target_url
+            # Récupérer l'URL injectée par le worker si elle existe
+            url_match = re.search(r"<!-- URL:\s*(https?://[^\s]+)\s*-->", chunk)
+            if url_match:
+                target_url = url_match.group(1)
+                
+            try:
+                soup = BeautifulSoup(chunk, 'html.parser')
+                matches = []
+                parsed_league = None
+                
+                def parse_section(section_div, is_attack: bool):
+                    nonlocal parsed_league
+                    if not section_div: return
                     
-                    if not parsed_league:
-                        parent_summary = block.find_parent('div', class_='gac-counters-battle-summary')
-                        if parent_summary:
-                            league_img = parent_summary.find('img', class_='gac-counters-battle-summary__league-icon-division')
-                            if league_img and 'src' in league_img.attrs:
-                                src = league_img['src'].lower()
-                                if 'bronzium' in src: parsed_league = 'BRONZIUM'
-                                elif 'chromium' in src: parsed_league = 'CHROMIUM'
-                                elif 'aurodium' in src: parsed_league = 'AURODIUM'
-                                elif 'kyber' in src: parsed_league = 'KYBER'
-                                elif 'carbonite' in src: parsed_league = 'CARBONITE'
-                                
-                    stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
-                    for stat in stats:
-                        label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
-                        value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
-                        if label_el and value_el:
-                            label = label_el.get_text(strip=True).lower()
-                            value = value_el.get_text(strip=True)
-                            if label == "banners":
-                                match_data["banners"] = int(value) if value.isdigit() else 0
-                            elif label == "attempt":
-                                match_data["attempt"] = int(value) if value.isdigit() else 1
-                            elif label == "outcome":
-                                match_data["outcome"] = value
-                            elif label == "zone":
-                                svg = value_el.find('svg')
-                                if svg:
-                                    paths = svg.find_all('path')
-                                    for i, path in enumerate(paths):
-                                        classes = path.get('class', [])
-                                        if isinstance(classes, str):
-                                            classes = classes.split()
-                                        if 'gac-zone-layout--is-active' in classes:
-                                            zone_map = {0: "top", 1: "bottom", 2: "fleet", 3: "back"}
-                                            match_data["zone"] = zone_map.get(i, "unknown")
-                                            break
-                                            
-                    parent = block.parent
-                    if parent:
-                        squad_containers = parent.find_all('div', class_='gac-battle-portrait-layout')
-                        if squad_containers and len(squad_containers) >= 2:
-                            a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                            match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
-                            if match_data["attacker_team"]:
-                                match_data["attacker_lead"] = match_data["attacker_team"][0]
-                                
-                            d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                            match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
-                            if match_data["defender_team"]:
-                                match_data["defender_lead"] = match_data["defender_team"][0]
-                                
-                    matches.append(match_data)
+                    stats_blocks = section_div.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stats' in c)
+                    for block in stats_blocks:
+                        match_data = {
+                            "banners": 0,
+                            "attempt": 1,
+                            "outcome": "Unknown",
+                            "attacker_lead": "UNKNOWN",
+                            "defender_lead": "UNKNOWN",
+                            "attacker_team": [],
+                            "defender_team": [],
+                            "is_attack": is_attack
+                        }
+                        
+                        if not parsed_league:
+                            parent_summary = block.find_parent('div', class_='gac-counters-battle-summary')
+                            if parent_summary:
+                                league_img = parent_summary.find('img', class_='gac-counters-battle-summary__league-icon-division')
+                                if league_img and 'src' in league_img.attrs:
+                                    src = league_img['src'].lower()
+                                    if 'bronzium' in src: parsed_league = 'BRONZIUM'
+                                    elif 'chromium' in src: parsed_league = 'CHROMIUM'
+                                    elif 'aurodium' in src: parsed_league = 'AURODIUM'
+                                    elif 'kyber' in src: parsed_league = 'KYBER'
+                                    elif 'carbonite' in src: parsed_league = 'CARBONITE'
+                                    
+                        stats = block.find_all('div', class_=lambda c: c and 'gac-counters-battle-summary__stat' in c)
+                        for stat in stats:
+                            label_el = stat.find('div', class_=lambda c: c and 'stat-label' in c)
+                            value_el = stat.find('div', class_=lambda c: c and 'stat-value' in c)
+                            if label_el and value_el:
+                                label = label_el.get_text(strip=True).lower()
+                                value = value_el.get_text(strip=True)
+                                if label == "banners":
+                                    match_data["banners"] = int(value) if value.isdigit() else 0
+                                elif label == "attempt":
+                                    match_data["attempt"] = int(value) if value.isdigit() else 1
+                                elif label == "outcome":
+                                    match_data["outcome"] = value
+                                elif label == "zone":
+                                    svg = value_el.find('svg')
+                                    if svg:
+                                        paths = svg.find_all('path')
+                                        for i, path in enumerate(paths):
+                                            classes = path.get('class', [])
+                                            if isinstance(classes, str):
+                                                classes = classes.split()
+                                            if 'gac-zone-layout--is-active' in classes:
+                                                zone_map = {0: "top", 1: "bottom", 2: "fleet", 3: "back"}
+                                                match_data["zone"] = zone_map.get(i, "unknown")
+                                                break
+                                                
+                        parent = block.parent
+                        if parent:
+                            squad_containers = parent.find_all('div', class_='gac-battle-portrait-layout')
+                            if squad_containers and len(squad_containers) >= 2:
+                                a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                                match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
+                                if match_data["attacker_team"]:
+                                    match_data["attacker_lead"] = match_data["attacker_team"][0]
+                                    
+                                d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
+                                match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
+                                if match_data["defender_team"]:
+                                    match_data["defender_lead"] = match_data["defender_team"][0]
+                                    
+                        matches.append(match_data)
 
-            parse_section(soup.find('div', id='battles-attack'), is_attack=True)
-            parse_section(soup.find('div', id='battles-defense'), is_attack=False)
+                parse_section(soup.find('div', id='battles-attack'), is_attack=True)
+                parse_section(soup.find('div', id='battles-defense'), is_attack=False)
+                    
+                is_hub_page = target_url.endswith('gac-history/') if target_url else not matches
+                if is_hub_page:
+                    hub_links = []
+                    for a in soup.find_all('a', href=True):
+                        href = a['href']
+                        if "/gac-history/" in href and (href.endswith('/1/') or href.endswith('/2/') or href.endswith('/3/')):
+                            full_url = f"https://swgoh.gg{href}" if href.startswith('/') else href
+                            if full_url not in hub_links: hub_links.append(full_url)
+                    if hub_links:
+                        hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
+                        results.append({"matches": [], "hub_links": hub_links_sorted, "url": target_url})
+                        continue
+                    
+                land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]
+                max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
+                detected_format = "3v3" if max_size <= 3 else "5v5"
+                    
+                logger.info(f"✅ Extrait : {len(matches)} matchs pour {target_url} (Ligue: {parsed_league})")
+                results.append({"matches": matches, "format": detected_format, "league": parsed_league, "url": target_url})
                 
-            is_hub_page = target_url.endswith('gac-history/') if target_url else not matches
-            if is_hub_page:
-                hub_links = []
-                for a in soup.find_all('a', href=True):
-                    href = a['href']
-                    if "/gac-history/" in href and (href.endswith('/1/') or href.endswith('/2/') or href.endswith('/3/')):
-                        full_url = f"https://swgoh.gg{href}" if href.startswith('/') else href
-                        if full_url not in hub_links: hub_links.append(full_url)
-                if hub_links:
-                    hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
-                    return {"matches": [], "hub_links": hub_links_sorted}
+            except Exception as e:
+                logger.error(f"Erreur lors du parsing HTML pour le chunk {target_url} : {e}")
                 
-            land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]
-            max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
-            detected_format = "3v3" if max_size <= 3 else "5v5"
-                
-            logger.info(f"✅ Scraping terminé pour {ally_code} : {len(matches)} matchs extraits ! Ligue détectée : {parsed_league}")
-            return {"matches": matches, "format": detected_format, "league": parsed_league}
-            
-        except Exception as e:
-            logger.error(f"Erreur lors du parsing HTML pour {ally_code} : {e}")
-            return {"matches": []}
+        return results

@@ -55,7 +55,10 @@ class GACHistoryScraper:
     async def queue_scrape(self, ally_code: str, interaction=None, callback=None):
         """Ajoute un joueur à la file d'attente pour être scrapé."""
         if interaction:
-            clean_code = ally_code.replace("-", "").strip() if not ally_code.startswith("http") else self._extract_round_info_from_url(ally_code).get("ally_code", "unknown")
+            if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
+                clean_code = ally_code.replace("batch_", "").replace(".txt", "")
+            else:
+                clean_code = ally_code.replace("-", "").strip() if not ally_code.startswith("http") else self._extract_round_info_from_url(ally_code).get("ally_code", "unknown")
             if clean_code != "unknown":
                 self.interactions[clean_code] = {"interaction": interaction, "callback": callback}
                 self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
@@ -157,8 +160,8 @@ class GACHistoryScraper:
                                                     pass # On ignore pour ne pas spammer pendant le batch
                                                 elif "Contenu GAC détecté" in msg:
                                                     pass # Idem
-                                            except:
-                                                pass
+                                            except Exception as e:
+                                                logger.error(f"Erreur update Discord: {e}")
 
                         # On lance la lecture en parallèle
                         await asyncio.wait_for(
@@ -189,7 +192,8 @@ class GACHistoryScraper:
                                     html_content = f.read()
                                     
                                 logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
-                                parsed_results = self._parse_html(html_content, clean_code, target_url)
+                                loop = asyncio.get_running_loop()
+                                parsed_results = await loop.run_in_executor(None, self._parse_html, html_content, clean_code, target_url)
                                 
                                 total_matchs = 0
                                 for parsed_data in parsed_results:
@@ -216,7 +220,7 @@ class GACHistoryScraper:
                                                 bf.write("\n".join(links_to_scrape))
                                                 
                                             # On met le fichier texte dans la file
-                                            await self.queue_scrape(batch_file, interaction=None)
+                                            await self.queue_scrape(batch_file, interaction=interaction)
                                             
                                             if interaction:
                                                 try:

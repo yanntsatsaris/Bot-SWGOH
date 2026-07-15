@@ -97,9 +97,16 @@ def scrape(target_url, ally_code):
                 page_source = sb.get_page_source()
                 
                 if "Just a moment" in page_source or "Cloudflare" in page_source:
-                    print(f"[WORKER] ECHEC: Toujours bloqué par Cloudflare sur {current_url}.")
-                    # On ne sort pas, on passe au lien suivant
-                    continue
+                    print(f"[WORKER] ⚠️ Cloudflare résistant sur {current_url}. Tentative de reconnexion forte...")
+                    sb.uc_open_with_reconnect(current_url, reconnect_time=4)
+                    sb.sleep(2)
+                    page_source = sb.get_page_source()
+                    
+                    if "Just a moment" in page_source or "Cloudflare" in page_source:
+                        print(f"[WORKER] ECHEC: Toujours bloqué par Cloudflare sur {current_url}.")
+                        continue
+                    else:
+                        print("[WORKER] ✅ Reconnexion réussie !")
                 
                 # Injection de l'URL pour le parser
                 marker = f"<!-- URL: {current_url} -->\n"

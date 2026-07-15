@@ -169,8 +169,15 @@ CREATE_TABLES_SQL: list[str] = [
         defender_team  TEXT    NOT NULL,
         banners        INTEGER NOT NULL DEFAULT 0,
         outcome        TEXT    NOT NULL,
-        format         TEXT    CHECK(format IN ('3v3','5v5'))
+        format         TEXT    CHECK(format IN ('3v3','5v5')),
+        zone           TEXT
     )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_gac_rounds_player ON gac_rounds(player_code, format)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_gac_matches_round ON gac_matches(round_id)
     """,
     """
     CREATE TABLE IF NOT EXISTS gac_round_teams (

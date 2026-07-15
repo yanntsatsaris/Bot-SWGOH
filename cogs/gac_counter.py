@@ -296,7 +296,7 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
             # Scraping à la demande
             await interaction.followup.send(
                 f"⏳ Aucune donnée pour **{get_name(leader_id)}** en {fmt}. "
-                f"Scraping en cours sur swgoh.gg (~20s)...",
+                f"Extraction en cours sur swgoh.gg (~20s)...",
                 ephemeral=True
             )
             members_str = ",".join(members_list)

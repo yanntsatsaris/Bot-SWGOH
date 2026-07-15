@@ -52,7 +52,7 @@ class AdminCog(commands.Cog, name="Admin"):
     # ------------------------------------------------------------------
     @app_commands.command(
         name="reset-player-history",
-        description="[Admin] Supprime tout l'historique GAC scrapé d'un joueur (via son ally code).",
+        description="[Admin] Supprime tout l'historique GAC extrait d'un joueur (via son ally code).",
     )
     @app_commands.describe(ally_code="L'ally code du joueur à réinitialiser (ex: 123456789)")
     @app_commands.default_permissions(administrator=True)
@@ -102,13 +102,13 @@ class AdminCog(commands.Cog, name="Admin"):
             l_id = leader_id.strip().upper()
             m_ids = membres_ids.strip().upper() if membres_ids else ""
             
-            await interaction.edit_original_response(content=f"⏳ Lancement du scraping forcé pour {l_id} (membres: {m_ids})...")
+            await interaction.edit_original_response(content=f"⏳ Lancement de l'extraction forcée pour {l_id} (membres: {m_ids})...")
             await scraper.refresh_counters_for_leader(l_id, l_id, format_gac.value, d_members=m_ids)
             
-            await interaction.edit_original_response(content=f"✅ Scraping terminé pour {l_id} !")
+            await interaction.edit_original_response(content=f"✅ Extraction terminée pour {l_id} !")
         except Exception as e:
             log.exception("Erreur lors du refresh-counters")
-            await interaction.edit_original_response(content=f"❌ Erreur lors du scraping : {e}")
+            await interaction.edit_original_response(content=f"❌ Erreur lors de l'extraction : {e}")
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AdminCog(bot))

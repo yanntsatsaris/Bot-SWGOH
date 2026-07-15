@@ -155,7 +155,7 @@ class GACHistoryScraper:
                                                         pct = int((current / total) * 30) + 60
                                                         bars = int((pct / 100) * 10)
                                                         bar_str = "■" * bars + "□" * (10 - bars)
-                                                        await interaction.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Scraping continu en cours ({current}/{total})...")
+                                                        await interaction.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Extraction continue en cours ({current}/{total})...")
                                                 elif "Cloudflare détecté" in msg or "Pas de Cloudflare" in msg:
                                                     pass # On ignore pour ne pas spammer pendant le batch
                                                 elif "Contenu GAC détecté" in msg:
@@ -224,7 +224,7 @@ class GACHistoryScraper:
                                             
                                             if interaction:
                                                 try:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(links_to_scrape)} nouveaux rounds trouvés ! Lancement du scraping continu...")
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(links_to_scrape)} nouveaux rounds trouvés ! Lancement de l'extraction continue...")
                                                 except:
                                                     pass
                                         else:
@@ -253,7 +253,7 @@ class GACHistoryScraper:
                             logger.error(f"❌ Échec du Subprocess (Code {process.returncode})")
                             if interaction:
                                 try:
-                                    await interaction.edit_original_response(content=f"❌ **Erreur** : Le scraping a échoué.")
+                                    await interaction.edit_original_response(content=f"❌ **Erreur** : L'extraction a échoué.")
                                 except:
                                     pass
                     except asyncio.TimeoutError:
@@ -269,27 +269,8 @@ class GACHistoryScraper:
                     if c_code in self.pending_tasks:
                         self.pending_tasks[c_code] -= 1
                         
-                        # Mise à jour de la barre de progression pour les sous-liens
-                        if c_code in self.interactions and self.total_tasks.get(c_code, 1) > 1:
-                            total = self.total_tasks[c_code]
-                            pending = self.pending_tasks[c_code]
-                            done = total - pending
-                            
-                            # La barre passe de 70% à 100% pendant le traitement des matchs
-                            pct = int((done / total) * 30) + 70
-                            bars = int((pct / 100) * 10)
-                            bar_str = "■" * bars + "□" * (10 - bars)
-                            
-                            # On ne met à jour l'UI que tous les 10% pour éviter le rate-limit Discord !
-                            update_step = max(1, total // 10)
-                            if pending == 0 or done % update_step == 0:
-                                try:
-                                    inter = self.interactions[c_code]["interaction"]
-                                    if pending > 0:
-                                        await inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Traitement des rounds ({done}/{total} complétés)...")
-                                except:
-                                    pass
-                                
+                        # L'ancienne barre de progression "1/2 complétés" a été retirée
+                        # car le Subprocess gère son propre % avec le batch (1/63 -> 63/63).
                         if self.pending_tasks[c_code] <= 0:
                             del self.pending_tasks[c_code]
                             if c_code in self.total_tasks:

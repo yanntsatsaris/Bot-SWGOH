@@ -629,7 +629,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                 if missing_leaders and progress_callback:
                     await progress_callback(f"⏳ **Optimisation des données** : Calcul des meilleurs contres pour {len(missing_leaders)} équipes ennemies. Cette étape prend environ {len(missing_leaders) * 20} secondes. Merci de patienter...")
                 
-                await scraper.ensure_counters_available(leaders_to_scrape, fmt)
+                await scraper.ensure_counters_available(leaders_to_scrape, fmt, progress_callback=progress_callback)
         except Exception as e:
             log.error(f"Erreur lors de l'attente du scraping des counters: {e}")
     # ---------------------------------------------------------------------

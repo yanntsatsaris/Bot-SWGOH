@@ -95,8 +95,10 @@ class GacCountersScraper:
             log.error(f"Erreur de décodage JSON: {e}")
             return False
 
-    async def ensure_counters_available(self, leaders_dict: dict, format_type: str) -> None:
+    async def ensure_counters_available(self, leaders_dict: dict, format_type: str, progress_callback=None) -> None:
         """
+        Vérifie si les counters sont récents pour chaque leader fourni,
+        et lance le scraper si les données manquent ou sont trop vieilles.
         leaders_dict: dictionnaire { leader_id: "MEMBRE1,MEMBRE2,..." }
         """
         from database.db import get_db
@@ -131,8 +133,10 @@ class GacCountersScraper:
                     missing_leaders[l_id] = members
         
         if missing_leaders:
-            log.info(f"Scraping nécessaire pour {len(missing_leaders)} leaders exacts : {list(missing_leaders.keys())}")
-            for leader_id, members in missing_leaders.items():
+            log.info(f"Extraction nécessaire pour {len(missing_leaders)} leaders exacts : {list(missing_leaders.keys())}")
+            
+            total_missing = len(missing_leaders)
+            for i, (leader_id, members) in enumerate(missing_leaders.items()):
                 # Protection : si la prédiction (venant de 5v5) donne trop de membres pour du 3v3, on annule d_members
                 # pour récupérer au moins les counters génériques du leader plutôt que 0 counter.
                 members_list = members.split(",") if members else []
@@ -144,3 +148,12 @@ class GacCountersScraper:
                     log.info(f"L'équipe de {leader_id} a été tronquée à {max_members} membres pour coller au format {format_type}.")
                     
                 await self.refresh_counters_for_leader(leader_id, leader_id, format_type, d_members=members)
+                
+                if progress_callback:
+                    pct = int(((i + 1) / total_missing) * 10) + 90
+                    bars = int((pct / 100) * 10)
+                    bar_str = "■" * bars + "□" * (10 - bars)
+                    try:
+                        await progress_callback(f"⏳ **[{bar_str}] {pct}%** : Extraction des contres ({i+1}/{total_missing})...")
+                    except Exception as e:
+                        log.error(f"Erreur UI callback counters: {e}")

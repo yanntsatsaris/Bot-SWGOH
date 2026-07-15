@@ -51,8 +51,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             return
 
         # Récupération de la taille de la file d'attente
-        from services.gac_history_scraper import GAC_HISTORY_SCRAPER
-        qsize = GAC_HISTORY_SCRAPER.queue.qsize()
+        if hasattr(self.bot, "gac_scraper"):
+            qsize = self.bot.gac_scraper.queue.qsize()
+        else:
+            qsize = 0
         if qsize > 0:
             attente_estimee = qsize * 2
             msg_attente = f"⏳ **[■□□□□□□□□□] 10%** : File d'attente : tu es en position **{qsize + 1}** (~{attente_estimee} min d'attente)..."

@@ -277,12 +277,14 @@ class GACHistoryScraper:
                         safe_name = c_code.replace("/", "_").replace(":", "")
                         files_to_remove = [
                             f"gac_history_{safe_name}.html",
-                            f"batch_{safe_name}.txt",
                             "selenium_result.png",
                             "cloudflare_block.png",
                             "cloudflare_block.html",
                             "cloudflare_after_click.png"
                         ]
+                        if str(ally_code).startswith("batch_"):
+                            files_to_remove.append(f"batch_{safe_name}.txt")
+                            
                         for f in files_to_remove:
                             if os.path.exists(f):
                                 try:

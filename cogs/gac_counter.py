@@ -175,18 +175,15 @@ class CounterSuggestionView(discord.ui.View):
 
     @discord.ui.button(label="✅ Victoire", style=discord.ButtonStyle.success)
     async def btn_victoire(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_feedback(interaction, True)
+        await self._record_and_advance(interaction, won=True)
 
     @discord.ui.button(label="❌ Défaite", style=discord.ButtonStyle.danger)
     async def btn_defaite(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await self._handle_feedback(interaction, False)
+        await self._record_and_advance(interaction, won=False)
 
     @discord.ui.button(label="🔄 Autre option", style=discord.ButtonStyle.secondary)
     async def btn_autre(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.current_index += 1
-        if self.current_index >= len(self.suggestions):
-            for child in self.children:
-                child.disabled = True
+        self.current_index = (self.current_index + 1) % len(self.suggestions)
         content, img_file = await self._build_message_and_file()
         
         if img_file:
@@ -194,9 +191,10 @@ class CounterSuggestionView(discord.ui.View):
         else:
             await interaction.response.edit_message(content=content, embed=None, view=self)
 
-    async def _handle_feedback(self, interaction: discord.Interaction, won: bool):
+    async def _record_and_advance(self, interaction: discord.Interaction, won: bool):
         if self.current_index >= len(self.suggestions):
             return
+        
         sugg = self.suggestions[self.current_index]
         atk_leader = sugg["atk_leader_id"]
         atk_members = sugg.get("atk_members_ids", [])
@@ -207,12 +205,17 @@ class CounterSuggestionView(discord.ui.View):
             str(interaction.user.id)
         )
 
-        for child in self.children:
-            child.disabled = True
-
-        content, img_file = await self._build_message_and_file()
-        feedback_text = f"\n✅ **Victoire enregistrée — merci !**" if won else f"\n❌ **Défaite enregistrée — merci !**"
-        content += feedback_text
+        if won:
+            # En cas de victoire, c'est terminé, on désactive les boutons
+            for child in self.children:
+                child.disabled = True
+            content, img_file = await self._build_message_and_file()
+            content += "\n✅ **Victoire enregistrée — merci ! Fin du combat.**"
+        else:
+            # En cas de défaite, on passe au contre suivant et on garde les boutons actifs
+            self.current_index = (self.current_index + 1) % len(self.suggestions)
+            content, img_file = await self._build_message_and_file()
+            content += "\n❌ **Défaite enregistrée — merci ! Voici une autre option :**"
         
         if img_file:
             await interaction.response.edit_message(content=content, embed=None, view=self, attachments=[img_file])

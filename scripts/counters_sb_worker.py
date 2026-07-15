@@ -60,6 +60,7 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 quick_check = sb.get_page_source()
                 cloudflare_present = (
                     "Just a moment" in quick_check
+                    or "Un instant" in quick_check
                     or "cf-turnstile" in quick_check
                     or "Checking your browser" in quick_check
                 )
@@ -70,13 +71,23 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                         sb.uc_gui_click_captcha()
                     except:
                         pass
-                    sb.sleep(8)
+                    wait_time = 12  # Attente longue après challenge Cloudflare
                 else:
-                    sb.sleep(3)
-                    
+                    dprint(f"[WORKER] Page {page} : Pas de Cloudflare.")
+                    wait_time = 6  # Attente pour rendu JS React
+
+                # Attente adaptive : on poll toutes les 500ms, stop dès que le contenu est là
+                dprint(f"[WORKER] Page {page} : Attente adaptative ({wait_time}s max)...")
+                for _ in range(wait_time * 2):
+                    sb.sleep(0.5)
+                    source_check = sb.get_page_source()
+                    if "data-unit-def-tooltip-app" in source_check or "panel--size-sm" in source_check:
+                        dprint(f"[WORKER] Page {page} : Contenu counter détecté, stop de l'attente !")
+                        break
+
                 panels_found = False
-                for _ in range(20):
-                    if sb.is_element_visible("div.panel"):
+                for _ in range(10):
+                    if sb.is_element_present("div.panel"):
                         panels_found = True
                         break
                     sb.sleep(0.5)
@@ -148,6 +159,72 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                     dprint(f"[WORKER] Page {page} : moins de 50 résultats ({len(page_counters)}), fin.")
                     break
             
+            # ── Fallback sans filtre membres ──────────────────────────────────
+            # Si 0 counters trouvés avec d_member (compo trop rare sur swgoh.gg),
+            # on relance une passe sans ce filtre pour avoir les counters génériques du leader.
+            if not counters_data and d_members:
+                dprint(f"[WORKER] 0 counters avec filtre d_member. Fallback : scraping sans filtre membres...")
+                fallback_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0"
+                if season_id and season_id != "current":
+                    fallback_url += f"&season_id={season_id}"
+
+                for page in range(1, 4):  # Max 3 pages en fallback
+                    page_url = fallback_url + f"&page={page}"
+                    dprint(f"[WORKER] Fallback page {page} : {page_url}")
+                    sb.uc_open_with_reconnect(page_url, reconnect_time=4)
+
+                    for _ in range(12):
+                        sb.sleep(0.5)
+                        if "data-unit-def-tooltip-app" in sb.get_page_source():
+                            break
+
+                    if not sb.is_element_present("div.panel"):
+                        dprint(f"[WORKER] Fallback page {page} : aucun panel, arrêt.")
+                        break
+
+                    from bs4 import BeautifulSoup as _BS
+                    fallback_soup = _BS(sb.get_page_source(), "html.parser")
+                    fallback_panels = fallback_soup.select("div.panel.panel--size-sm")
+                    dprint(f"[WORKER] Fallback page {page} : {len(fallback_panels)} panels.")
+
+                    for panel in fallback_panels:
+                        atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
+                        if not atk_container: continue
+                        atk_units = [d.get("data-unit-def-tooltip-app") for d in atk_container.select("[data-unit-def-tooltip-app]")]
+                        if not atk_units: continue
+
+                        def_container = panel.select_one("div.justify-center.lg\\:justify-start")
+                        if not def_container: continue
+                        def_units = [d.get("data-unit-def-tooltip-app") for d in def_container.select("[data-unit-def-tooltip-app]")]
+                        if not def_units: continue
+
+                        stats_container = panel.select_one("div.whitespace-nowrap")
+                        seen, win_pct, avg_banners = 0, 0.0, 0.0
+                        if stats_container:
+                            stat_divs = stats_container.select("div.flex-1 > div.font-bold")
+                            if len(stat_divs) >= 3:
+                                try:
+                                    seen = int(stat_divs[0].text.strip().replace(",", ""))
+                                    win_pct = float(stat_divs[1].text.strip().replace("%", ""))
+                                    avg_banners = float(stat_divs[2].text.strip())
+                                except ValueError:
+                                    pass
+
+                        counters_data.append({
+                            "atk_leader_id": atk_units[0],
+                            "atk_members_ids": atk_units[1:],
+                            "def_leader_id": def_units[0],
+                            "def_members_ids": def_units[1:],
+                            "seen": seen,
+                            "win_pct": win_pct,
+                            "avg_banners": avg_banners
+                        })
+
+                    if len(fallback_panels) < 50:
+                        break
+
+                dprint(f"[WORKER] Fallback terminé : {len(counters_data)} counters récupérés.")
+
             import json
             result = {
                 "counters": counters_data,

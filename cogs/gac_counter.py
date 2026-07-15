@@ -108,6 +108,13 @@ class CounterSuggestionView(discord.ui.View):
         self.my_name = my_name
         self.current_index = current_index
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        """Empêche les autres joueurs d'interagir avec les boutons."""
+        if interaction.user != self.original_interaction.user:
+            await interaction.response.send_message("❌ Ces boutons ne te sont pas destinés.", ephemeral=True)
+            return False
+        return True
+
     async def _build_message_and_file(self) -> tuple[str, discord.File | None]:
         if self.current_index >= len(self.suggestions):
             return "❌ **Plus de contres disponibles**\nAucun autre contre n'a été trouvé pour cette équipe avec ton roster.", None

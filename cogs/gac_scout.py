@@ -36,7 +36,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         force_sync: bool = False
     ) -> None:
         """Commande principale pour scouter un ennemi."""
-        await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=False)
         
         # Vérification obligatoire de l'enregistrement de l'utilisateur
         my_ally_code = None
@@ -115,14 +115,16 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                         msg += "\n*Astuce : Utilise ensuite `/gac-counter` pour obtenir les meilleurs contres contre sa défense !*"
                         
                     try:
-                        await inter.edit_original_response(content="✅ **[■■■■■■■■■■] 100%** : Analyse terminée ! Le résultat est posté ci-dessous.")
+                        await inter.edit_original_response(content=msg, attachments=files)
                     except discord.errors.HTTPException as e:
                         log.warning(f"Impossible de mettre à jour le message original (timeout de 15min ?) : {e}")
-                    
-                    await inter.channel.send(content=msg, files=files)
+                        await inter.channel.send(content=msg, files=files)
                 except Exception as e:
                     log.exception("Erreur lors de la génération de l'image de scouting : %s", e)
-                    await inter.channel.send(f"<@{inter.user.id}> ❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
+                    try:
+                        await inter.edit_original_response(content=f"❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
+                    except:
+                        await inter.channel.send(f"<@{inter.user.id}> ❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
 
             clean_code = code_ennemi.replace("-", "").strip()
             

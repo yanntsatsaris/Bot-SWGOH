@@ -96,6 +96,21 @@ class GacPlanner:
 
             leader_id = units[0]
             members = units[1:]
+
+            # Certains personnages sont TOUJOURS en leader dans leur équipe méta.
+            # Si swgoh.gg les met ailleurs dans la liste, on les remonte en position 0.
+            FORCED_LEADERS = {
+                "JABBATHEHUTT", "GLLEIA", "GLREY", "GLAHSOKATANO",
+                "SUPREMELEADERKYLOREN", "LORDVADER", "SITHPALPATINE",
+                "JEDIMASTERKENOBI", "JEDIMASTERLUKESKYWALKER",
+            }
+            for forced in FORCED_LEADERS:
+                if forced in units and units[0] != forced:
+                    units.remove(forced)
+                    units.insert(0, forced)
+                    leader_id = forced
+                    members = units[1:]
+                    break
             seen = row["seen"] or 0
             hold_percent = row["hold_percent"] or 0
 

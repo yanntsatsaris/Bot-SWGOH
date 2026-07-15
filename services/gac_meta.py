@@ -8,14 +8,16 @@ GAC_TEAMS = {
     #             GALACTIC LEGENDS
     # ==========================================
     "GLLEIA_5V5": {
-        "leader_id": "GLLEIA", "format": "5v5", "offense": 10, "defense": 9,
+        "leader_id": "GLLEIA", "format": "5v5", "offense": 10, "defense": 2,
         "core": ["GLLEIA", "CAPTAINDROGAN", "R2D2_LEGENDARY"],
-        "subs": ["BAZEMALBUS", "MONMOTHMA", "CHIRRUTIMWE", "BENSOLO", "OLDBENKENOBI"]
+        "subs": ["BAZEMALBUS", "MONMOTHMA", "CHIRRUTIMWE", "BENSOLO", "OLDBENKENOBI"],
+        "role": "offense"  # Equipe attaque uniquement, ne tient pas en défense
     },
     "GLLEIA_3V3": {
-        "leader_id": "GLLEIA", "format": "3v3", "offense": 10, "defense": 9,
+        "leader_id": "GLLEIA", "format": "3v3", "offense": 10, "defense": 2,
         "core": ["GLLEIA", "CAPTAINDROGAN", "R2D2_LEGENDARY"],
-        "subs": []
+        "subs": [],
+        "role": "offense"  # Equipe attaque uniquement, ne tient pas en défense
     },
     
     "GLAHSOKATANO_5V5": {

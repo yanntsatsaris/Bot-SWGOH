@@ -291,8 +291,21 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
             zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 8})
 
     # 2.5 BOUCHAGE FLOTTES
-    leftover_capitals = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
-    leftover_ships = [m for m, data in enemy_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" not in m]
+    # On filtre sur combat_type ET sur ship_base_ids (double sécurité)
+    # pour éviter qu'un perso mal typé se retrouve dans la zone Fleet.
+    leftover_capitals = [
+        m for m, data in enemy_index.items()
+        if m not in used_base_ids
+        and data.get("combat_type", 1) == 2
+        and "CAPITAL" in m
+    ]
+    leftover_ships = [
+        m for m, data in enemy_index.items()
+        if m not in used_base_ids
+        and data.get("combat_type", 1) == 2
+        and "CAPITAL" not in m
+        and data.get("combat_type", 1) != 1  # Exclure explicitement les persos
+    ]
     
     leftover_capitals.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
     leftover_ships.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)

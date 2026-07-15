@@ -13,6 +13,26 @@ from utils.helpers import format_ally_code
 log = logging.getLogger(__name__)
 
 
+HELP_MESSAGE = """
+🤖 **Bienvenue sur Bot-SWGOH !**
+
+Ce bot est ton assistant personnel pour dominer la Grande Arène (GAC).
+Voici les commandes principales que tu peux utiliser :
+
+🔍 **`/gac-scout <code_allié_ennemi> <format>`**
+> Scanne l'historique complet de ton adversaire et te génère un rapport visuel. Il devine exactement quelles équipes il a l'habitude de poser en défense.
+> *Attention : la récupération de l'historique peut prendre 1 à 2 minutes. Patiente un peu !*
+
+⚔️ **`/gac-counter <leader_ennemi> <format> [membres...]`**
+> Tu bloques sur une équipe ? Cette commande va chercher les meilleurs contres possibles en tenant compte **de ton propre roster** ! Il ne te proposera que des personnages que tu possèdes.
+
+🔄 **Boutons interactifs**
+> Sur les suggestions de contres, utilise **[Victoire]** ou **[Défaite]** pour enregistrer le résultat de tes combats en base de données. Clique sur **[Autre option]** pour faire défiler les contres.
+
+ℹ️ **`/help`**
+> Affiche ce message d'aide à tout moment.
+"""
+
 class GacCog(commands.Cog, name="GAC"):
     """Commandes d'analyse de la Grande Arène."""
 
@@ -21,8 +41,6 @@ class GacCog(commands.Cog, name="GAC"):
 
     # ------------------------------------------------------------------
     # /register — Enregistrement du compte SWGOH (PRIMORDIAL)
-    # Lie le compte Discord de l'utilisateur à son ally_code SWGOH.
-    # Utilisé automatiquement par /gac-scout pour récupérer le roster du joueur.
     # ------------------------------------------------------------------
     @app_commands.command(
         name="register",
@@ -54,9 +72,18 @@ class GacCog(commands.Cog, name="GAC"):
                 (discord_id, clean, username),
             )
 
-        await interaction.followup.send(
-            f"✅ Compte enregistré avec le code allié `{clean}`.", ephemeral=True
-        )
+        success_msg = f"✅ **Compte enregistré avec succès (Code Allié : `{clean}`) !**\n\n{HELP_MESSAGE}"
+        await interaction.followup.send(success_msg, ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /help — Manuel d'utilisation du bot
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="help",
+        description="Affiche le manuel d'utilisation du bot.",
+    )
+    async def help_command(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_message(HELP_MESSAGE, ephemeral=True)
 
 
 async def setup(bot: commands.Bot) -> None:

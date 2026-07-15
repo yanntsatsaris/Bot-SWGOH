@@ -20,8 +20,8 @@ Ce bot est ton assistant personnel pour dominer la Grande Arène (GAC).
 Voici les commandes principales que tu peux utiliser :
 
 🔍 **`/gac-scout <code_allié_ennemi> <format>`**
-> Scanne l'historique complet de ton adversaire et te génère un rapport visuel. Il devine exactement quelles équipes il a l'habitude de poser en défense.
-> *Attention : la récupération de l'historique peut prendre 1 à 2 minutes. Patiente un peu !*
+> Scanne l'historique de ton adversaire et te génère un rapport visuel. Il va faire une **estimation** des équipes qu'il a l'habitude de poser en défense (les données peuvent être incomplètes).
+> *Attention : la récupération de l'historique peut être longue (plusieurs minutes) en fonction de la ligue et du nombre de personnes dans la file d'attente. Patiente un peu !*
 
 ⚔️ **`/gac-counter <leader_ennemi> <format> [membres...]`**
 > Tu bloques sur une équipe ? Cette commande va chercher les meilleurs contres possibles en tenant compte **de ton propre roster** ! Il ne te proposera que des personnages que tu possèdes.

@@ -89,10 +89,10 @@ class GACHistoryScraper:
                 
                 if interaction:
                     try:
-                        await interaction.edit_original_response(content=f"⏳ **[■■■□□□□□□□] 30%** : Démarrage de l'extraction pour l'ally code **{ally_code}**...")
-                    except:
-                        pass
-                
+                        if not str(ally_code).startswith("batch_"):
+                            await interaction.edit_original_response(content=f"⏳ **[■■■□□□□□□□] 30%** : Démarrage de l'extraction pour l'ally code **{ally_code}**...")
+                    except Exception as e:
+                        logger.error(f"Erreur update Discord (début scraping): {e}")             
                 # Exécute la fonction bloquante SeleniumBase dans un processus séparé isolé !
                 # Ça évite tous les deadlocks liés à asyncio / Xvfb
                 if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
@@ -151,7 +151,7 @@ class GACHistoryScraper:
                                                     current = int(progress_match.group(1))
                                                     total = int(progress_match.group(2))
                                                     # Màj tous les 5 matchs ou au début/fin pour éviter le rate-limit
-                                                    if current == 1 or current == total or current % 5 == 0:
+                                                    if total > 1 and (current == 1 or current == total or current % 5 == 0):
                                                         pct = int((current / total) * 30) + 60
                                                         bars = int((pct / 100) * 10)
                                                         bar_str = "■" * bars + "□" * (10 - bars)
@@ -271,6 +271,26 @@ class GACHistoryScraper:
                         
                         # L'ancienne barre de progression "1/2 complétés" a été retirée
                         # car le Subprocess gère son propre % avec le batch (1/63 -> 63/63).
+                        
+                        # --- Nettoyage des fichiers temporaires ---
+                        import os
+                        safe_name = c_code.replace("/", "_").replace(":", "")
+                        files_to_remove = [
+                            f"gac_history_{safe_name}.html",
+                            f"batch_{safe_name}.txt",
+                            "selenium_result.png",
+                            "cloudflare_block.png",
+                            "cloudflare_block.html",
+                            "cloudflare_after_click.png"
+                        ]
+                        for f in files_to_remove:
+                            if os.path.exists(f):
+                                try:
+                                    os.remove(f)
+                                except Exception as e:
+                                    logger.error(f"Erreur lors de la suppression du fichier temp {f}: {e}")
+                        # ----------------------------------------
+                        
                         if self.pending_tasks[c_code] <= 0:
                             del self.pending_tasks[c_code]
                             if c_code in self.total_tasks:

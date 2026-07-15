@@ -84,6 +84,14 @@ class GacCountersScraper:
         try:
             with open(out_file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+                
+            try:
+                os.remove(out_file_path)
+                if os.path.exists(out_file_path + ".debug.log"):
+                    os.remove(out_file_path + ".debug.log")
+            except Exception as e:
+                log.error(f"Erreur lors de la suppression des temp files counters: {e}")
+                
             counters = data.get("counters", [])
             if counters:
                 await save_counters_to_db(season_id, format_type, real_leader_id, counters)

@@ -46,6 +46,11 @@ class GacMetaSquadsScraper:
 
             with open(output_file, 'r', encoding='utf-8') as f:
                 html = f.read()
+                
+            try:
+                os.remove(output_file)
+            except Exception as e:
+                logger.error(f"Impossible de supprimer {output_file}: {e}")
 
             squads = self._parse_html(html)
             

@@ -13,18 +13,23 @@ class GacScoutAnalyzer:
         (données issues du scraping de swgoh.gg) comme fallback.
         """
         async with get_db() as db:
+            # 0. Pré-calcul du threshold pour les 3 derniers rounds
+            threshold_query = """
+                SELECT MIN(season_id || '-' || round_number) FROM (
+                    SELECT season_id, round_number FROM gac_rounds 
+                    WHERE (player_code = ? OR opponent_code = ?) AND format = ?
+                    ORDER BY season_id DESC, round_number DESC LIMIT 3
+                )
+            """
+            async with db.execute(threshold_query, (ally_code, ally_code, format_type)) as cur:
+                t_row = await cur.fetchone()
+                threshold_val = t_row[0] if t_row and t_row[0] else ""
+
             # 1. On cherche toutes les équipes de défense dans gac_round_teams (saisie manuelle/brackets)
             query_land = """
                 SELECT t.zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
                     (COUNT(*) * 10) + 
-                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
-                        SELECT MIN(season_id || '-' || round_number) FROM (
-                            SELECT season_id, round_number FROM gac_rounds 
-                            WHERE format = ? 
-                              AND ((player_code = ? AND t.owner = 'player') OR (opponent_code = ? AND t.owner = 'opponent'))
-                            ORDER BY season_id DESC, round_number DESC LIMIT 3
-                        )
-                    ) THEN 10000 ELSE 0 END as score
+                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
                 FROM gac_round_teams t
                 JOIN gac_rounds r ON t.round_id = r.id
                 WHERE t.side = 'defense'
@@ -38,13 +43,7 @@ class GacScoutAnalyzer:
             query_fleet = """
                 SELECT 'fleet' as zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
                     (COUNT(*) * 10) + 
-                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
-                        SELECT MIN(season_id || '-' || round_number) FROM (
-                            SELECT season_id, round_number FROM gac_rounds 
-                            WHERE ((player_code = ? AND t.owner = 'player') OR (opponent_code = ? AND t.owner = 'opponent'))
-                            ORDER BY season_id DESC, round_number DESC LIMIT 3
-                        )
-                    ) THEN 10000 ELSE 0 END as score
+                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
                 FROM gac_round_teams t
                 JOIN gac_rounds r ON t.round_id = r.id
                 WHERE t.side = 'defense'
@@ -54,10 +53,10 @@ class GacScoutAnalyzer:
                 ORDER BY score DESC, frequency DESC
             """
             
-            async with db.execute(query_land, (format_type, ally_code, ally_code, format_type, ally_code, ally_code)) as cur:
+            async with db.execute(query_land, (threshold_val, format_type, ally_code, ally_code)) as cur:
                 land_rows = await cur.fetchall()
                 
-            async with db.execute(query_fleet, (ally_code, ally_code, ally_code, ally_code)) as cur:
+            async with db.execute(query_fleet, (threshold_val, ally_code, ally_code)) as cur:
                 fleet_rows = await cur.fetchall()
                 
             rows = land_rows + fleet_rows
@@ -93,13 +92,7 @@ class GacScoutAnalyzer:
                             COALESCE(m.zone, 'unknown') as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
-                                SELECT MIN(season_id || '-' || round_number) FROM (
-                                    SELECT season_id, round_number FROM gac_rounds 
-                                    WHERE player_code = ? AND format = ? 
-                                    ORDER BY season_id DESC, round_number DESC LIMIT 3
-                                )
-                            ) THEN 10000 ELSE 0 END as score
+                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE m.is_attack = 0
@@ -117,13 +110,7 @@ class GacScoutAnalyzer:
                             'fleet' as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= (
-                                SELECT MIN(season_id || '-' || round_number) FROM (
-                                    SELECT season_id, round_number FROM gac_rounds 
-                                    WHERE player_code = ? 
-                                    ORDER BY season_id DESC, round_number DESC LIMIT 3
-                                )
-                            ) THEN 10000 ELSE 0 END as score
+                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE m.is_attack = 0
@@ -133,10 +120,10 @@ class GacScoutAnalyzer:
                         ORDER BY score DESC, frequency DESC
                     """
                     
-                    async with db.execute(query_scraped_land, (ally_code, format_type, format_type, ally_code)) as cur:
+                    async with db.execute(query_scraped_land, (threshold_val, format_type, ally_code)) as cur:
                         scraped_land_rows = await cur.fetchall()
                         
-                    async with db.execute(query_scraped_fleet, (ally_code, ally_code)) as cur:
+                    async with db.execute(query_scraped_fleet, (threshold_val, ally_code)) as cur:
                         scraped_fleet_rows = await cur.fetchall()
                         
                     scraped_rows = scraped_land_rows + scraped_fleet_rows

@@ -94,7 +94,7 @@ def scrape(def_leader_slug, output_file, format_type="5v5", season_id="current",
                 soup = BeautifulSoup(page_source, "html.parser")
                 
                 page_counters = []
-                counter_panels = soup.select("div.grid.gap-y-1.mt-2 > div.panel")
+                counter_panels = soup.select("div.panel.panel--size-sm")
                 dprint(f"[WORKER] Page {page} : {len(counter_panels)} panneaux trouvés.")
                 
                 for panel in counter_panels:

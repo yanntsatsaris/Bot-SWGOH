@@ -60,7 +60,12 @@ class GACHistoryScraper:
             else:
                 clean_code = ally_code.replace("-", "").strip() if not ally_code.startswith("http") else self._extract_round_info_from_url(ally_code).get("ally_code", "unknown")
             if clean_code != "unknown":
-                self.interactions[clean_code] = {"interaction": interaction, "callback": callback}
+                if clean_code not in self.interactions:
+                    self.interactions[clean_code] = {}
+                self.interactions[clean_code]["interaction"] = interaction
+                if callback is not None:
+                    self.interactions[clean_code]["callback"] = callback
+                
                 self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
                 self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
         else:

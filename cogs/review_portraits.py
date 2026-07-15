@@ -122,11 +122,8 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
         name="review-portraits",
         description="Passe en revue les images associées aux unités pour les valider."
     )
+    @app_commands.default_permissions(administrator=True)
     async def review_portraits(self, interaction: discord.Interaction) -> None:
-        # On peut rajouter un check ici pour que seul un admin puisse utiliser la commande
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
-            return
             
         await self.send_next_review(interaction)
 
@@ -136,10 +133,8 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
     )
     @app_commands.describe(recherche="Nom ou ID du personnage à réinitialiser")
     @app_commands.autocomplete(recherche=unit_autocomplete)
+    @app_commands.default_permissions(administrator=True)
     async def reset_portrait(self, interaction: discord.Interaction, recherche: str) -> None:
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
-            return
             
         async with get_db() as db:
             cursor = await db.execute(
@@ -170,10 +165,8 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
         name="list-incorrect-portraits",
         description="Génère un fichier texte listant les portraits validés puis les portraits incorrects."
     )
+    @app_commands.default_permissions(administrator=True)
     async def list_incorrect_portraits(self, interaction: discord.Interaction) -> None:
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
-            return
 
         async with get_db() as db:
             # Récupère les validés
@@ -215,10 +208,8 @@ class ReviewPortraitsCog(commands.Cog, name="ReviewPortraits"):
         base_id=unit_autocomplete,
         nom_image=image_autocomplete
     )
+    @app_commands.default_permissions(administrator=True)
     async def fix_portrait(self, interaction: discord.Interaction, base_id: str, nom_image: str) -> None:
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ Tu dois être administrateur pour utiliser cette commande.", ephemeral=True)
-            return
             
         base_id = base_id.upper()
         

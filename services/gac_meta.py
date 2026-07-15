@@ -51,7 +51,8 @@ GAC_TEAMS = {
     "SLKR_HUX_3V3": {
         "leader_id": "SUPREMELEADERKYLOREN", "format": "3v3", "offense": 8, "defense": 7,
         "core": ["SUPREMELEADERKYLOREN", "GENERALHUX", "FIRSTORDERSTORMTROOPER"],
-        "subs": ["SITHTROOPER"]
+        "subs": ["SITHTROOPER"],
+        "role": "offense"
     },
     
     "DARTHBANE_5V5": {

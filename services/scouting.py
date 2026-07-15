@@ -76,8 +76,8 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
-    
-    # 1. PERSONNAGES (Via la Meta Dynamique de swgoh.gg)
+            
+    # 1. PERSONNAGES (Via la Meta Dynamique de swgoh.gg uniquement)
     # Récupérer les top teams défensives depuis la BDD
     dynamic_teams = []
     import json
@@ -100,7 +100,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                 # On utilise une échelle 0-10 basée sur le % de holds pour la défense
                 def_score = min(10, int((row["hold_percent"] or 0) / 10))
                 dynamic_teams.append({
-                    "leader_id": units[0],
+                    "leader_id": leader_id,
                     "core": units, # Tous les membres sont considérés comme "core" (équipe stricte)
                     "defense": def_score,
                     "offense": 0, # Inconnu pour les stats défensives
@@ -175,21 +175,19 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                     
                     # FILTRE ANTI-GARBAGE (Équipes auto-déployées absurdes)
                     if hz != "fleet":
-                        # On utilise TOUTES les compos Meta, pas juste celles du joueur, pour juger si la compo est absurde
-                        known_meta_for_leader = [mt for mt in GAC_TEAMS.values() if mt["leader_id"] == leader and mt["format"] == fmt]
+                        # On utilise la BDD dynamique pour juger si la compo est absurde
+                        known_meta_for_leader = [mt for mt in dynamic_teams if mt["leader_id"] == leader]
                         if known_meta_for_leader:
                             # Le leader est censé avoir une équipe Meta.
-                            # On vérifie si les membres historiques partagent au moins 1 perso avec N'IMPORTE QUELLE variation de son équipe
                             has_synergy = False
                             for mt in known_meta_for_leader:
-                                meta_members_set = set(mt.get("core", []) + mt.get("subs", []))
+                                meta_members_set = set(mt.get("core", []))
                                 overlap = len(set(valid_members).intersection(meta_members_set))
                                 if overlap > 0:
                                     has_synergy = True
                                     break
                             
                             # Si c'est une horreur générée auto (0 synergie avec la vraie compo), on la jette !
-                            # MAIS on la garde si le joueur la pose souvent (percent >= 5.0) car c'est peut-être une compo "fromage" voulue (ex: Revan + Mission + Zaalbar)
                             if not has_synergy and len(valid_members) > 0 and percent < 5.0:
                                 continue
 

@@ -156,4 +156,12 @@ class GacMetaSquadsScraper:
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (sq["season_id"], format_type, mode, units_json, sq["seen"], sq["hold_percent"], sq["avg_banners"]))
             
+            # Injection manuelle de l'équipe Tarkin Clones pour la défense
+            if mode == "defense" and format_type == "5v5":
+                tarkin_units = json.dumps(["GRANDMOFFTARKIN", "APPO", "DISGUISEDCLONETROOPER", "OPERATIVE", "SCORCH"])
+                await db.execute("""
+                    INSERT INTO gac_global_meta (season_id, format, mode, squad_units, seen, hold_percent, avg_banners)
+                    VALUES ('CUSTOM', '5v5', 'defense', ?, 9999, 90.0, 50.0)
+                """, (tarkin_units,))
+                
             await db.commit()

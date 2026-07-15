@@ -103,6 +103,111 @@ class GacCountersScraper:
             log.error(f"Erreur de décodage JSON: {e}")
             return False
 
+    async def refresh_counters_for_leaders_batch(self, batch_data: list, format_type: str, season_id: str = "current", progress_callback=None) -> None:
+        """
+        Lance le worker SeleniumBase en batch pour scrapper plusieurs leaders d'un coup.
+        """
+        import tempfile
+        import json
+        
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        worker_path = os.path.join(project_dir, "scripts", "counters_sb_worker.py")
+        
+        temp_dir = os.path.join(project_dir, "temp_counters")
+        os.makedirs(temp_dir, exist_ok=True)
+        
+        # On prépare le payload pour le worker
+        batch_payload = []
+        for b in batch_data:
+            batch_payload.append({
+                "def_leader_slug": b["leader_id"],
+                "real_leader_id": b["leader_id"],
+                "d_members": b["members"],
+                "out_file": os.path.join(temp_dir, f"counters_{b['leader_id']}.json")
+            })
+            
+        batch_config_path = os.path.join(temp_dir, "batch_counters_config.json")
+        with open(batch_config_path, "w", encoding="utf-8") as f:
+            json.dump(batch_payload, f)
+            
+        log.info(f"Scraping batch counters pour {len(batch_data)} leaders ({format_type})...")
+        
+        args = [
+            sys.executable, worker_path, "--batch", batch_config_path, format_type, season_id
+        ]
+            
+        process = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=project_dir
+        )
+        
+        stdout, stderr = await process.communicate()
+        
+        if process.returncode != 0:
+            log.error(f"Erreur worker counters BATCH:\nSTDERR: {stderr.decode('utf-8', errors='ignore')}\nSTDOUT: {stdout.decode('utf-8', errors='ignore')}")
+            
+        try:
+            os.remove(batch_config_path)
+        except:
+            pass
+            
+        # Traitement des résultats
+        from database.db import save_counters_to_db
+        total = len(batch_data)
+        for i, b in enumerate(batch_payload):
+            out_file_path = b["out_file"]
+            real_leader_id = b["real_leader_id"]
+            if os.path.exists(out_file_path):
+                try:
+                    with open(out_file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    counters = data.get("counters", [])
+                    if counters:
+                        await save_counters_to_db(season_id, format_type, real_leader_id, counters)
+                        log.info(f"{len(counters)} counters sauvegardés pour {real_leader_id} ({format_type}).")
+                    else:
+                        log.warning(f"Aucun counter trouvé pour {real_leader_id}.")
+                        
+                    os.remove(out_file_path)
+                    if os.path.exists(out_file_path + ".debug.log"):
+                        os.remove(out_file_path + ".debug.log")
+                except Exception as e:
+                    log.error(f"Erreur traitement résultat batch {real_leader_id}: {e}")
+            
+            if progress_callback:
+                pct = int(((i + 1) / total) * 10) + 90
+                bars = int((pct / 100) * 10)
+                bar_str = "■" * bars + "□" * (10 - bars)
+                try:
+                    await progress_callback(f"⏳ **[{bar_str}] {pct}%** : Extraction des contres en batch ({i+1}/{total})...")
+                except Exception as e:
+                    pass        import json
+        from database.db import save_counters_to_db
+            
+        try:
+            with open(out_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+            try:
+                os.remove(out_file_path)
+                if os.path.exists(out_file_path + ".debug.log"):
+                    os.remove(out_file_path + ".debug.log")
+            except Exception as e:
+                log.error(f"Erreur lors de la suppression des temp files counters: {e}")
+                
+            counters = data.get("counters", [])
+            if counters:
+                await save_counters_to_db(season_id, format_type, real_leader_id, counters)
+                log.info(f"{len(counters)} counters sauvegardés pour {real_leader_id} ({format_type}).")
+            else:
+                log.warning(f"Aucun counter trouvé pour {real_leader_id}.")
+            return True
+        except json.JSONDecodeError as e:
+            log.error(f"Erreur de décodage JSON: {e}")
+            return False
+
     async def ensure_counters_available(self, leaders_dict: dict, format_type: str, progress_callback=None) -> None:
         """
         Vérifie si les counters sont récents pour chaque leader fourni,
@@ -143,10 +248,8 @@ class GacCountersScraper:
         if missing_leaders:
             log.info(f"Extraction nécessaire pour {len(missing_leaders)} leaders exacts : {list(missing_leaders.keys())}")
             
-            total_missing = len(missing_leaders)
-            for i, (leader_id, members) in enumerate(missing_leaders.items()):
-                # Protection : si la prédiction (venant de 5v5) donne trop de membres pour du 3v3, on annule d_members
-                # pour récupérer au moins les counters génériques du leader plutôt que 0 counter.
+            batch_data = []
+            for leader_id, members in missing_leaders.items():
                 members_list = members.split(",") if members else []
                 max_members = 2 if format_type == "3v3" else 4
                 
@@ -155,13 +258,10 @@ class GacCountersScraper:
                     members = ",".join(members_list)
                     log.info(f"L'équipe de {leader_id} a été tronquée à {max_members} membres pour coller au format {format_type}.")
                     
-                await self.refresh_counters_for_leader(leader_id, leader_id, format_type, d_members=members)
+                batch_data.append({
+                    "leader_id": leader_id,
+                    "members": members
+                })
                 
-                if progress_callback:
-                    pct = int(((i + 1) / total_missing) * 10) + 90
-                    bars = int((pct / 100) * 10)
-                    bar_str = "■" * bars + "□" * (10 - bars)
-                    try:
-                        await progress_callback(f"⏳ **[{bar_str}] {pct}%** : Extraction des contres ({i+1}/{total_missing})...")
-                    except Exception as e:
-                        log.error(f"Erreur UI callback counters: {e}")
+            # Appel de la nouvelle méthode batch
+            await self.refresh_counters_for_leaders_batch(batch_data, format_type, "current", progress_callback)

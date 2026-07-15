@@ -91,7 +91,11 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     else:
                         msg += "\n*Astuce : Utilise ensuite `/gac-counter` pour obtenir les meilleurs contres contre sa défense !*"
                         
-                    await inter.edit_original_response(content="✅ **[■■■■■■■■■■] 100%** : Analyse terminée ! Le résultat est posté ci-dessous.")
+                    try:
+                        await inter.edit_original_response(content="✅ **[■■■■■■■■■■] 100%** : Analyse terminée ! Le résultat est posté ci-dessous.")
+                    except discord.errors.HTTPException as e:
+                        log.warning(f"Impossible de mettre à jour le message original (timeout de 15min ?) : {e}")
+                    
                     await inter.channel.send(content=msg, files=files)
                 except Exception as e:
                     log.exception("Erreur lors de la génération de l'image de scouting : %s", e)

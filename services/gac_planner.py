@@ -55,14 +55,25 @@ class GacPlanner:
 
         # 2. Récupérer la meta de la BDD
         async with get_db() as db:
-            # Pour la défense, on se base sur hold_percent, pour l'attaque sur seen
-            order_by = "hold_percent DESC" if mode == "defense" else "seen DESC"
+            # On regroupe les équipes identiques qui viennent de plusieurs saisons.
+            # On additionne les 'seen' et on calcule un 'hold_percent' moyen pondéré par le 'seen' de chaque saison.
+            # IMPORTANT: On filtre avec SUM(seen) >= 10 pour exclure les équipes "troll/auto-deploy"
+            order_by = "avg_hold DESC" if mode == "defense" else "total_seen DESC"
             
-            # On récupère plus de lignes pour avoir une bonne base statistique par leader
-            async with db.execute(
-                f"SELECT squad_units, seen, hold_percent, avg_banners FROM gac_global_meta WHERE format = ? AND mode = ? ORDER BY {order_by} LIMIT 500",
-                (format_type, mode)
-            ) as cur:
+            query = f"""
+                SELECT 
+                    squad_units, 
+                    SUM(seen * CASE season_id WHEN '0' THEN 3 WHEN '1' THEN 2 ELSE 1 END) as total_seen, 
+                    SUM(hold_percent * seen * CASE season_id WHEN '0' THEN 3 WHEN '1' THEN 2 ELSE 1 END) / SUM(seen * CASE season_id WHEN '0' THEN 3 WHEN '1' THEN 2 ELSE 1 END) as avg_hold, 
+                    AVG(avg_banners) as avg_banners
+                FROM gac_global_meta 
+                WHERE format = ? AND mode = ? 
+                GROUP BY squad_units
+                HAVING SUM(seen) >= 10
+                ORDER BY {order_by} 
+                LIMIT 500
+            """
+            async with db.execute(query, (format_type, mode)) as cur:
                 meta_rows = await cur.fetchall()
 
         from services.portrait_cache import get_unit_name
@@ -111,8 +122,8 @@ class GacPlanner:
                     leader_id = forced
                     members = units[1:]
                     break
-            seen = row["seen"] or 0
-            hold_percent = row["hold_percent"] or 0
+            seen = row["total_seen"] or 0
+            hold_percent = row["avg_hold"] or 0
 
             if leader_id not in leaders_data:
                 leaders_data[leader_id] = {

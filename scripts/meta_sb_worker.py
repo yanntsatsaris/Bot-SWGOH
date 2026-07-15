@@ -79,7 +79,7 @@ def scrape(target_url, output_file, format_type, mode):
                     href = a.get('href')
                     if href not in season_hrefs:
                         season_hrefs.append(href)
-                    if len(season_hrefs) >= 3: # On prend les 3 dernières saisons de ce format !
+                    if len(season_hrefs) >= 5: # On prend les 5 dernières saisons de ce format !
                         break
             
             if not season_hrefs:
@@ -89,7 +89,7 @@ def scrape(target_url, output_file, format_type, mode):
             
             all_htmls = []
             
-            for base_href in season_hrefs:
+            for idx, base_href in enumerate(season_hrefs):
                 final_url = base_href
                 if "?" in final_url:
                     final_url += "&cutoff=0"
@@ -140,7 +140,10 @@ def scrape(target_url, output_file, format_type, mode):
                 sb.sleep(2) # Petit buffer
                 
                 print(f"[WORKER] Récupération du code source HTML pour {final_url}...")
-                all_htmls.append(sb.get_page_source())
+                page_html = sb.get_page_source()
+                # On injecte l'index de la saison pour le parseur
+                marker = f"<div id='season-index-{idx}'></div>"
+                all_htmls.append(marker + "\n" + page_html)
                 
             if not all_htmls:
                 raise Exception("Aucune des saisons n'a pu être chargée correctement.")

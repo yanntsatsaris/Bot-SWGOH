@@ -63,17 +63,24 @@ class GacMetaSquadsScraper:
 
     def _parse_html(self, html: str) -> list[dict]:
         """
-        Parse le tableau HTML pour extraire Units, Seen, Hold %, Banners.
+        Parse le tableau HTML pour extraire Units, Seen, Hold %, Banners et Season ID.
         """
-        soup = BeautifulSoup(html, 'html.parser')
         squads = []
+        chunks = html.split('<hr>')
+        
+        for chunk in chunks:
+            soup = BeautifulSoup(chunk, 'html.parser')
+            
+            # Extract season_id from the injected marker
+            season_id = "0"
+            marker = soup.find(id=lambda x: x and x.startswith('season-index-'))
+            if marker:
+                season_id = marker['id'].split('-')[-1]
+                
+            table = soup.find('table')
+            if not table:
+                continue
 
-        # On cherche toutes les tables (puisqu'on concatène potentiellement plusieurs saisons HTML)
-        tables = soup.find_all('table')
-        if not tables:
-            return squads
-
-        for table in tables:
             tbody = table.find('tbody')
             if not tbody:
                 continue
@@ -123,15 +130,13 @@ class GacMetaSquadsScraper:
                         "units": units,
                         "seen": seen,
                         "hold_percent": hold_percent,
-                        "avg_banners": avg_banners
+                        "avg_banners": avg_banners,
+                        "season_id": season_id
                     })
 
         return squads
 
     async def _save_to_db(self, squads: list[dict], format_type: str, mode: str):
-        # On considère la saison en cours (pour l'instant codé en dur ou récupéré autrement)
-        season_id = "current" 
-        
         async with get_db() as db:
             # On supprime les anciennes entrées pour ce format/mode
             await db.execute(
@@ -144,6 +149,6 @@ class GacMetaSquadsScraper:
                 await db.execute("""
                     INSERT INTO gac_global_meta (season_id, format, mode, squad_units, seen, hold_percent, avg_banners)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (season_id, format_type, mode, units_json, sq["seen"], sq["hold_percent"], sq["avg_banners"]))
+                """, (sq["season_id"], format_type, mode, units_json, sq["seen"], sq["hold_percent"], sq["avg_banners"]))
             
             await db.commit()

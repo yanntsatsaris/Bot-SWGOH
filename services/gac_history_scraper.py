@@ -61,11 +61,16 @@ class GACHistoryScraper:
                 self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
                 self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
         else:
-            round_info = self._extract_round_info_from_url(ally_code)
-            if round_info and round_info.get("ally_code"):
-                clean_code = round_info["ally_code"]
+            if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
+                clean_code = ally_code.replace("batch_", "").replace(".txt", "")
                 self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
                 self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
+            else:
+                round_info = self._extract_round_info_from_url(ally_code)
+                if round_info and round_info.get("ally_code"):
+                    clean_code = round_info["ally_code"]
+                    self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+                    self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
 
         await self.queue.put((ally_code, interaction))
         logger.info(f"Ajout de {ally_code} à la file d'attente de scraping. (Taille: {self.queue.qsize()})")
@@ -151,7 +156,7 @@ class GACHistoryScraper:
                                 read_stream(process.stderr, is_error=True),
                                 process.wait()
                             ),
-                            timeout=150.0
+                            timeout=600.0
                         )
                         
                         if process.returncode == 0:
@@ -238,10 +243,10 @@ class GACHistoryScraper:
                                     pass
                     except asyncio.TimeoutError:
                         process.kill()
-                        logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 60 secondes.")
+                        logger.error(f"⏰ Timeout: Le processus de scraping a été tué car il a mis plus de 600 secondes.")
                         if interaction:
                             try:
-                                await interaction.edit_original_response(content=f"❌ **Timeout** : Cloudflare a fait planter le navigateur.")
+                                await interaction.edit_original_response(content=f"❌ **Timeout** : Le traitement a été interrompu (trop long ou Cloudflare bloquant).")
                             except:
                                 pass
                 finally:

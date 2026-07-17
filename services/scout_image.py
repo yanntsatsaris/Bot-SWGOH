@@ -26,7 +26,14 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     back_teams = zones.get("Back", [])
     fleet_teams = zones.get("Fleet", [])
     
-    max_ns = max(len(north_teams), len(south_teams))
+    # Calcul de la largeur fleet (capital + 3 fronts + 4 renforts)
+    _cell_w = PORTRAIT_CELL + PORTRAIT_GAP
+    _fleet_x_start = PADDING + 20
+    _fleet_row_width = _cell_w + PORTRAIT_GAP * 3 + (3 * _cell_w) + PORTRAIT_GAP * 2 + (4 * _cell_w)
+    _fleet_wraps = _fleet_row_width > (width - _fleet_x_start - PADDING)
+    fleet_row_h = (PORTRAIT_CELL + 10) * 2 + 10 if _fleet_wraps else PORTRAIT_CELL + 20
+    
+    max_ns = max(len(north_teams), len(south_teams)) if north_teams or south_teams else 0
     
     height = 100 + PADDING
     if max_ns > 0:
@@ -35,7 +42,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     if back_teams:
         height += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 20)) + PADDING
     if fleet_teams:
-        height += H_ZONE_TITLE + (len(fleet_teams) * (PORTRAIT_CELL + 20)) + PADDING
+        height += H_ZONE_TITLE + (len(fleet_teams) * fleet_row_h) + PADDING
         
     canvas = Image.new("RGBA", (width, height), C_BG)
     draw = ImageDraw.Draw(canvas)
@@ -58,20 +65,39 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
         
         if is_fleet:
             slots = 8
+            cell_w = PORTRAIT_CELL + PORTRAIT_GAP
+            fleet_row_width = cell_w + PORTRAIT_GAP * 3 + (3 * cell_w) + PORTRAIT_GAP * 2 + (4 * cell_w)
+            wrap = fleet_row_width > (width - x - PADDING)
+
             _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)
-            x += PORTRAIT_CELL + PORTRAIT_GAP * 3
+            cx = x + PORTRAIT_CELL + PORTRAIT_GAP * 3
             drawn = 1
+            row2_y = y + PORTRAIT_CELL + 10
+            row2_x = x
+
             for m in members:
                 if m != leader_id and drawn < slots:
-                    _draw_portrait_cell(canvas, x, y, m, None, None, True, True, True)
-                    x += PORTRAIT_CELL + PORTRAIT_GAP
-                    if drawn == 3: x += PORTRAIT_GAP * 2
+                    if wrap and drawn == 4:
+                        cx = row2_x
+                    cur_y = row2_y if (wrap and drawn >= 4) else y
+                    _draw_portrait_cell(canvas, cx, cur_y, m, None, None, True, True, True)
+                    cx += PORTRAIT_CELL + PORTRAIT_GAP
+                    if drawn == 3 and not wrap:
+                        cx += PORTRAIT_GAP * 2
                     drawn += 1
+
             while drawn < slots:
-                _draw_portrait_cell(canvas, x, y, None, None, None, True, True, True)
-                x += PORTRAIT_CELL + PORTRAIT_GAP
-                if drawn == 3: x += PORTRAIT_GAP * 2
+                if wrap and drawn == 4:
+                    cx = row2_x
+                cur_y = row2_y if (wrap and drawn >= 4) else y
+                _draw_portrait_cell(canvas, cx, cur_y, None, None, None, True, True, True)
+                cx += PORTRAIT_CELL + PORTRAIT_GAP
+                if drawn == 3 and not wrap:
+                    cx += PORTRAIT_GAP * 2
                 drawn += 1
+
+            # Adjust x for source label
+            x = cx
         else:
             slots = 3 if fmt == "3v3" else 5
             rel, gr = get_unit_details(leader_id)

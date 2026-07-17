@@ -143,7 +143,18 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     return
                     
                 await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Analyse approfondie du profil GAC de l'adversaire...")
-                await self.bot.gac_scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
+
+                # Vérification si un scraping est déjà en cours pour ce joueur
+                scraper = self.bot.gac_scraper
+                if scraper.pending_tasks.get(clean_code, 0) > 0:
+                    await interaction.edit_original_response(
+                        content=f"⏳ **Un scan est déjà en cours** pour ce joueur ! Tu recevras automatiquement le résultat dès qu'il est prêt.\n"
+                                f"Tu es abonné(e) à la notification — pas besoin de retaper la commande."
+                    )
+                    # On s'abonne au callback sans relancer de scraping
+                    await scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
+                else:
+                    await scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
             
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)

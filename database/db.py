@@ -201,13 +201,18 @@ async def get_counters_from_db(def_leader_id: str, format_type: str) -> list[dic
         rows = await cursor.fetchall()
         
     results = []
+    max_atk_members = 2 if format_type == "3v3" else 4  # leader + N members
     for row in rows:
+        atk_members = json.loads(row["atk_members_ids"])
+        # Filtrer strictement : un contre 5v5 ne doit pas apparaitre en 3v3 et vice-versa
+        if len(atk_members) > max_atk_members:
+            continue
         results.append({
             "season_id": row["season_id"],
             "def_leader_id": def_leader_id,
             "def_members_ids": json.loads(row["def_members_ids"]),
             "atk_leader_id": row["atk_leader_id"],
-            "atk_members_ids": json.loads(row["atk_members_ids"]),
+            "atk_members_ids": atk_members,
             "seen": row["seen"],
             "win_pct": row["win_pct"],
             "avg_banners": row["avg_banners"]

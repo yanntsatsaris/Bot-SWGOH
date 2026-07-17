@@ -7,9 +7,19 @@ from database.db import get_counters_from_db, get_counter_feedback_stats
 
 log = logging.getLogger(__name__)
 
+
+# Personnages dont l'Omicron GAC est indispensable pour leur efficacité.
+# Si le joueur n'a pas activé leur omicron, un badge ⚠️ s'affiche sur le counter.
+NEEDS_GAC_OMICRON = {
+    "WAMPA", "SAVAGEOPRESS", "QUIGONJINN", "IDENVERSIOEMPIRE", 
+    "CAPTAINREX", "DARTHTRAYA", "ZAMWESELL", "ZORIIBLISS", "DASHRENDAR"
+}
+
 def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, format_type: str, min_relic: int = 5, min_gear: int = 13) -> list[dict]:
     """
     Filtre et enrichit les counters selon le roster du joueur.
+    Ajoute un flag 'needs_omicron' si un des personnages du contre
+    requiert un Omicron GAC que le joueur ne possède pas encore.
     """
     result = []
     
@@ -19,10 +29,16 @@ def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, forma
         
         available = []
         missing = []
+        missing_omicron = []  # Personnages présents mais sans leur omicron GAC
+        
         for unit_id in all_ids:
             unit = my_roster_index.get(unit_id.upper())
             if unit and (unit.get("relic_tier", 0) >= min_relic or unit.get("gear_tier", 0) >= min_gear):
                 available.append(unit_id)
+                # Vérifier si ce personnage a besoin d'un omicron GAC
+                # has_omicron est False = le joueur n'a pas activé l'omicron GAC
+                if unit_id.upper() in NEEDS_GAC_OMICRON and not unit.get("has_omicron"):
+                    missing_omicron.append(unit_id)
             else:
                 missing.append(unit_id)
         
@@ -37,6 +53,8 @@ def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, forma
                 "roster_availability": availability,
                 "all_members_ready": availability == 1.0,
                 "missing": missing,
+                "missing_omicron": missing_omicron,
+                "needs_omicron": len(missing_omicron) > 0,
                 "composite_score": counter.get("win_pct", 0) * availability,
             })
     

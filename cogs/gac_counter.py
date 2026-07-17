@@ -166,9 +166,14 @@ class CounterSuggestionView(discord.ui.View):
             m_names = ", ".join(get_name(m) for m in sugg["missing"])
             missing_str = f"\n⚠️ **Manquants / faibles :** {m_names}"
 
+        omicron_str = ""
+        if sugg.get("needs_omicron") and sugg.get("missing_omicron"):
+            o_names = ", ".join(get_name(m) for m in sugg["missing_omicron"])
+            omicron_str = f"\n🔮 **Omicron GAC manquant :** {o_names} — Ce contre sera moins efficace sans l'omicron activé."
+
         content = (
             f"🎯 **Contre #{self.current_index + 1}/{total_suggestions}** — {get_name(self.def_leader)}\n"
-            f"📊 **Win Rate global :** {win_pct}% (Score roster: {composite:.2f}){missing_str}\n"
+            f"📊 **Win Rate global :** {win_pct}% (Score roster: {composite:.2f}){missing_str}{omicron_str}\n"
             f"⚠️ *Ce ne sont que des propositions automatiques du bot, des erreurs sont possibles.*"
         )
 

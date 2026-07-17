@@ -47,6 +47,7 @@ async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> Non
     ]
     
     for url in urls_to_try:
+        log.info(f"Tentative de téléchargement depuis : {url}")
         try:
             async with session.get(url) as resp:
                 if resp.status == 200:
@@ -54,10 +55,12 @@ async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> Non
                     filepath.write_bytes(data)
                     log.info(f"✅ Téléchargé: {asset_name} (depuis {url})")
                     return
+                else:
+                    log.debug(f"Code {resp.status} pour {url}")
         except Exception as e:
-            pass
+            log.debug(f"Erreur pour {url} : {e}")
             
-    log.error(f"❌ Impossible de télécharger {asset_name}")
+    log.error(f"❌ Impossible de télécharger {asset_name}. URLs testées : {', '.join(urls_to_try)}")
 
 async def main():
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)

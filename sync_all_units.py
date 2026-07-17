@@ -145,6 +145,11 @@ async def sync():
                         final_name = name_map[name_key]
 
                     combat_type = unit.get("combatType", 1)
+                    unit_type = "character" if combat_type == 1 else "ship"
+                    thumb = unit.get("thumbnailName", "").replace("tex.avatars_", "")
+
+                    path_obj = get_portrait_path(bid)
+                    image_path = path_obj.as_posix() if path_obj else None
 
                     await db.execute(
                         """

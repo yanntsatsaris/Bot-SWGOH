@@ -367,6 +367,8 @@ def _draw_portrait_row(
             missing_omicron=unit.get("missing_omicron", False),
             is_ship=unit.get("combat_type") == 2,
             level=unit.get("level", 85),
+            zetas=unit.get("zetas", 0),
+            omicrons=unit.get("omicrons", 0),
         )
         x += PORTRAIT_CELL + PORTRAIT_GAP
 
@@ -474,6 +476,8 @@ def generate_gac_report(
                 "gear_tier":  unit_data.get("gear_tier"),
                 "ready":      True,
                 "owned":      True,
+                "zetas":      unit_data.get("zetas", 0),
+                "omicrons":   unit_data.get("omicrons", 0),
             })
         _draw_portrait_row(canvas, enemy_units, y, is_enemy=True)
 

@@ -164,7 +164,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     if fleet_teams:
         draw.text((PADDING, y_current), f"ZONE FLEET (Quota: {quotas.get('Fleet', 0)})", font=_get_font("bold", 18), fill=C_ENEMY)
         for i, t in enumerate(fleet_teams):
-            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 20))
+            y_team = y_current + H_ZONE_TITLE + (i * fleet_row_h)
             _draw_zone_team(t, PADDING + 20, y_team, is_fleet=True)
 
     buf = io.BytesIO()

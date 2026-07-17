@@ -173,6 +173,8 @@ def _draw_portrait_cell(
     missing_omicron: bool = False,
     is_ship: bool = False,
     level: int = 85,
+    zetas: int = 0,
+    omicrons: int = 0,
 ) -> None:
     draw = ImageDraw.Draw(canvas)
     
@@ -205,6 +207,10 @@ def _draw_portrait_cell(
     if not is_ship and gear_to_draw >= 1:
         gear_name = "gear13.webp" if gear_to_draw >= 13 else f"gear{gear_to_draw}.webp"
         gear_path = Path(f"assets/overlays/{gear_name}")
+        if gear_to_draw >= 13 and not gear_path.exists():
+            gear_name = "gear12.webp"
+            gear_path = Path(f"assets/overlays/{gear_name}")
+            
         if gear_path.exists():
             gear_img = Image.open(gear_path).convert("RGBA").resize((PORTRAIT_CELL, PORTRAIT_CELL), Image.LANCZOS)
             canvas.paste(gear_img, (x, y), gear_img)
@@ -228,7 +234,9 @@ def _draw_portrait_cell(
     else:
         relic_color = "blue"
 
-    if not is_ship and relic_tier and relic_tier >= 1:
+    has_relic_borders = not is_ship and (gear_to_draw >= 13)
+    
+    if has_relic_borders:
         # Côté droit
         r_right_path = Path(f"assets/overlays/relic_{relic_color}_right.webp")
         if r_right_path.exists():
@@ -244,22 +252,32 @@ def _draw_portrait_cell(
             r_left = r_right.transpose(Image.FLIP_LEFT_RIGHT)
             canvas.paste(r_left, (x, y), r_left)
 
-        # Macaron du bas
-        macaron_name = "relic_gl.webp" if is_gl else f"relic_{relic_color}.webp"
-        macaron_path = Path(f"assets/overlays/{macaron_name}")
-        if macaron_path.exists():
-            macaron = Image.open(macaron_path).convert("RGBA")
-            # Taille approx 30x30 pour le macaron ?
-            macaron = macaron.resize((32, 32), Image.LANCZOS)
-            mx = x + (PORTRAIT_CELL - 32) // 2
-            my = y + PORTRAIT_CELL - 24
-            canvas.paste(macaron, (mx, my), macaron)
-            
-            # Texte du tier
-            draw.text((x + PORTRAIT_CELL//2, my + 16), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
-            
+        if relic_tier and relic_tier >= 1:
+            # Macaron du bas
+            macaron_name = "relic_gl.webp" if is_gl else f"relic_{relic_color}.webp"
+            macaron_path = Path(f"assets/overlays/{macaron_name}")
+            if macaron_path.exists():
+                macaron = Image.open(macaron_path).convert("RGBA")
+                macaron = macaron.resize((32, 32), Image.LANCZOS)
+                mx = x + (PORTRAIT_CELL - 32) // 2
+                my = y + PORTRAIT_CELL - 24
+                canvas.paste(macaron, (mx, my), macaron)
+                
+                # Texte du tier
+                draw.text((x + PORTRAIT_CELL//2, my + 16), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
+        else:
+            # Macaron de niveau (pour Gear 13 sans relique)
+            level_path = Path("assets/overlays/level.webp")
+            if level_path.exists():
+                lvl_img = Image.open(level_path).convert("RGBA")
+                lvl_img = lvl_img.resize((32, 32), Image.LANCZOS)
+                mx = x + (PORTRAIT_CELL - 32) // 2
+                my = y + PORTRAIT_CELL - 24
+                canvas.paste(lvl_img, (mx, my), lvl_img)
+                draw.text((x + PORTRAIT_CELL//2, my + 16), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
+                
     else:
-        # Macaron de niveau
+        # Macaron de niveau classique
         level_path = Path("assets/overlays/level.webp")
         if level_path.exists():
             lvl_img = Image.open(level_path).convert("RGBA")
@@ -271,17 +289,32 @@ def _draw_portrait_cell(
             draw.text((x + PORTRAIT_CELL//2, my + 16), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
 
     # --- 6. Zetas / Omicrons ---
-    # Omicro placeholder (on collera tex.charui_omicron.png plus tard)
-    if missing_omicron:
+    # Omicrons (Gauche)
+    if omicrons > 0 or missing_omicron:
         omi_path = Path("assets/overlays/tex.charui_omicron.png")
+        ox, oy = x, y + PORTRAIT_CELL - 28
         if omi_path.exists():
-            omi = Image.open(omi_path).convert("RGBA").resize((24, 24), Image.LANCZOS)
-            canvas.paste(omi, (x + PORTRAIT_CELL - 24, y + PORTRAIT_CELL - 24), omi)
+            omi = Image.open(omi_path).convert("RGBA").resize((28, 28), Image.LANCZOS)
+            canvas.paste(omi, (ox, oy), omi)
         else:
-            omi_r = 12
-            ox, oy = x + PORTRAIT_CELL - omi_r - 4, y + PORTRAIT_CELL - omi_r - 4
-            draw.ellipse([ox - omi_r, oy - omi_r, ox + omi_r, oy + omi_r], fill="#9b59b6")
-            draw.text((ox, oy), "Omi", font=_get_font("bold", 9), fill=(255, 255, 255), anchor="mm")
+            draw.ellipse([ox + 2, oy + 2, ox + 26, oy + 26], fill="#9b59b6")
+        
+        # Nombre ou indicateur
+        text_val = str(omicrons) if not missing_omicron else "!"
+        text_color = (255, 255, 255) if not missing_omicron else (255, 100, 100)
+        draw.text((ox + 14, oy + 14), text_val, font=_get_font("bold", 12), fill=text_color, anchor="mm")
+
+    # Zetas (Droite)
+    if zetas > 0:
+        zeta_path = Path("assets/overlays/tex.charui_zeta.png")
+        zx, zy = x + PORTRAIT_CELL - 28, y + PORTRAIT_CELL - 28
+        if zeta_path.exists():
+            zeta_img = Image.open(zeta_path).convert("RGBA").resize((28, 28), Image.LANCZOS)
+            canvas.paste(zeta_img, (zx, zy), zeta_img)
+        else:
+            draw.ellipse([zx + 2, zy + 2, zx + 26, zy + 26], fill="#f1c40f")
+            
+        draw.text((zx + 14, zy + 14), str(zetas), font=_get_font("bold", 12), fill=(255, 255, 255), anchor="mm")
 
     # Dessin des étoiles
     star_path = Path("assets/overlays/tex.charui_star_character.png")

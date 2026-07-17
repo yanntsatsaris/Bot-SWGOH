@@ -89,6 +89,12 @@ CREATE_TABLES_SQL: list[str] = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS game_zetas (
+        skill_id      TEXT    PRIMARY KEY,
+        zeta_tier     INTEGER NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS gac_roster_snapshots (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         player_id    TEXT    NOT NULL,

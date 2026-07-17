@@ -32,6 +32,17 @@ async def get_omicron_dict() -> dict:
         log.warning(f"Erreur chargement omicrons: {e}")
     return omicrons
 
+async def get_zeta_dict() -> dict:
+    zetas = {}
+    try:
+        async with get_db() as db:
+            async with db.execute("SELECT skill_id, zeta_tier FROM game_zetas") as cursor:
+                async for row in cursor:
+                    zetas[row["skill_id"]] = row["zeta_tier"]
+    except Exception as e:
+        log.warning(f"Erreur chargement zetas: {e}")
+    return zetas
+
 def _is_gac_ready(unit: dict) -> bool:
     return unit.get("relic_tier", 0) > 0 or unit.get("gear_tier", 0) >= 11
 
@@ -46,7 +57,7 @@ async def get_ship_base_ids() -> set:
         log.warning(f"Erreur chargement des vaisseaux: {e}")
     return ships
 
-def _build_roster_index(raw_roster: list, omicron_dict: dict, ship_base_ids: set) -> dict:
+def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set) -> dict:
     roster = {}
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
@@ -55,19 +66,31 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, ship_base_ids: set
         relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
         
         has_omicron = False
-        if omicron_dict:
-            unit_skills = (unit.get("skill") or [])
-            for skill in unit_skills:
-                skill_id = skill.get("id")
-                skill_tier = skill.get("tier", 0)
-                if skill_id in omicron_dict and skill_tier >= omicron_dict[skill_id]:
-                    has_omicron = True
-                    break
-                    
+        omicrons_count = 0
+        zetas_count = 0
+        
+        unit_skills = (unit.get("skill") or [])
+        for skill in unit_skills:
+            skill_id = skill.get("id")
+            skill_tier = skill.get("tier", 0)
+            if omicron_dict and skill_id in omicron_dict and skill_tier >= omicron_dict[skill_id]:
+                has_omicron = True
+                omicrons_count += 1
+            if zeta_dict and skill_id in zeta_dict and skill_tier >= zeta_dict[skill_id]:
+                zetas_count += 1
+                
         combat_type = 2 if base_id in ship_base_ids else unit.get("combatType", 1)
 
         roster[base_id] = {
             "base_id": base_id,
+            "gear_tier": unit.get("currentTier", 0),
+            "relic_tier": relic_tier,
+            "rarity": unit.get("currentRarity", 0),
+            "has_omicron": has_omicron,
+            "omicrons": omicrons_count,
+            "zetas": zetas_count,
+            "combat_type": combat_type
+        }
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
@@ -667,8 +690,9 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         
     quotas = get_gac_quotas(league_name, fmt)
     omicron_dict = await get_omicron_dict()
+    zeta_dict = await get_zeta_dict()
     ship_base_ids = await get_ship_base_ids()
-    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict, ship_base_ids)
+    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
     
     from services.gac_scout_analyzer import GacScoutAnalyzer
     habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
@@ -734,7 +758,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_clean = str(my_ally_code).replace("-", "").strip()
         my_profile = await get_player(my_clean)
         if my_profile:
-            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, ship_base_ids)
+            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
             my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)

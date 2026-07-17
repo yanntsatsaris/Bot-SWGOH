@@ -71,12 +71,12 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
         
         unit_skills = (unit.get("skill") or [])
         for skill in unit_skills:
-            skill_id = skill.get("id")
-            skill_tier = skill.get("tier", 0)
-            if omicron_dict and skill_id in omicron_dict and skill_tier >= omicron_dict[skill_id]:
+            skill_id = str(skill.get("id", ""))
+            skill_tier = int(skill.get("tier", 0))
+            if omicron_dict and skill_id in omicron_dict and skill_tier >= int(omicron_dict[skill_id]):
                 has_omicron = True
                 omicrons_count += 1
-            if zeta_dict and skill_id in zeta_dict and skill_tier >= zeta_dict[skill_id]:
+            if zeta_dict and skill_id in zeta_dict and skill_tier >= int(zeta_dict[skill_id]):
                 zetas_count += 1
                 
         combat_type = 2 if base_id in ship_base_ids else unit.get("combatType", 1)
@@ -116,6 +116,9 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                 # Sécurité : ignorer les équipes de la meta dont la taille ne correspond pas au format
                 expected_max = 3 if fmt == "3v3" else 5
                 if len(units) > expected_max:
+                    continue
+                    
+                if "GLREY" in units and "EZRAEXILE" in units:
                     continue
                     
                 leader_id = units[0]

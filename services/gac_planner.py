@@ -107,6 +107,9 @@ class GacPlanner:
 
             leader_id = units[0]
             members = units[1:]
+            
+            if "GLREY" in units and "EZRAEXILE" in units:
+                continue
 
             # Certains personnages sont TOUJOURS en leader dans leur équipe méta.
             # Si swgoh.gg les met ailleurs dans la liste, on les remonte en position 0.

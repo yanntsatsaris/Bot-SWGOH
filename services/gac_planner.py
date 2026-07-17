@@ -183,8 +183,12 @@ class GacPlanner:
             )
             
             valid_members = []
+            from services.scouting import UNIT_RESTRICTIONS
             
             for candidate_id, _ in sorted_candidates:
+                if candidate_id in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate_id]:
+                    continue
+                    
                 if candidate_id not in player_units:
                     continue
                 
@@ -218,7 +222,7 @@ class GacPlanner:
                 for u in valid_members:
                     used_characters.add(u)
                 
-                if len(suggestions) >= 15:
+                if len(suggestions) >= 30:
                     break
                     
         return suggestions

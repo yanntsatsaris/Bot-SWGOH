@@ -435,7 +435,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         format_type=fmt,
         mode="defense",
         min_relic=-1,
-        min_gear=12
+        min_gear=8
     )
     
     if not suggestions:
@@ -530,19 +530,9 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             need = target - (1 if leader_id else 0)
             while len(t["members_ids"]) < need:
                 if not leader_id:
-                    # Équipe totalement vide : prendre le plus fort
-                    filler = None
-                    for i, l in enumerate(leftovers):
-                        if l in UNIT_RESTRICTIONS and not UNIT_RESTRICTIONS[l]:
-                            continue
-                        filler = leftovers.pop(i)
-                        break
-                    if not filler:
-                        break
-                    t["leader_id"] = filler
-                    leader_id = filler
-                    t["source"] = "leftover"
-                    need = target - 1  # Recalcul après avoir trouvé un leader
+                    # Ne pas créer de team "Leftover" aléatoire pour le joueur.
+                    # On laisse le slot d'équipe Vide.
+                    break
                 else:
                     filler = None
                     synergy_candidates = leader_synergy_map.get(leader_id, [])
@@ -573,12 +563,10 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                                 break
 
                     # Niveau 3 : fallback — le plus puissant dispo dans les leftovers
-                    if filler is None and leftovers:
-                        for i, l in enumerate(leftovers):
-                            if l in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[l]:
-                                continue
-                            filler = leftovers.pop(i)
-                            break
+                    # DÉSACTIVÉ pour le joueur : on ne veut pas polluer une équipe Meta avec des personnages aléatoires.
+                    # Si aucun perso synergique n'est trouvé, on laisse le trou vide.
+                    if filler is None:
+                        pass
 
                     if filler is None:
                         break  # Rien à placer pour cette équipe
@@ -723,7 +711,8 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                             missing_leaders.append(l_id)
                 
                 if missing_leaders and progress_callback:
-                    await progress_callback(f"⏳ **Optimisation des données** : Calcul des meilleurs contres pour {len(missing_leaders)} équipes ennemies. Cette étape prend environ {len(missing_leaders) * 20} secondes. Merci de patienter...")
+                    estimated_time = 15 + (len(missing_leaders) * 5)
+                    await progress_callback(f"⏳ **[■■■■■■■□□□] 70%** : Analyse et calcul des meilleurs contres pour {len(missing_leaders)} équipes ennemies (≈ {estimated_time}s)...")
                 
                 await scraper.ensure_counters_available(leaders_to_scrape, fmt, progress_callback=progress_callback)
         except Exception as e:

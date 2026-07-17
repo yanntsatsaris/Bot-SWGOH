@@ -82,31 +82,26 @@ class GACScoutCog(commands.Cog, name="GACScout"):
 
                     scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code, progress_callback=cb)
                     
-                    files = []
-                    
-                    enemy_img = generate_scout_map(
-                        scout_data["zones"], 
-                        scout_data["quotas"], 
-                        scout_data["league"], 
-                        scout_data["format"], 
-                        scout_data["enemy_name"] + " (Ennemi)", 
-                        scout_data["source"],
-                        scout_data.get("roster_index")
-                    )
-                    files.append(discord.File(enemy_img, filename="enemy_defense.png"))
-                    
-                    if "my_zones" in scout_data:
-                        my_img = generate_scout_map(
-                            scout_data["my_zones"], 
-                            scout_data["quotas"], 
-                            scout_data["league"], 
-                            scout_data["format"], 
-                            scout_data["my_name"] + " (Ta Défense Suggérée)", 
-                            "Contre-Défense Optimisée",
-                            scout_data.get("my_roster_index")
+                    def _build_files(sd):
+                        result_files = []
+                        e_img = generate_scout_map(
+                            sd["zones"], sd["quotas"], sd["league"], sd["format"],
+                            sd["enemy_name"] + " (Ennemi)", sd["source"],
+                            sd.get("roster_index")
                         )
-                        files.append(discord.File(my_img, filename="my_defense.png"))
-                    
+                        result_files.append(discord.File(e_img, filename="enemy_defense.png"))
+                        if "my_zones" in sd:
+                            m_img = generate_scout_map(
+                                sd["my_zones"], sd["quotas"], sd["league"], sd["format"],
+                                sd["my_name"] + " (Ta Défense Suggérée)",
+                                "Contre-Défense Optimisée",
+                                sd.get("my_roster_index")
+                            )
+                            result_files.append(discord.File(m_img, filename="my_defense.png"))
+                        return result_files
+
+                    files = _build_files(scout_data)
+
                     msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !\n"
                     msg += "⚠️ *Note : Les prédictions sont générées automatiquement. Des erreurs de placement ou d'optimisation sont possibles.*\n"
                     if not my_ally_code:
@@ -118,7 +113,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                         await inter.edit_original_response(content=msg, attachments=files)
                     except discord.errors.HTTPException as e:
                         log.warning(f"Impossible de mettre à jour le message original (timeout de 15min ?) : {e}")
-                        await inter.channel.send(content=msg, files=files)
+                        # Re-générer les fichiers car les BytesIO précédents peuvent être fermés
+                        files_retry = _build_files(scout_data)
+                        await inter.channel.send(content=msg, files=files_retry)
                 except Exception as e:
                     log.exception("Erreur lors de la génération de l'image de scouting : %s", e)
                     try:

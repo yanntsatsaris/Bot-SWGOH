@@ -154,7 +154,8 @@ class CounterSuggestionView(discord.ui.View):
                 "relic_tier": relic,
                 "gear_tier": gear,
                 "ready": is_ready,
-                "owned": True if u else False
+                "owned": True if u else False,
+                "missing_omicron": cid in sugg.get("missing_omicron", [])
             })
             
         mock_suggestions = [{"enemy_team": team_dict, "counters": counter_units}]

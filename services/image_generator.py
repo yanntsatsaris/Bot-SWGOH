@@ -155,6 +155,7 @@ def _draw_portrait_cell(
     ready: bool,
     owned: bool,
     is_enemy: bool = False,
+    missing_omicron: bool = False,
 ) -> None:
     """
     Dessine une cellule portrait (fond + image circulaire + badge de niveau).
@@ -168,6 +169,7 @@ def _draw_portrait_cell(
         ready:      Unité prête pour le GAC (R5+ / G13+).
         owned:      Le joueur possède l'unité.
         is_enemy:   True pour les unités ennemies.
+        missing_omicron: True si le personnage requiert un omicron GAC qu'il n'a pas.
     """
     draw = ImageDraw.Draw(canvas)
 
@@ -176,6 +178,8 @@ def _draw_portrait_cell(
         border_color = C_ENEMY
     elif not owned:
         border_color = C_MISSING
+    elif missing_omicron:
+        border_color = "#9b59b6"  # Violet pour Omicron manquant
     elif ready:
         border_color = C_READY
     else:
@@ -226,6 +230,17 @@ def _draw_portrait_cell(
         draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=3, fill=badge_color)
         draw.text((bx + 4, by + 2), badge_text, font=badge_font, fill=(0, 0, 0))
 
+    # Badge Omicron (haut-droit)
+    if missing_omicron:
+        omi_text = "Omi"
+        bbox = draw.textbbox((0, 0), omi_text, font=badge_font)
+        bw = bbox[2] - bbox[0] + 8
+        bh = bbox[3] - bbox[1] + 4
+        bx = x + PORTRAIT_CELL - bw - 2
+        by = y + 2
+        draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=3, fill="#9b59b6")
+        draw.text((bx + 4, by + 2), omi_text, font=badge_font, fill=(255, 255, 255))
+
 
 def _draw_portrait_row(
     canvas: Image.Image,
@@ -246,6 +261,7 @@ def _draw_portrait_row(
             ready=unit.get("ready", True),
             owned=unit.get("owned", True),
             is_enemy=is_enemy,
+            missing_omicron=unit.get("missing_omicron", False),
         )
         x += PORTRAIT_CELL + PORTRAIT_GAP
 

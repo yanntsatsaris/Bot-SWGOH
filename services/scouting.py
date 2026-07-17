@@ -72,11 +72,14 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
         unit_skills = (unit.get("skill") or [])
         for skill in unit_skills:
             skill_id = str(skill.get("id", ""))
-            skill_tier = int(skill.get("tier", 0))
-            if omicron_dict and skill_id in omicron_dict and skill_tier >= int(omicron_dict[skill_id]):
+            skill_tier_upgrades = int(skill.get("tier", 0))
+            # In Comlink player payload, 'tier' is the number of upgrades, so tier 1 is 0 upgrades.
+            actual_skill_tier = skill_tier_upgrades + 1
+            
+            if omicron_dict and skill_id in omicron_dict and actual_skill_tier >= int(omicron_dict[skill_id]):
                 has_omicron = True
                 omicrons_count += 1
-            if zeta_dict and skill_id in zeta_dict and skill_tier >= int(zeta_dict[skill_id]):
+            if zeta_dict and skill_id in zeta_dict and actual_skill_tier >= int(zeta_dict[skill_id]):
                 zetas_count += 1
                 
         # DEBUG DUMP

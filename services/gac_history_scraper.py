@@ -52,7 +52,7 @@ class GACHistoryScraper:
         self.executor.shutdown(wait=True)
         logger.info("🔴 Scraper GAC History arrêté.")
 
-    async def queue_scrape(self, ally_code: str, interaction=None, callback=None):
+    async def queue_scrape(self, ally_code: str, interaction=None, callback=None, format_filter=None):
         """Ajoute un joueur à la file d'attente pour être scrapé."""
         if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
             clean_code = ally_code.replace("batch_", "").replace(".txt", "")
@@ -83,7 +83,7 @@ class GACHistoryScraper:
         self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
         self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
 
-        await self.queue.put((ally_code, interaction))
+        await self.queue.put((ally_code, interaction, format_filter))
         logger.info(f"Ajout de {ally_code} à la file d'attente de scraping. (Taille: {self.queue.qsize()})")
 
     async def _worker_loop(self):
@@ -91,7 +91,7 @@ class GACHistoryScraper:
         while self.is_running:
             try:
                 # Attend qu'un profil soit ajouté à la file
-                ally_code, interaction = await self.queue.get()
+                ally_code, interaction, format_filter = await self.queue.get()
                 
                 logger.info(f"⚙️ Démarrage du scraping pour {ally_code}...")
                 
@@ -206,7 +206,7 @@ class GACHistoryScraper:
                                     
                                 logger.info(f"Analyse du HTML en cours ({len(html_content)} caractères)...")
                                 loop = asyncio.get_running_loop()
-                                parsed_results = await loop.run_in_executor(None, self._parse_html, html_content, clean_code, target_url)
+                                parsed_results = await loop.run_in_executor(None, self._parse_html, html_content, clean_code, target_url, format_filter)
                                 
                                 total_matchs = 0
                                 for parsed_data in parsed_results:
@@ -233,7 +233,7 @@ class GACHistoryScraper:
                                                 bf.write("\n".join(links_to_scrape))
                                                 
                                             # On met le fichier texte dans la file
-                                            await self.queue_scrape(batch_file, interaction=interaction)
+                                            await self.queue_scrape(batch_file, interaction=interaction, format_filter=format_filter)
                                             
                                             if interaction:
                                                 try:
@@ -324,7 +324,7 @@ class GACHistoryScraper:
                 logger.error(f"Erreur critique dans le worker GAC Scraper : {e}")
                 await asyncio.sleep(5)
 
-    def _parse_html(self, html: str, ally_code: str, default_target_url: str = "") -> list[dict]:
+    def _parse_html(self, html: str, ally_code: str, default_target_url: str = "", format_filter: str = None) -> list[dict]:
         """
         Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les équipes complètes.
         Supporte les fichiers contenant plusieurs pages séparées par <hr>.
@@ -440,7 +440,7 @@ class GACHistoryScraper:
                         for link in hub_links_sorted:
                             s_id = link.split("/gac-history/")[-1].split("/")[0]
                             if s_id not in unique_seasons:
-                                if len(unique_seasons) >= 3:
+                                if len(unique_seasons) >= 2:
                                     break
                                 unique_seasons.append(s_id)
                             filtered_links.append(link)
@@ -451,6 +451,10 @@ class GACHistoryScraper:
                 land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]
                 max_size = max((len(m["defender_team"]) for m in land_matches if m["defender_team"]), default=5)
                 detected_format = "3v3" if max_size <= 3 else "5v5"
+                
+                if format_filter and detected_format != format_filter:
+                    logger.info(f"🚫 Match ignoré car le format détecté ({detected_format}) ne correspond pas au filtre ({format_filter}) pour {target_url}")
+                    continue
                     
                 logger.info(f"✅ Extrait : {len(matches)} matchs pour {target_url} (Ligue: {parsed_league})")
                 results.append({"matches": matches, "format": detected_format, "league": parsed_league, "url": target_url})

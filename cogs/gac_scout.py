@@ -152,9 +152,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                                 f"Tu es abonné(e) à la notification — pas besoin de retaper la commande."
                     )
                     # On s'abonne au callback sans relancer de scraping
-                    await scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
+                    await scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished, format_filter=format_gac.value)
                 else:
-                    await scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished)
+                    await scraper.queue_scrape(clean_code, interaction, callback=on_scrape_finished, format_filter=format_gac.value)
             
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)

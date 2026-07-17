@@ -285,9 +285,7 @@ def _draw_portrait_cell(
             level_path = Path("assets/overlays/level.webp")
             if level_path.exists():
                 lvl_img = Image.open(level_path).convert("RGBA")
-                scale = 0.85
-                mw = int(lvl_img.width * scale)
-                mh = int(lvl_img.height * scale)
+                mw, mh = 26, 26
                 lvl_img = lvl_img.resize((mw, mh), Image.LANCZOS)
                 mx = x + (PORTRAIT_CELL - mw) // 2
                 my = y + PORTRAIT_CELL - (mh // 2) - 10
@@ -301,12 +299,13 @@ def _draw_portrait_cell(
         level_path = Path("assets/overlays/level.webp")
         if level_path.exists():
             lvl_img = Image.open(level_path).convert("RGBA")
-            lvl_img = lvl_img.resize((32, 32), Image.LANCZOS)
-            mx = x + (PORTRAIT_CELL - 32) // 2
-            my = y + PORTRAIT_CELL - 24
+            mw, mh = 26, 26
+            lvl_img = lvl_img.resize((mw, mh), Image.LANCZOS)
+            mx = x + (PORTRAIT_CELL - mw) // 2
+            my = y + PORTRAIT_CELL - (mh // 2) - 10
             canvas.paste(lvl_img, (mx, my), lvl_img)
             
-            draw.text((x + PORTRAIT_CELL//2, my + 16), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
+            draw.text((x + PORTRAIT_CELL//2, my + mh//2), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
 
     # --- 6. Zetas / Omicrons ---
     # Zetas (Gauche)

@@ -18,7 +18,8 @@ H_ZONE_TITLE = 40
 def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_name: str, source: str, roster_index: dict = None) -> io.BytesIO:
     """
     Génère l'image PNG de la carte GAC scannée.
-     width = 1000 if fmt == "5v5" else 860
+    """
+    width = 1000 if fmt == "5v5" else 860
     
     north_teams = zones.get("North", [])
     south_teams = zones.get("South", [])

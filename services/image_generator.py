@@ -43,7 +43,7 @@ SECTION_RADIUS = 10          # arrondi des sections
 # Hauteurs des blocs
 H_HEADER       = 80          # titre + noms joueurs
 H_TEAM_LABEL   = 44          # "Équipe ennemie : ..."
-H_PORTRAIT_ROW = PORTRAIT_CELL + 30  # portraits + badge
+H_PORTRAIT_ROW = PORTRAIT_CELL + 45  # portraits + badge + text
 H_COUNTER_LABEL= 34          # "▶ Contres recommandés"
 H_SEPARATOR    = 18
 
@@ -341,7 +341,7 @@ def _draw_portrait_cell(
     if star_path.exists() and stars > 0:
         star = Image.open(star_path).convert("RGBA").resize((12, 12), Image.LANCZOS)
         start_x = x + (PORTRAIT_CELL - (stars * 10)) // 2 + 2
-        sy = y + PORTRAIT_CELL - 10
+        sy = y + PORTRAIT_CELL + 2
         for i in range(stars):
             canvas.paste(star, (start_x + (i * 10), sy), star)
 
@@ -488,7 +488,7 @@ def generate_gac_report(
         xe = PADDING
         for m in team["members"]:
             name_short = m[:12] + "…" if len(m) > 12 else m
-            draw.text((xe, y + PORTRAIT_CELL + 4), name_short, font=small_font, fill=C_MUTED)
+            draw.text((xe, y + PORTRAIT_CELL + 18), name_short, font=small_font, fill=C_MUTED)
             xe += PORTRAIT_CELL + PORTRAIT_GAP
         y += H_PORTRAIT_ROW
 
@@ -509,7 +509,7 @@ def generate_gac_report(
             for c in counters:
                 name_short = c["name"][:12] + "…" if len(c["name"]) > 12 else c["name"]
                 color = C_READY if c.get("ready") and c.get("owned") else (C_WARN if c.get("owned") else C_MISSING)
-                draw.text((xc, y + PORTRAIT_CELL + 4), name_short, font=small_font, fill=color)
+                draw.text((xc, y + PORTRAIT_CELL + 18), name_short, font=small_font, fill=color)
                 xc += PORTRAIT_CELL + PORTRAIT_GAP
         else:
             draw.text((PADDING, y + 20), "Aucun contre répertorié", font=label_font, fill=C_MUTED)

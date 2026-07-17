@@ -37,10 +37,10 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     
     height = 100 + PADDING
     if max_ns > 0:
-        height += H_ZONE_TITLE + (max_ns * (PORTRAIT_CELL + 20)) + PADDING
+        height += H_ZONE_TITLE + (max_ns * (PORTRAIT_CELL + 30)) + PADDING
     
     if back_teams:
-        height += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 20)) + PADDING
+        height += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 30)) + PADDING
     if fleet_teams:
         height += H_ZONE_TITLE + (len(fleet_teams) * fleet_row_h) + PADDING
         
@@ -145,21 +145,21 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             draw.text((width // 2, y_current), f"ZONE SOUTH (Quota: {quotas.get('South', 0)})", font=_get_font("bold", 18), fill=C_ENEMY)
             
         for i in range(max_ns):
-            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 20))
+            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 30))
             if i < len(north_teams):
                 _draw_zone_team(north_teams[i], PADDING + 20, y_team)
             if i < len(south_teams):
                 _draw_zone_team(south_teams[i], width // 2 + 20, y_team)
                 
-        y_current += H_ZONE_TITLE + (max_ns * (PORTRAIT_CELL + 20)) + PADDING
+        y_current += H_ZONE_TITLE + (max_ns * (PORTRAIT_CELL + 30)) + PADDING
 
     # BACK
     if back_teams:
         draw.text((PADDING, y_current), f"ZONE BACK (Quota: {quotas.get('Back', 0)})", font=_get_font("bold", 18), fill=C_ENEMY)
         for i, t in enumerate(back_teams):
-            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 20))
+            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 30))
             _draw_zone_team(t, PADDING + 20, y_team)
-        y_current += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 20)) + PADDING
+        y_current += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 30)) + PADDING
 
     # FLEET
     if fleet_teams:

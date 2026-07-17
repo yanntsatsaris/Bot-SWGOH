@@ -69,7 +69,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             fleet_row_width = cell_w + PORTRAIT_GAP * 3 + (3 * cell_w) + PORTRAIT_GAP * 2 + (4 * cell_w)
             wrap = fleet_row_width > (width - x - PADDING)
 
-            _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True)
+            _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, True, False, is_ship=True)
             cx = x + PORTRAIT_CELL + PORTRAIT_GAP * 3
             drawn = 1
             row2_y = y + PORTRAIT_CELL + 10
@@ -80,7 +80,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                     if wrap and drawn == 4:
                         cx = row2_x
                     cur_y = row2_y if (wrap and drawn >= 4) else y
-                    _draw_portrait_cell(canvas, cx, cur_y, m, None, None, True, True, True)
+                    _draw_portrait_cell(canvas, cx, cur_y, m, None, None, True, True, True, False, is_ship=True)
                     cx += PORTRAIT_CELL + PORTRAIT_GAP
                     if drawn == 3 and not wrap:
                         cx += PORTRAIT_GAP * 2
@@ -90,7 +90,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                 if wrap and drawn == 4:
                     cx = row2_x
                 cur_y = row2_y if (wrap and drawn >= 4) else y
-                _draw_portrait_cell(canvas, cx, cur_y, None, None, None, True, True, True)
+                _draw_portrait_cell(canvas, cx, cur_y, None, None, None, True, True, True, False, is_ship=True)
                 cx += PORTRAIT_CELL + PORTRAIT_GAP
                 if drawn == 3 and not wrap:
                     cx += PORTRAIT_GAP * 2
@@ -101,17 +101,17 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
         else:
             slots = 3 if fmt == "3v3" else 5
             rel, gr = get_unit_details(leader_id)
-            _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, True)
+            _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, True, False, is_ship=False)
             x += PORTRAIT_CELL + PORTRAIT_GAP
             drawn = 1
             for m in members:
                 if m != leader_id and drawn < slots:
                     rel, gr = get_unit_details(m)
-                    _draw_portrait_cell(canvas, x, y, m, rel, gr, True, True, True)
+                    _draw_portrait_cell(canvas, x, y, m, rel, gr, True, True, True, False, is_ship=False)
                     x += PORTRAIT_CELL + PORTRAIT_GAP
                     drawn += 1
             while drawn < slots:
-                _draw_portrait_cell(canvas, x, y, None, None, None, True, True, True)
+                _draw_portrait_cell(canvas, x, y, None, None, None, True, True, True, False, is_ship=False)
                 x += PORTRAIT_CELL + PORTRAIT_GAP
                 drawn += 1
         

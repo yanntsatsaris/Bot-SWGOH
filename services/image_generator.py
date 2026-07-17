@@ -171,6 +171,7 @@ def _draw_portrait_cell(
     owned: bool,
     is_enemy: bool = False,
     missing_omicron: bool = False,
+    is_ship: bool = False,
 ) -> None:
     draw = ImageDraw.Draw(canvas)
     
@@ -185,8 +186,6 @@ def _draw_portrait_cell(
         border_color = C_READY
     else:
         border_color = C_WARN
-    
-    is_ship = combat_type == 2
 
     # --- 2. Collage du portrait (au centre) ---
     portrait = _load_portrait(base_id)
@@ -314,6 +313,7 @@ def _draw_portrait_row(
             owned=unit.get("owned", True),
             is_enemy=is_enemy,
             missing_omicron=unit.get("missing_omicron", False),
+            is_ship=unit.get("combat_type") == 2,
         )
         x += PORTRAIT_CELL + PORTRAIT_GAP
 

@@ -91,12 +91,6 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             "zetas": zetas_count,
             "combat_type": combat_type
         }
-            "gear_tier": unit.get("currentTier", 0),
-            "relic_tier": relic_tier,
-            "rarity": unit.get("currentRarity", 0),
-            "has_omicron": has_omicron,
-            "combat_type": combat_type
-        }
     return roster
 
 async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_ids: set, habits: dict = None) -> dict:

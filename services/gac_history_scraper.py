@@ -440,7 +440,7 @@ class GACHistoryScraper:
                         for link in hub_links_sorted:
                             s_id = link.split("/gac-history/")[-1].split("/")[0]
                             if s_id not in unique_seasons:
-                                if len(unique_seasons) >= 2:
+                                if len(unique_seasons) >= 8:
                                     break
                                 unique_seasons.append(s_id)
                             filtered_links.append(link)

@@ -24,12 +24,14 @@ for i in range(0, 14):
 # Assets spécifiques avec leur URL exacte (récupérés depuis swgoh.gg)
 SPECIFIC_URLS = {
     "tex.charui_zeta.png": "https://assets.swgoh.gg/frontend/assets/tex.skill_zeta_glow-CGUj_-iS.png",
-    "tex.charui_omicron.png": "https://assets.swgoh.gg/frontend/assets/omicron-badge-DF6neN1s.png"
+    "tex.charui_omicron.png": "https://assets.swgoh.gg/frontend/assets/omicron-badge-DF6neN1s.png",
+    "character-gear-frame--g5.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g5-Bv1rwaFN.webp",
+    "character-gear-frame--g8.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g8-CiXvTrKe.webp",
+    "character-gear-frame--g9.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g9-CDY2IiEe.webp",
+    "character-gear-frame--g10.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g10-CXccoXYw.webp",
+    "character-gear-frame--g11.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g11-qGoNykIE.webp",
+    "character-gear-frame--g12.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g12-CUyRFt2B.webp",
 }
-
-for i in range(0, 14):
-    # Ajout des URLs complètes pour les cadres de gear (en supposant le même hash ou s'il est ignoré)
-    SPECIFIC_URLS[f"character-gear-frame--g{i}.webp"] = f"https://assets.swgoh.gg/frontend/assets/character-gear-frame--g{i}-qGoNykIE.webp"
 
 async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> None:
     filepath = ASSETS_DIR / asset_name

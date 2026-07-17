@@ -308,10 +308,22 @@ def _draw_portrait_cell(
             draw.text((x + PORTRAIT_CELL//2, my + 16), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
 
     # --- 6. Zetas / Omicrons ---
-    # Omicrons (Gauche)
+    # Zetas (Gauche)
+    if zetas > 0:
+        zeta_path = Path("assets/overlays/tex.charui_zeta.png")
+        zx, zy = x, y + PORTRAIT_CELL - 28
+        if zeta_path.exists():
+            zeta_img = Image.open(zeta_path).convert("RGBA").resize((28, 28), Image.LANCZOS)
+            canvas.paste(zeta_img, (zx, zy), zeta_img)
+        else:
+            draw.ellipse([zx + 2, zy + 2, zx + 26, zy + 26], fill="#f1c40f")
+            
+        draw.text((zx + 14, zy + 14), str(zetas), font=_get_font("bold", 12), fill=(255, 255, 255), anchor="mm")
+
+    # Omicrons (Droite)
     if omicrons > 0 or missing_omicron:
         omi_path = Path("assets/overlays/tex.charui_omicron.png")
-        ox, oy = x, y + PORTRAIT_CELL - 28
+        ox, oy = x + PORTRAIT_CELL - 28, y + PORTRAIT_CELL - 28
         if omi_path.exists():
             omi = Image.open(omi_path).convert("RGBA").resize((28, 28), Image.LANCZOS)
             canvas.paste(omi, (ox, oy), omi)
@@ -322,18 +334,6 @@ def _draw_portrait_cell(
         text_val = str(omicrons) if not missing_omicron else "!"
         text_color = (255, 255, 255) if not missing_omicron else (255, 100, 100)
         draw.text((ox + 14, oy + 14), text_val, font=_get_font("bold", 12), fill=text_color, anchor="mm")
-
-    # Zetas (Droite)
-    if zetas > 0:
-        zeta_path = Path("assets/overlays/tex.charui_zeta.png")
-        zx, zy = x + PORTRAIT_CELL - 28, y + PORTRAIT_CELL - 28
-        if zeta_path.exists():
-            zeta_img = Image.open(zeta_path).convert("RGBA").resize((28, 28), Image.LANCZOS)
-            canvas.paste(zeta_img, (zx, zy), zeta_img)
-        else:
-            draw.ellipse([zx + 2, zy + 2, zx + 26, zy + 26], fill="#f1c40f")
-            
-        draw.text((zx + 14, zy + 14), str(zetas), font=_get_font("bold", 12), fill=(255, 255, 255), anchor="mm")
 
     # Dessin des étoiles
     star_path = Path("assets/overlays/tex.charui_star_character.png")

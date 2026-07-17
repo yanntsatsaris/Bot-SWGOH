@@ -54,31 +54,34 @@ class GACHistoryScraper:
 
     async def queue_scrape(self, ally_code: str, interaction=None, callback=None):
         """Ajoute un joueur à la file d'attente pour être scrapé."""
-        if interaction:
-            if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
-                clean_code = ally_code.replace("batch_", "").replace(".txt", "")
-            else:
-                clean_code = ally_code.replace("-", "").strip() if not ally_code.startswith("http") else self._extract_round_info_from_url(ally_code).get("ally_code", "unknown")
-            if clean_code != "unknown":
-                if clean_code not in self.interactions:
-                    self.interactions[clean_code] = {}
-                self.interactions[clean_code]["interaction"] = interaction
-                if callback is not None:
-                    self.interactions[clean_code]["callback"] = callback
-                
-                self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
-                self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
+        if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
+            clean_code = ally_code.replace("batch_", "").replace(".txt", "")
+        elif ally_code.startswith("http"):
+            round_info = self._extract_round_info_from_url(ally_code)
+            clean_code = round_info["ally_code"] if round_info and round_info.get("ally_code") else "unknown"
         else:
-            if ally_code.startswith("batch_") and ally_code.endswith(".txt"):
-                clean_code = ally_code.replace("batch_", "").replace(".txt", "")
-                self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
-                self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
-            else:
-                round_info = self._extract_round_info_from_url(ally_code)
-                if round_info and round_info.get("ally_code"):
-                    clean_code = round_info["ally_code"]
-                    self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
-                    self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
+            clean_code = ally_code.replace("-", "").strip()
+
+        if clean_code == "unknown":
+            return
+
+        if clean_code not in self.interactions:
+            self.interactions[clean_code] = {"interactions": [], "callbacks": []}
+
+        if interaction:
+            self.interactions[clean_code]["interactions"].append(interaction)
+        if callback:
+            self.interactions[clean_code]["callbacks"].append((interaction, callback))
+
+        is_batch = str(ally_code).startswith("batch_")
+        
+        # Ne pas re-queuter si c'est déjà en attente et ce n'est pas un batch
+        if not is_batch and self.pending_tasks.get(clean_code, 0) > 0:
+            logger.info(f"⏭️ {clean_code} est déjà en cours de scraping. Ajout aux abonnés.")
+            return
+
+        self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+        self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
 
         await self.queue.put((ally_code, interaction))
         logger.info(f"Ajout de {ally_code} à la file d'attente de scraping. (Taille: {self.queue.qsize()})")
@@ -155,12 +158,17 @@ class GACHistoryScraper:
                                                 if progress_match:
                                                     current = int(progress_match.group(1))
                                                     total = int(progress_match.group(2))
-                                                    # Màj tous les 5 matchs ou au début/fin pour éviter le rate-limit
                                                     if total > 1 and (current == 1 or current == total or current % 5 == 0):
-                                                        pct = int((current / total) * 30) + 60
+                                                        pct = int((current / total) * 60) + 10
                                                         bars = int((pct / 100) * 10)
                                                         bar_str = "■" * bars + "□" * (10 - bars)
-                                                        await interaction.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Extraction continue en cours ({current}/{total})...")
+                                                        
+                                                        # Update all interactions
+                                                        saved_int = self.interactions.get(clean_code, {})
+                                                        for inter in saved_int.get("interactions", []):
+                                                            try:
+                                                                asyncio.create_task(inter.edit_original_response(content=f"⏳ **[{bar_str}] {pct}%** : Extraction continue en cours ({current}/{total})..."))
+                                                            except: pass
                                                 elif "Cloudflare détecté" in msg or "Pas de Cloudflare" in msg:
                                                     pass # On ignore pour ne pas spammer pendant le batch
                                                 elif "Contenu GAC détecté" in msg:
@@ -303,8 +311,9 @@ class GACHistoryScraper:
                             if c_code in self.total_tasks:
                                 del self.total_tasks[c_code]
                             saved_int = self.interactions.pop(c_code, None)
-                            if saved_int and saved_int.get("callback"):
-                                asyncio.create_task(saved_int["callback"](c_code, saved_int["interaction"]))
+                            if saved_int and saved_int.get("callbacks"):
+                                for inter, cb in saved_int["callbacks"]:
+                                    asyncio.create_task(cb(c_code, inter))
                 
                 # Petite pause entre chaque profil pour ne pas affoler Cloudflare
                 await asyncio.sleep(5)
@@ -426,7 +435,17 @@ class GACHistoryScraper:
                             if full_url not in hub_links: hub_links.append(full_url)
                     if hub_links:
                         hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
-                        results.append({"matches": [], "hub_links": hub_links_sorted, "url": target_url})
+                        unique_seasons = []
+                        filtered_links = []
+                        for link in hub_links_sorted:
+                            s_id = link.split("/gac-history/")[-1].split("/")[0]
+                            if s_id not in unique_seasons:
+                                if len(unique_seasons) >= 3:
+                                    break
+                                unique_seasons.append(s_id)
+                            filtered_links.append(link)
+                            
+                        results.append({"matches": [], "hub_links": filtered_links, "url": target_url})
                         continue
                     
                 land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]

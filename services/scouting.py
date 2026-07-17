@@ -17,6 +17,10 @@ LEAGUE_MAP = {
     5: "KYBER"
 }
 
+UNIT_RESTRICTIONS = {
+    "EZRABRIDGEREXILE": ["GLAHSOKATANO"],
+}
+
 async def get_omicron_dict() -> dict:
     omicrons = {}
     try:
@@ -72,7 +76,7 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, ship_base_ids: set
         }
     return roster
 
-async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict = None) -> dict:
+async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_ids: set, habits: dict = None) -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
@@ -120,7 +124,12 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
         # Vu que ce sont des équipes exactes issues des stats globales, on tolère qu'il manque au maximum 1 membre non-leader,
         # qui sera bouché par les leftovers. Si on exige tout le monde, on risque de rejeter trop d'équipes si le joueur 
         # a mis un perso différent. Mais idéalement, on exige au moins le core minimum.
-        core_ready = [m for m in core if m in enemy_index and _is_gac_ready(enemy_index[m])]
+        core_ready = []
+        for m in core:
+            if m in enemy_index and _is_gac_ready(enemy_index[m]):
+                if m in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[m]:
+                    continue
+                core_ready.append(m)
         
         # RÈGLE D'OR STRATÉGIQUE : 
         # L'équipe doit avoir au moins (expected_size - 1) membres prêts (ex: 4/5 ou 2/3)
@@ -171,7 +180,13 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
                 members = t["members"]
                 percent = t["percent"]
                 
-                valid_members = [m for m in members if m not in used_base_ids]
+                valid_members = []
+                for m in members:
+                    if m not in used_base_ids:
+                        if m in UNIT_RESTRICTIONS and leader not in UNIT_RESTRICTIONS[m]:
+                            continue
+                        valid_members.append(m)
+
                 if leader not in used_base_ids:
                     
                     # FILTRE ANTI-GARBAGE (Équipes auto-déployées absurdes)
@@ -255,6 +270,69 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
         for _ in range(remaining_q):
             zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
 
+    # Construire leader_synergy_map pour le bouchage des trous (Hole-Filling)
+    leader_synergy_map = {}
+    for team_data in dynamic_teams:
+        ldr = team_data["leader_id"]
+        if ldr not in leader_synergy_map:
+            leader_synergy_map[ldr] = []
+        for m in team_data.get("core", []):
+            if m != ldr and m not in leader_synergy_map[ldr]:
+                leader_synergy_map[ldr].append(m)
+
+    # BOUCHAGE DE TROUS (Hole-Filling) AVEC SYNERGIE
+    leftovers = [
+        m for m, data in enemy_index.items()
+        if m not in used_base_ids
+        and data.get("combat_type", 1) == 1
+    ]
+    leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
+
+    for zone in ["North", "South", "Back"]:
+        for t in zones[zone]:
+            target = t.get("target_size", expected_size)
+            leader_id = t.get("leader_id")
+            need = target - (1 if leader_id else 0)
+            while len(t["members_ids"]) < need:
+                if not leader_id:
+                    # Équipe totalement vide : prendre le plus fort
+                    filler = None
+                    for i, l in enumerate(leftovers):
+                        if l in UNIT_RESTRICTIONS and not UNIT_RESTRICTIONS[l]: # Si pas de leader valide on passe
+                            continue
+                        filler = leftovers.pop(i)
+                        break
+                    if not filler:
+                        break
+                    t["leader_id"] = filler
+                    leader_id = filler
+                    t["source"] = "leftover"
+                    need = target - 1
+                else:
+                    filler = None
+                    synergy_candidates = leader_synergy_map.get(leader_id, [])
+                    for candidate in synergy_candidates:
+                        if candidate in leftovers and candidate not in t["members_ids"]:
+                            if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
+                                continue
+                            filler = candidate
+                            leftovers.remove(candidate)
+                            break
+
+                    if filler is None and leftovers:
+                        for i, l in enumerate(leftovers):
+                            if l in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[l]:
+                                continue
+                            filler = leftovers.pop(i)
+                            break
+
+                    if filler is None:
+                        break
+
+                    t["members_ids"].append(filler)
+                if filler:
+                    used_base_ids.add(filler)
+
     # 2. FLOTTES
     available_fleets = []
     for cap_id, team_data in GAC_FLEETS.items():
@@ -296,12 +374,14 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
         m for m, data in enemy_index.items()
         if m not in used_base_ids
         and data.get("combat_type", 1) == 2
+        and m in ship_base_ids
         and "CAPITAL" in m
     ]
     leftover_ships = [
         m for m, data in enemy_index.items()
         if m not in used_base_ids
         and data.get("combat_type", 1) == 2
+        and m in ship_base_ids
         and "CAPITAL" not in m
         and data.get("combat_type", 1) != 1  # Exclure explicitement les persos
     ]
@@ -324,7 +404,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, habits: dict
 
     return zones
 
-async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str, enemy_zones: dict = None) -> dict:
+async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str, ship_base_ids: set, enemy_zones: dict = None) -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
@@ -451,9 +531,14 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             while len(t["members_ids"]) < need:
                 if not leader_id:
                     # Équipe totalement vide : prendre le plus fort
-                    if not leftovers:
+                    filler = None
+                    for i, l in enumerate(leftovers):
+                        if l in UNIT_RESTRICTIONS and not UNIT_RESTRICTIONS[l]:
+                            continue
+                        filler = leftovers.pop(i)
                         break
-                    filler = leftovers.pop(0)
+                    if not filler:
+                        break
                     t["leader_id"] = filler
                     leader_id = filler
                     t["source"] = "leftover"
@@ -465,6 +550,8 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                     # Niveau 1 : synergie méta parmi les leftovers libres
                     for candidate in synergy_candidates:
                         if candidate in leftovers and candidate not in t["members_ids"]:
+                            if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
+                                continue
                             filler = candidate
                             leftovers.remove(candidate)
                             break
@@ -478,6 +565,8 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                                 and candidate not in t["members_ids"]
                                 and my_index[candidate].get("combat_type", 1) == 1
                             ):
+                                if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
+                                    continue
                                 filler = candidate
                                 used_base_ids.discard(candidate)
                                 log.debug(f"[HoleFill] {candidate} libéré de l'attaque → synergie {leader_id}")
@@ -485,7 +574,11 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
 
                     # Niveau 3 : fallback — le plus puissant dispo dans les leftovers
                     if filler is None and leftovers:
-                        filler = leftovers.pop(0)
+                        for i, l in enumerate(leftovers):
+                            if l in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[l]:
+                                continue
+                            filler = leftovers.pop(i)
+                            break
 
                     if filler is None:
                         break  # Rien à placer pour cette équipe
@@ -530,8 +623,8 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 8})
 
     # 2.5 BOUCHAGE FLOTTES
-    leftover_capitals = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" in m]
-    leftover_ships = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and "CAPITAL" not in m]
+    leftover_capitals = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and m in ship_base_ids and "CAPITAL" in m]
+    leftover_ships = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and m in ship_base_ids and "CAPITAL" not in m]
     
     leftover_capitals.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
     leftover_ships.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
@@ -563,23 +656,23 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     league_name = "CARBONITE"
     target_code = my_ally_code.replace("-", "").strip() if my_ally_code else clean_code
     
-    from database.db import get_db
-    async with get_db() as db:
-        cursor = await db.execute("SELECT league FROM gac_rounds WHERE player_code = ? AND league IS NOT NULL ORDER BY id DESC LIMIT 1", (target_code,))
-        row = await cursor.fetchone()
-        if row and row["league"]:
-            league_name = row["league"].upper()
-        else:
-            target_profile = await get_player(target_code) if my_ally_code else profile
-            if target_profile:
-                season_status = target_profile.get("seasonStatus", [])
-                if season_status:
-                    last_season = season_status[-1]
-                    league_val = last_season.get("league", "CARBONITE")
-                    if isinstance(league_val, str):
-                        league_name = league_val.split("_")[-1].upper()
-                    else:
-                        league_name = LEAGUE_MAP.get(league_val, "CARBONITE")
+    target_profile = await get_player(target_code) if my_ally_code else profile
+    if target_profile:
+        season_status = target_profile.get("seasonStatus", [])
+        if season_status:
+            last_season = season_status[-1]
+            league_val = last_season.get("league", "CARBONITE")
+            if isinstance(league_val, str):
+                league_name = league_val.split("_")[-1].upper()
+            else:
+                league_name = LEAGUE_MAP.get(league_val, "CARBONITE")
+    else:
+        from database.db import get_db
+        async with get_db() as db:
+            cursor = await db.execute("SELECT league FROM gac_rounds WHERE player_code = ? AND league IS NOT NULL ORDER BY id DESC LIMIT 1", (target_code,))
+            row = await cursor.fetchone()
+            if row and row["league"]:
+                league_name = row["league"].upper()
             
     if league_name not in ["CARBONITE", "BRONZIUM", "CHROMIUM", "AURODIUM", "KYBER"]:
         league_name = "CARBONITE"
@@ -592,7 +685,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     from services.gac_scout_analyzer import GacScoutAnalyzer
     habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
     
-    enemy_zones = await _predict_zones(enemy_index, quotas, fmt, habits)
+    enemy_zones = await _predict_zones(enemy_index, quotas, fmt, ship_base_ids, habits)
     
     # ---------------------------------------------------------------------
     # NOUVEAUTÉ : Attente SYCHRONE du scraping des counters manquants
@@ -653,7 +746,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_profile = await get_player(my_clean)
         if my_profile:
             my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, ship_base_ids)
-            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, enemy_zones)
+            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
             result["my_roster_index"] = my_index

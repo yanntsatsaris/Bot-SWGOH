@@ -94,10 +94,11 @@ class CounterSuggestionView(discord.ui.View):
     def __init__(
         self, interaction: discord.Interaction, suggestions: list, def_leader: str,
         def_members: list, format_type: str, adv_roster: dict | None,
-        adv_name: str, my_roster: dict, my_name: str, current_index: int = 0
+        adv_name: str, my_roster: dict, my_name: str, used_attack_teams: dict, current_index: int = 0
     ):
-        super().__init__(timeout=600)
+        super().__init__(timeout=None)
         self.original_interaction = interaction
+        self.used_attack_teams = used_attack_teams
         self.suggestions = suggestions
         self.def_leader = def_leader
         self.def_members = def_members
@@ -206,6 +207,11 @@ class CounterSuggestionView(discord.ui.View):
         )
 
         if won:
+            user_id = str(self.original_interaction.user.id)
+            if user_id not in self.used_attack_teams:
+                self.used_attack_teams[user_id] = set()
+            self.used_attack_teams[user_id].add(atk_leader)
+            
             # En cas de victoire, c'est terminé, on désactive les boutons
             for child in self.children:
                 child.disabled = True
@@ -228,6 +234,7 @@ class CounterSuggestionView(discord.ui.View):
 class GACCounterCog(commands.Cog, name="GACCounter"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.used_attack_teams = {}
 
     @app_commands.command(
         name="gac-counter",
@@ -305,9 +312,14 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
         if not existing:
             # Scraping à la demande
             qsize = _scraper.waiting_jobs
+            wait_time_sec = (qsize + 1) * 20
+            wait_min = wait_time_sec // 60
+            wait_sec = wait_time_sec % 60
+            time_str = f"{wait_min}m {wait_sec}s" if wait_min > 0 else f"{wait_sec}s"
+
             if qsize > 0:
                 msg_attente = (
-                    f"⏳ **File d'attente** : tu es en position **{qsize + 1}** (~{int(qsize * 1.5)} min d'attente).\n"
+                    f"⏳ **File d'attente** : tu es en position **{qsize + 1}** (~{time_str} d'attente).\n"
                     f"Extraction de **{get_name(leader_id)}** en {fmt} en cours..."
                 )
             else:
@@ -329,7 +341,8 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
             return
 
         # ── 5. Filtrer par roster et trier ───────────────────────────────────
-        counters = await get_best_counter_with_memory(leader_id, members_list, fmt, my_roster)
+        used_set = self.used_attack_teams.get(str(interaction.user.id), set())
+        counters = await get_best_counter_with_memory(leader_id, members_list, fmt, my_roster, excluded_chars=used_set)
 
         if not counters:
             await interaction.followup.send(
@@ -341,7 +354,7 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
         # ── 6. Afficher ───────────────────────────────────────────────────────
         view = CounterSuggestionView(
             interaction, counters, leader_id, members_list, fmt,
-            adv_roster, adv_name, my_roster, my_name
+            adv_roster, adv_name, my_roster, my_name, self.used_attack_teams
         )
         content, img_file = await view._build_message_and_file()
 

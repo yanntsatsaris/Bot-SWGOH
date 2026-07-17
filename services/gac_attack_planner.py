@@ -41,7 +41,15 @@ def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, forma
             })
     
     result.sort(key=lambda c: c.get("composite_score", 0), reverse=True)
-    return result
+    
+    dedup = []
+    seen = set()
+    for c in result:
+        if c["atk_leader_id"] not in seen:
+            seen.add(c["atk_leader_id"])
+            dedup.append(c)
+            
+    return dedup
 
 async def get_best_counter_with_memory(def_leader_id: str, def_members_ids: list[str], format_type: str, my_roster_index: dict, excluded_chars: set = None) -> list[dict]:
     """

@@ -8,30 +8,28 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger(__name__)
 
 ASSETS_DIR = Path("assets/overlays")
-BASE_URL = "https://game-assets.swgoh.gg"
-ALT_URL = "https://swgoh.gg/static/img/assets"
+BASE_URL = "https://assets.swgoh.gg/frontend/assets"
+ALT_URL = "https://game-assets.swgoh.gg"
 
 ASSETS_TO_FETCH = [
-    # Alignements
-    "tex.charui_portrait_bg_lightside.png",
-    "tex.charui_portrait_bg_darkside.png",
-    "tex.charui_portrait_bg_neutral.png",
-    # Reliques
-    "tex.charui_relic_1.png", "tex.charui_relic_2.png", "tex.charui_relic_3.png",
-    "tex.charui_relic_4.png", "tex.charui_relic_5.png", "tex.charui_relic_6.png",
-    "tex.charui_relic_7.png", "tex.charui_relic_8.png", "tex.charui_relic_9.png",
-    # Etoiles
-    "tex.charui_star_character.png", "tex.charui_star_character_empty.png",
     # Zetas / Omicrons
     "tex.charui_zeta.png", "tex.charui_omicron.png",
 ]
 
-# Ajout dynamique des gears (1 à 12)
-for i in range(1, 13):
-    # Différentes variantes possibles de noms dans les assets du jeu
-    ASSETS_TO_FETCH.append(f"tex.charui_portraithold_gear{i}.png")
-    ASSETS_TO_FETCH.append(f"tex.charui_portrait_frame_gear{i}.png")
-    ASSETS_TO_FETCH.append(f"tex.charui_gear{i}.png")
+# Ajout dynamique des gears (0 à 13)
+# On utilise la structure de lien fournie par l'utilisateur
+for i in range(0, 14):
+    ASSETS_TO_FETCH.append(f"character-gear-frame--g{i}.webp")
+
+# Assets spécifiques avec leur URL exacte (récupérés depuis swgoh.gg)
+SPECIFIC_URLS = {
+    "tex.charui_zeta.png": "https://assets.swgoh.gg/frontend/assets/tex.skill_zeta_glow-CGUj_-iS.png",
+    "tex.charui_omicron.png": "https://assets.swgoh.gg/frontend/assets/omicron-badge-DF6neN1s.png"
+}
+
+for i in range(0, 14):
+    # Ajout des URLs complètes pour les cadres de gear (en supposant le même hash ou s'il est ignoré)
+    SPECIFIC_URLS[f"character-gear-frame--g{i}.webp"] = f"https://assets.swgoh.gg/frontend/assets/character-gear-frame--g{i}-qGoNykIE.webp"
 
 async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> None:
     filepath = ASSETS_DIR / asset_name
@@ -39,12 +37,16 @@ async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> Non
         log.info(f"Déjà présent: {asset_name}")
         return
 
-    # Try BASE_URL with and without /textures/
-    urls_to_try = [
-        f"{BASE_URL}/textures/{asset_name}",
-        f"{BASE_URL}/{asset_name}",
-        f"{ALT_URL}/{asset_name}"
-    ]
+    # Si on a une URL exacte pour cet asset, on l'utilise en priorité
+    if asset_name in SPECIFIC_URLS:
+        urls_to_try = [SPECIFIC_URLS[asset_name]]
+    else:
+        # Sinon on tente les URLs génériques
+        urls_to_try = [
+            f"{BASE_URL}/textures/{asset_name}",
+            f"{BASE_URL}/{asset_name}",
+            f"{ALT_URL}/{asset_name}"
+        ]
     
     for url in urls_to_try:
         log.info(f"Tentative de téléchargement depuis : {url}")

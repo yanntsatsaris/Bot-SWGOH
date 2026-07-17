@@ -108,6 +108,21 @@ def _get_font(style: str, size: int) -> ImageFont.FreeTypeFont:
         _FONTS[key] = _find_font(style, size)
     return _FONTS[key]
 
+# ---------------------------------------------------------------------------
+# Helpers Alignements
+# ---------------------------------------------------------------------------
+_ALIGNMENTS: dict[str, str] = {}
+def _get_alignment(base_id: str) -> str:
+    global _ALIGNMENTS
+    if not _ALIGNMENTS:
+        try:
+            import json
+            with open("data/unit_alignments.json", "r", encoding="utf-8") as f:
+                _ALIGNMENTS = json.load(f)
+        except Exception as e:
+            log.warning("Impossible de charger les alignements: %s", e)
+    return _ALIGNMENTS.get(base_id, "Light Side")
+
 
 # ---------------------------------------------------------------------------
 # Helpers portraits
@@ -157,91 +172,117 @@ def _draw_portrait_cell(
     is_enemy: bool = False,
     missing_omicron: bool = False,
 ) -> None:
-    """
-    Dessine une cellule portrait (fond + image circulaire + badge de niveau).
-
-    Args:
-        canvas:     Image PIL de destination.
-        x, y:       Coin supérieur gauche de la cellule.
-        base_id:    Base ID du personnage.
-        relic_tier: Tier de relique (1-9) ou None.
-        gear_tier:  Tier de gear (1-13) ou None.
-        ready:      Unité prête pour le GAC (R5+ / G13+).
-        owned:      Le joueur possède l'unité.
-        is_enemy:   True pour les unités ennemies.
-        missing_omicron: True si le personnage requiert un omicron GAC qu'il n'a pas.
-    """
     draw = ImageDraw.Draw(canvas)
-
-    # Couleur de la bordure
+    
+    # --- 1. Dessin du fond d'alignement optionnel ---
     if is_enemy:
         border_color = C_ENEMY
     elif not owned:
         border_color = C_MISSING
     elif missing_omicron:
-        border_color = "#9b59b6"  # Violet pour Omicron manquant
+        border_color = "#9b59b6"
     elif ready:
         border_color = C_READY
     else:
         border_color = C_WARN
 
-    # Alignment Border (Thick circle instead of thin line)
-    draw.ellipse(
-        [x, y, x + PORTRAIT_CELL - 1, y + PORTRAIT_CELL - 1],
-        fill=C_SECTION,
-        outline=border_color,
-        width=4,
-    )
-
-    # Portrait
+    # --- 2. Collage du portrait (au centre) ---
     portrait = _load_portrait(base_id)
     portrait.putalpha(_circle_mask(PORTRAIT_SIZE))
     offset = (PORTRAIT_CELL - PORTRAIT_SIZE) // 2
     canvas.paste(portrait, (x + offset, y + offset), portrait)
 
-    # Overlay semi-transparent si non possédé
+    # --- 3. Overlay assombri si non possédé ---
     if not owned and not is_enemy:
         overlay = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL), (0, 0, 0, 0))
-        ov_draw = ImageDraw.Draw(overlay)
-        ov_draw.ellipse(
-            [0, 0, PORTRAIT_CELL - 1, PORTRAIT_CELL - 1],
-            fill=(0, 0, 0, 150),
-        )
+        ImageDraw.Draw(overlay).ellipse([0, 0, PORTRAIT_CELL - 1, PORTRAIT_CELL - 1], fill=(0, 0, 0, 150))
         canvas.paste(overlay, (x, y), overlay)
 
+    # --- 4. Cadre de gear (Si pas de cadre 0) ---
+    gear_to_draw = 13 if (relic_tier and relic_tier >= 1) else (gear_tier or 1)
+    if gear_to_draw > 0:
+        gear_path = Path(f"assets/overlays/gear{gear_to_draw}.webp")
+        if gear_path.exists():
+            gear_img = Image.open(gear_path).convert("RGBA")
+            gear_img = gear_img.resize((PORTRAIT_CELL, PORTRAIT_CELL), Image.LANCZOS)
+            canvas.paste(gear_img, (x, y), gear_img)
+        else:
+            # Fallback border
+            draw.ellipse([x, y, x + PORTRAIT_CELL - 1, y + PORTRAIT_CELL - 1], fill=None, outline=border_color, width=4)
+
+    # --- 5. Relique ou Niveau ---
     badge_font = _get_font("bold", 12)
-    # Badge Relic/Gear (bas-droite, style SWGOH)
+    level_font = _get_font("bold", 10)
+    
+    gl_list = ["JEDIMASTERKENOBI", "LORDVADER", "JABBATHEHUTT", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "GLREY", "GRANDMASTERLUKESKYWALKER", "LEIAORGANA"]
+    is_gl = base_id in gl_list if base_id else False
+    
+    # Détermination de la couleur (Light/Dark/Neutral)
+    alignment = _get_alignment(base_id) if base_id else "Light Side"
+    if alignment == "Dark Side":
+        relic_color = "red"
+    elif alignment == "Neutral":
+        relic_color = "neutral"
+    else:
+        relic_color = "blue"
+
     if relic_tier and relic_tier >= 1:
-        # Cercle rouge/or avec texte
-        br = 12
-        cx, cy = x + PORTRAIT_CELL - br - 4, y + PORTRAIT_CELL - br - 4
-        fill_color = (200, 20, 20) if relic_tier >= 5 else (180, 150, 0) # Rouge si R5+, Or sinon
-        draw.ellipse([cx - br, cy - br, cx + br, cy + br], fill=fill_color, outline=(0, 0, 0), width=2)
-        draw.text((cx, cy), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
-    elif gear_tier and gear_tier >= 1:
-        # Cercle basique avec contour gris
-        br = 12
-        cx, cy = x + PORTRAIT_CELL - br - 4, y + PORTRAIT_CELL - br - 4
-        draw.ellipse([cx - br, cy - br, cx + br, cy + br], fill=(50, 50, 50), outline=(150, 150, 150), width=2)
-        draw.text((cx, cy), f"G{gear_tier}", font=_get_font("bold", 10), fill=(255, 255, 255), anchor="mm")
+        # Côté droit
+        r_right_path = Path(f"assets/overlays/relic_{relic_color}_right.webp")
+        if r_right_path.exists():
+            r_right = Image.open(r_right_path).convert("RGBA").resize((PORTRAIT_CELL, PORTRAIT_CELL), Image.LANCZOS)
+            canvas.paste(r_right, (x, y), r_right)
+            
+            # Côté gauche (flip horizontal)
+            r_left = r_right.transpose(Image.FLIP_LEFT_RIGHT)
+            canvas.paste(r_left, (x, y), r_left)
 
-    # Zetas / Omicrons (gauche, style SWGOH)
-    # Par défaut on a pas l'info du nb de zeta, on affiche juste l'alerte Omicron
+        # Macaron du bas
+        macaron_name = "relic_gl.webp" if is_gl else f"relic_{relic_color}.webp"
+        macaron_path = Path(f"assets/overlays/{macaron_name}")
+        if macaron_path.exists():
+            macaron = Image.open(macaron_path).convert("RGBA")
+            # Taille approx 30x30 pour le macaron ?
+            macaron = macaron.resize((32, 32), Image.LANCZOS)
+            mx = x + (PORTRAIT_CELL - 32) // 2
+            my = y + PORTRAIT_CELL - 24
+            canvas.paste(macaron, (mx, my), macaron)
+            
+            # Texte du tier
+            draw.text((x + PORTRAIT_CELL//2, my + 16), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
+            
+    else:
+        # Macaron de niveau
+        level_path = Path("assets/overlays/level.webp")
+        if level_path.exists():
+            lvl_img = Image.open(level_path).convert("RGBA")
+            lvl_img = lvl_img.resize((32, 32), Image.LANCZOS)
+            mx = x + (PORTRAIT_CELL - 32) // 2
+            my = y + PORTRAIT_CELL - 24
+            canvas.paste(lvl_img, (mx, my), lvl_img)
+            draw.text((x + PORTRAIT_CELL//2, my + 16), "85", font=level_font, fill=(255, 255, 255), anchor="mm")
+
+    # --- 6. Zetas / Omicrons ---
+    # Omicro placeholder (on collera tex.charui_omicron.png plus tard)
     if missing_omicron:
-        omi_r = 12
-        ox, oy = x + omi_r + 4, y + PORTRAIT_CELL - omi_r - 4
-        draw.ellipse([ox - omi_r, oy - omi_r, ox + omi_r, oy + omi_r], fill="#9b59b6", outline=(255, 255, 255), width=1)
-        draw.text((ox, oy), "Omi", font=_get_font("bold", 9), fill=(255, 255, 255), anchor="mm")
+        omi_path = Path("assets/overlays/tex.charui_omicron.png")
+        if omi_path.exists():
+            omi = Image.open(omi_path).convert("RGBA").resize((24, 24), Image.LANCZOS)
+            canvas.paste(omi, (x + PORTRAIT_CELL - 24, y + PORTRAIT_CELL - 24), omi)
+        else:
+            omi_r = 12
+            ox, oy = x + PORTRAIT_CELL - omi_r - 4, y + PORTRAIT_CELL - omi_r - 4
+            draw.ellipse([ox - omi_r, oy - omi_r, ox + omi_r, oy + omi_r], fill="#9b59b6")
+            draw.text((ox, oy), "Omi", font=_get_font("bold", 9), fill=(255, 255, 255), anchor="mm")
 
-    # Dessin de 7 petites étoiles en bas au centre
-    star_r = 4
-    spacing = 10
-    start_x = x + (PORTRAIT_CELL - (7 * spacing)) // 2 + 5
-    sy = y + PORTRAIT_CELL - 4
-    for i in range(7):
-        sx = start_x + (i * spacing)
-        # On simule un losange pour l'étoile
-        draw.polygon([(sx, sy - star_r), (sx + star_r, sy), (sx, sy + star_r), (sx - star_r, sy)], fill=(255, 215, 0))
+    # Dessin des étoiles
+    star_path = Path("assets/overlays/tex.charui_star_character.png")
+    if star_path.exists():
+        star = Image.open(star_path).convert("RGBA").resize((12, 12), Image.LANCZOS)
+        start_x = x + (PORTRAIT_CELL - (7 * 10)) // 2 + 2
+        sy = y + PORTRAIT_CELL - 10
+        for i in range(7):
+            canvas.paste(star, (start_x + (i * 10), sy), star)
 
 
 def _draw_portrait_row(

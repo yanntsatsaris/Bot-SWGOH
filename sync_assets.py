@@ -19,18 +19,18 @@ ASSETS_TO_FETCH = [
 # Ajout dynamique des gears (0 à 13)
 # On utilise la structure de lien fournie par l'utilisateur
 for i in range(0, 14):
-    ASSETS_TO_FETCH.append(f"character-gear-frame--g{i}.webp")
+    ASSETS_TO_FETCH.append(f"gear{i}.webp")
 
 # Assets spécifiques avec leur URL exacte (récupérés depuis swgoh.gg)
 SPECIFIC_URLS = {
     "tex.charui_zeta.png": "https://assets.swgoh.gg/frontend/assets/tex.skill_zeta_glow-CGUj_-iS.png",
     "tex.charui_omicron.png": "https://assets.swgoh.gg/frontend/assets/omicron-badge-DF6neN1s.png",
-    "character-gear-frame--g5.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g5-Bv1rwaFN.webp",
-    "character-gear-frame--g8.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g8-CiXvTrKe.webp",
-    "character-gear-frame--g9.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g9-CDY2IiEe.webp",
-    "character-gear-frame--g10.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g10-CXccoXYw.webp",
-    "character-gear-frame--g11.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g11-qGoNykIE.webp",
-    "character-gear-frame--g12.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g12-CUyRFt2B.webp",
+    "gear5.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g5-Bv1rwaFN.webp",
+    "gear8.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g8-CiXvTrKe.webp",
+    "gear9.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g9-CDY2IiEe.webp",
+    "gear10.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g10-CXccoXYw.webp",
+    "gear11.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g11-qGoNykIE.webp",
+    "gear12.webp": "https://assets.swgoh.gg/frontend/assets/character-gear-frame--g12-CUyRFt2B.webp",
 }
 
 async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> None:
@@ -43,11 +43,16 @@ async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> Non
     if asset_name in SPECIFIC_URLS:
         urls_to_try = [SPECIFIC_URLS[asset_name]]
     else:
-        # Sinon on tente les URLs génériques
+        # Sinon on tente les URLs génériques en reconstituant le nom d'origine
+        original_name = asset_name
+        if asset_name.startswith("gear"):
+            num = asset_name.replace("gear", "").replace(".webp", "")
+            original_name = f"character-gear-frame--g{num}.webp"
+            
         urls_to_try = [
-            f"{BASE_URL}/textures/{asset_name}",
-            f"{BASE_URL}/{asset_name}",
-            f"{ALT_URL}/{asset_name}"
+            f"{BASE_URL}/textures/{original_name}",
+            f"{BASE_URL}/{original_name}",
+            f"{ALT_URL}/{original_name}"
         ]
     
     for url in urls_to_try:
@@ -66,10 +71,35 @@ async def download_asset(session: aiohttp.ClientSession, asset_name: str) -> Non
             
     log.error(f"❌ Impossible de télécharger {asset_name}. URLs testées : {', '.join(urls_to_try)}")
 
+async def download_alignments(session: aiohttp.ClientSession) -> None:
+    filepath = Path("data/unit_alignments.json")
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    
+    url = "https://swgoh.gg/api/characters/"
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+    
+    try:
+        async with session.get(url, headers=headers) as resp:
+            if resp.status == 200:
+                data = await resp.json()
+                alignments = {char["base_id"]: char["alignment"] for char in data}
+                import json
+                filepath.write_text(json.dumps(alignments, indent=4), encoding="utf-8")
+                log.info("✅ Fichier data/unit_alignments.json généré avec succès.")
+            else:
+                log.error(f"❌ Erreur {resp.status} lors de la récupération des alignements.")
+    except Exception as e:
+        log.error(f"❌ Exception lors de la récupération des alignements: {e}")
+
 async def main():
     ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-    async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
-        tasks = [download_asset(session, name) for name in ASSETS_TO_FETCH]
+    
+    async with aiohttp.ClientSession() as session:
+        # Téléchargement des alignements
+        await download_alignments(session)
+        
+        # Téléchargement des assets
+        tasks = [download_asset(session, asset) for asset in ASSETS_TO_FETCH]
         await asyncio.gather(*tasks)
 
 if __name__ == "__main__":

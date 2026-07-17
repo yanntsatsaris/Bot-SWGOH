@@ -185,6 +185,8 @@ def _draw_portrait_cell(
         border_color = C_READY
     else:
         border_color = C_WARN
+    
+    is_ship = combat_type == 2
 
     # --- 2. Collage du portrait (au centre) ---
     portrait = _load_portrait(base_id)
@@ -198,13 +200,13 @@ def _draw_portrait_cell(
         ImageDraw.Draw(overlay).ellipse([0, 0, PORTRAIT_CELL - 1, PORTRAIT_CELL - 1], fill=(0, 0, 0, 150))
         canvas.paste(overlay, (x, y), overlay)
 
-    # --- 4. Cadre de gear (Si pas de cadre 0) ---
+    # --- 4. Cadre (Gear) ---
     gear_to_draw = 13 if (relic_tier and relic_tier >= 1) else (gear_tier or 1)
-    if gear_to_draw > 0:
-        gear_path = Path(f"assets/overlays/gear{gear_to_draw}.webp")
+    if not is_ship and gear_to_draw >= 1:
+        gear_name = "gear13.webp" if gear_to_draw >= 13 else f"gear{gear_to_draw}.webp"
+        gear_path = Path(f"assets/overlays/{gear_name}")
         if gear_path.exists():
-            gear_img = Image.open(gear_path).convert("RGBA")
-            gear_img = gear_img.resize((PORTRAIT_CELL, PORTRAIT_CELL), Image.LANCZOS)
+            gear_img = Image.open(gear_path).convert("RGBA").resize((PORTRAIT_CELL, PORTRAIT_CELL), Image.LANCZOS)
             canvas.paste(gear_img, (x, y), gear_img)
         else:
             # Fallback border
@@ -226,12 +228,17 @@ def _draw_portrait_cell(
     else:
         relic_color = "blue"
 
-    if relic_tier and relic_tier >= 1:
+    if not is_ship and relic_tier and relic_tier >= 1:
         # Côté droit
         r_right_path = Path(f"assets/overlays/relic_{relic_color}_right.webp")
         if r_right_path.exists():
-            r_right = Image.open(r_right_path).convert("RGBA").resize((PORTRAIT_CELL, PORTRAIT_CELL), Image.LANCZOS)
-            canvas.paste(r_right, (x, y), r_right)
+            orig_r_right = Image.open(r_right_path).convert("RGBA")
+            new_h = PORTRAIT_CELL
+            new_w = int(orig_r_right.width * (new_h / orig_r_right.height))
+            r_right = orig_r_right.resize((new_w, new_h), Image.LANCZOS)
+            
+            # Côté droit
+            canvas.paste(r_right, (x + PORTRAIT_CELL - new_w, y), r_right)
             
             # Côté gauche (flip horizontal)
             r_left = r_right.transpose(Image.FLIP_LEFT_RIGHT)
@@ -260,7 +267,9 @@ def _draw_portrait_cell(
             mx = x + (PORTRAIT_CELL - 32) // 2
             my = y + PORTRAIT_CELL - 24
             canvas.paste(lvl_img, (mx, my), lvl_img)
-            draw.text((x + PORTRAIT_CELL//2, my + 16), "85", font=level_font, fill=(255, 255, 255), anchor="mm")
+            
+            unit_level = unit.get("level", 85)
+            draw.text((x + PORTRAIT_CELL//2, my + 16), str(unit_level), font=level_font, fill=(255, 255, 255), anchor="mm")
 
     # --- 6. Zetas / Omicrons ---
     # Omicro placeholder (on collera tex.charui_omicron.png plus tard)

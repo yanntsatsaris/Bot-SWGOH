@@ -15,7 +15,7 @@ NEEDS_GAC_OMICRON = {
     "CAPTAINREX", "DARTHTRAYA", "ZAMWESELL", "ZORIIBLISS", "DASHRENDAR"
 }
 
-def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, format_type: str, min_relic: int = 5, min_gear: int = 13) -> list[dict]:
+def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, format_type: str, min_relic: int = 0, min_gear: int = 12) -> list[dict]:
     """
     Filtre et enrichit les counters selon le roster du joueur.
     Ajoute un flag 'needs_omicron' si un des personnages du contre
@@ -36,16 +36,17 @@ def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, forma
             if unit and (unit.get("relic_tier", 0) >= min_relic or unit.get("gear_tier", 0) >= min_gear):
                 available.append(unit_id)
                 # Vérifier si ce personnage a besoin d'un omicron GAC
-                # has_omicron est False = le joueur n'a pas activé l'omicron GAC
-                if unit_id.upper() in NEEDS_GAC_OMICRON and not unit.get("has_omicron"):
+                # has_omicron est False = le joueur n'a pas activé l'omicron GAC.
+                # On vérifie aussi 'omicrons > 0' pour compenser les erreurs de parsing d'ID de skills.
+                if unit_id.upper() in NEEDS_GAC_OMICRON and not (unit.get("has_omicron") or unit.get("omicrons", 0) > 0):
                     missing_omicron.append(unit_id)
             else:
                 missing.append(unit_id)
         
         availability = len(available) / max(len(all_ids), 1)
         
-        # 60% pour 5v5, 100% pour 3v3
-        min_availability = 1.0 if format_type == "3v3" else 0.6
+        # On demande au moins 50% de présence, pour proposer même si l'équipe est incomplète (le score la triera plus bas)
+        min_availability = 0.5
         
         if availability >= min_availability:
             result.append({

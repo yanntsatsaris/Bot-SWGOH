@@ -228,7 +228,7 @@ def _draw_portrait_cell(
     badge_font = _get_font("bold", 12)
     level_font = _get_font("bold", 10)
     
-    gl_list = ["JEDIMASTERKENOBI", "LORDVADER", "JABBATHEHUTT", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "GLREY", "GRANDMASTERLUKESKYWALKER", "LEIAORGANA", "GLHONDO", "GLAHSOKATANO"]
+    gl_list = ["JEDIMASTERKENOBI", "LORDVADER", "JABBATHEHUTT", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "GLREY", "GRANDMASTERLUKE", "LEIAORGANA", "GLHONDO", "GLAHSOKATANO"]
     is_gl = base_id in gl_list if base_id else False
     
     # Détermination de la couleur (Light/Dark/Neutral)
@@ -337,7 +337,7 @@ def _draw_portrait_cell(
         draw.text((ox + 14, oy + 14), text_val, font=_get_font("bold", 12), fill=text_color, anchor="mm")
 
     # Dessin des étoiles
-    star_path = Path("assets/overlays/tex.charui_star_character.png")
+    star_path = Path("assets/overlays/star.png")
     if star_path.exists() and stars > 0:
         star = Image.open(star_path).convert("RGBA").resize((12, 12), Image.LANCZOS)
         start_x = x + (PORTRAIT_CELL - (stars * 10)) // 2 + 2

@@ -211,6 +211,13 @@ class GacPlanner:
             # En défense, on exige une équipe complète (0 trou). 
             # En attaque, on pourrait tolérer un trou, mais pour l'instant on garde la même exigence pour avoir des bonnes suggestions.
             if len(valid_members) == target_team_size - 1:
+                # Calculer un score basé sur le roster du joueur pour cette équipe
+                team_roster_score = 0
+                for u in [leader_id] + valid_members:
+                    st = player_units[u]
+                    # Relique a le plus de poids, puis gear, puis étoiles
+                    team_roster_score += st["relic"] * 10 + st["gear"] + st["stars"]
+
                 suggestions.append({
                     "leader": leader_id,
                     "members": valid_members,
@@ -218,14 +225,15 @@ class GacPlanner:
                     "missing_units": [], # Par définition, il n'y a plus de "missing" car on compose avec ce qu'on a
                     "seen": l_data["leader_score"] if mode == "attack" else 0, # Juste pour info
                     "hold_percent": l_data["best_hold"],
-                    "avg_banners": l_data["best_banners"]
+                    "avg_banners": l_data["best_banners"],
+                    "roster_score": team_roster_score,
+                    "meta_score": l_data["leader_score"]
                 })
                 
                 used_characters.add(leader_id)
                 for u in valid_members:
                     used_characters.add(u)
-                
-                if len(suggestions) >= 30:
-                    break
                     
-        return suggestions
+        # 6. Trier les suggestions finales en privilégiant le niveau des personnages, puis la puissance de la meta
+        suggestions.sort(key=lambda s: (s["roster_score"], s["meta_score"]), reverse=True)
+        return suggestions[:30]

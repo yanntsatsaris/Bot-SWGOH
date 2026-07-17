@@ -253,12 +253,12 @@ def _draw_portrait_cell(
             cx = x + PORTRAIT_CELL // 2
             cy = y + PORTRAIT_CELL // 2
             
-            # Côté droit
-            canvas.paste(r_right, (cx, cy - new_h // 2), r_right)
+            # Côté gauche (l'image d'origine correspond à l'arc gauche)
+            canvas.paste(r_right, (cx - new_w, cy - new_h // 2), r_right)
             
-            # Côté gauche (flip horizontal)
+            # Côté droit (image inversée)
             r_left = r_right.transpose(Image.FLIP_LEFT_RIGHT)
-            canvas.paste(r_left, (cx - new_w, cy - new_h // 2), r_left)
+            canvas.paste(r_left, (cx, cy - new_h // 2), r_left)
 
         # Macaron du niveau de relique
         if relic_tier and relic_tier >= 1:

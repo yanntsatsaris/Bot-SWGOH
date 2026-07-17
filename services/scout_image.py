@@ -60,8 +60,9 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
         
         def get_unit_details(uid):
             if not uid or not roster_index or uid not in roster_index:
-                return None, None
-            return roster_index[uid].get("relic_tier"), roster_index[uid].get("gear_tier")
+                return None, None, 0, 0
+            u = roster_index[uid]
+            return u.get("relic_tier"), u.get("gear_tier"), u.get("zetas", 0), u.get("omicrons", 0)
         
         if is_fleet:
             slots = 8
@@ -100,14 +101,14 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             x = cx
         else:
             slots = 3 if fmt == "3v3" else 5
-            rel, gr = get_unit_details(leader_id)
-            _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, True, False, is_ship=False)
+            rel, gr, zetas, omis = get_unit_details(leader_id)
+            _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, True, False, is_ship=False, zetas=zetas, omicrons=omis)
             x += PORTRAIT_CELL + PORTRAIT_GAP
             drawn = 1
             for m in members:
                 if m != leader_id and drawn < slots:
-                    rel, gr = get_unit_details(m)
-                    _draw_portrait_cell(canvas, x, y, m, rel, gr, True, True, True, False, is_ship=False)
+                    rel, gr, zetas, omis = get_unit_details(m)
+                    _draw_portrait_cell(canvas, x, y, m, rel, gr, True, True, True, False, is_ship=False, zetas=zetas, omicrons=omis)
                     x += PORTRAIT_CELL + PORTRAIT_GAP
                     drawn += 1
             while drawn < slots:

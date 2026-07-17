@@ -310,7 +310,7 @@ def _draw_portrait_cell(
     # --- 6. Zetas / Omicrons ---
     # Zetas (Gauche)
     if zetas > 0:
-        zeta_path = Path("assets/overlays/tex.charui_omicron.png")
+        zeta_path = Path("assets/overlays/tex.charui_zeta.png")
         zx, zy = x, y + PORTRAIT_CELL - 28
         if zeta_path.exists():
             zeta_img = Image.open(zeta_path).convert("RGBA").resize((28, 28), Image.LANCZOS)
@@ -322,7 +322,7 @@ def _draw_portrait_cell(
 
     # Omicrons (Droite)
     if omicrons > 0 or missing_omicron:
-        omi_path = Path("assets/overlays/tex.charui_zeta.png")
+        omi_path = Path("assets/overlays/tex.charui_omicron.png")
         ox, oy = x + PORTRAIT_CELL - 28, y + PORTRAIT_CELL - 28
         if omi_path.exists():
             omi = Image.open(omi_path).convert("RGBA").resize((28, 28), Image.LANCZOS)

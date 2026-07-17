@@ -79,6 +79,12 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             if zeta_dict and skill_id in zeta_dict and skill_tier >= int(zeta_dict[skill_id]):
                 zetas_count += 1
                 
+        # DEBUG DUMP
+        if base_id == "GLREY":
+            import json
+            with open("debug_rey_skills.json", "w") as f:
+                json.dump({"skills": unit_skills, "zeta_keys": list(zeta_dict.keys())[:20]}, f)
+                
         combat_type = 2 if base_id in ship_base_ids else unit.get("combatType", 1)
 
         roster[base_id] = {

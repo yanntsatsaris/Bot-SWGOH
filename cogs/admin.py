@@ -110,5 +110,26 @@ class AdminCog(commands.Cog, name="Admin"):
             log.exception("Erreur lors du refresh-counters")
             await interaction.edit_original_response(content=f"❌ Erreur lors de l'extraction : {e}")
 
+    @app_commands.command(name="debug-zetas", description="[Admin] Dump Rey skills from Comlink.")
+    @app_commands.default_permissions(administrator=True)
+    async def debug_zetas(self, interaction: discord.Interaction, ally_code: str) -> None:
+        await interaction.response.defer(ephemeral=False)
+        try:
+            from services.comlink import comlink_client
+            clean = str(ally_code).replace("-", "").strip()
+            ally_int = int(clean) if clean.isdigit() else clean
+            data = await comlink_client.get_player(allycode=ally_int)
+            raw_roster = data.get("rosterUnit", [])
+            for u in raw_roster:
+                if "GLREY" in u.get("definitionId", ""):
+                    import json
+                    skills = u.get("skill", [])
+                    out = json.dumps(skills, indent=2)
+                    await interaction.followup.send(f"Rey skills:\n```json\n{out}\n```")
+                    return
+            await interaction.followup.send("Rey not found in roster.")
+        except Exception as e:
+            await interaction.followup.send(f"Error: {e}")
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AdminCog(bot))

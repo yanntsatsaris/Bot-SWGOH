@@ -185,12 +185,12 @@ def _draw_portrait_cell(
     else:
         border_color = C_WARN
 
-    # Fond circulaire
+    # Alignment Border (Thick circle instead of thin line)
     draw.ellipse(
         [x, y, x + PORTRAIT_CELL - 1, y + PORTRAIT_CELL - 1],
         fill=C_SECTION,
         outline=border_color,
-        width=3,
+        width=4,
     )
 
     # Portrait
@@ -209,37 +209,39 @@ def _draw_portrait_cell(
         )
         canvas.paste(overlay, (x, y), overlay)
 
-    # Badge de niveau (bas-gauche)
-    badge_font = _get_font("bold", 11)
+    badge_font = _get_font("bold", 12)
+    # Badge Relic/Gear (bas-droite, style SWGOH)
     if relic_tier and relic_tier >= 1:
-        badge_text  = f"R{relic_tier}"
-        badge_color = C_READY if relic_tier >= 5 else C_WARN
+        # Cercle rouge/or avec texte
+        br = 12
+        cx, cy = x + PORTRAIT_CELL - br - 4, y + PORTRAIT_CELL - br - 4
+        fill_color = (200, 20, 20) if relic_tier >= 5 else (180, 150, 0) # Rouge si R5+, Or sinon
+        draw.ellipse([cx - br, cy - br, cx + br, cy + br], fill=fill_color, outline=(0, 0, 0), width=2)
+        draw.text((cx, cy), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
     elif gear_tier and gear_tier >= 1:
-        badge_text  = f"G{gear_tier}"
-        badge_color = C_READY if gear_tier >= 13 else C_WARN
-    else:
-        badge_text  = None
-        badge_color = C_MISSING
+        # Cercle basique avec contour gris
+        br = 12
+        cx, cy = x + PORTRAIT_CELL - br - 4, y + PORTRAIT_CELL - br - 4
+        draw.ellipse([cx - br, cy - br, cx + br, cy + br], fill=(50, 50, 50), outline=(150, 150, 150), width=2)
+        draw.text((cx, cy), f"G{gear_tier}", font=_get_font("bold", 10), fill=(255, 255, 255), anchor="mm")
 
-    if badge_text:
-        bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
-        bw = bbox[2] - bbox[0] + 8
-        bh = bbox[3] - bbox[1] + 4
-        bx = x + 2
-        by = y + PORTRAIT_CELL - bh - 2
-        draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=3, fill=badge_color)
-        draw.text((bx + 4, by + 2), badge_text, font=badge_font, fill=(0, 0, 0))
-
-    # Badge Omicron (haut-droit)
+    # Zetas / Omicrons (gauche, style SWGOH)
+    # Par défaut on a pas l'info du nb de zeta, on affiche juste l'alerte Omicron
     if missing_omicron:
-        omi_text = "Omi"
-        bbox = draw.textbbox((0, 0), omi_text, font=badge_font)
-        bw = bbox[2] - bbox[0] + 8
-        bh = bbox[3] - bbox[1] + 4
-        bx = x + PORTRAIT_CELL - bw - 2
-        by = y + 2
-        draw.rounded_rectangle([bx, by, bx + bw, by + bh], radius=3, fill="#9b59b6")
-        draw.text((bx + 4, by + 2), omi_text, font=badge_font, fill=(255, 255, 255))
+        omi_r = 12
+        ox, oy = x + omi_r + 4, y + PORTRAIT_CELL - omi_r - 4
+        draw.ellipse([ox - omi_r, oy - omi_r, ox + omi_r, oy + omi_r], fill="#9b59b6", outline=(255, 255, 255), width=1)
+        draw.text((ox, oy), "Omi", font=_get_font("bold", 9), fill=(255, 255, 255), anchor="mm")
+
+    # Dessin de 7 petites étoiles en bas au centre
+    star_r = 4
+    spacing = 10
+    start_x = x + (PORTRAIT_CELL - (7 * spacing)) // 2 + 5
+    sy = y + PORTRAIT_CELL - 4
+    for i in range(7):
+        sx = start_x + (i * spacing)
+        # On simule un losange pour l'étoile
+        draw.polygon([(sx, sy - star_r), (sx + star_r, sy), (sx, sy + star_r), (sx - star_r, sy)], fill=(255, 215, 0))
 
 
 def _draw_portrait_row(

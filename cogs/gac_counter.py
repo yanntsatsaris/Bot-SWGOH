@@ -33,6 +33,10 @@ async def _build_roster(ally_code: str) -> dict | None:
     if not profile:
         return None
 
+    from services.scouting import get_omicron_dict, get_zeta_dict
+    omicron_dict = await get_omicron_dict()
+    zeta_dict = await get_zeta_dict()
+
     roster = {}
     for unit in profile.get("rosterUnit", []):
         def_id = unit.get("definitionId", "")
@@ -41,11 +45,26 @@ async def _build_roster(ally_code: str) -> dict | None:
             continue
         raw_relic = (unit.get("relic") or {}).get("currentTier", 0)
         relic_tier = max(0, raw_relic - 2) if raw_relic >= 2 else 0
+        
+        omicrons_count = 0
+        zetas_count = 0
+        
+        for skill in unit.get("skill", []):
+            skill_id = str(skill.get("id", ""))
+            skill_tier_upgrades = int(skill.get("tier", 0))
+            actual_skill_tier = skill_tier_upgrades + 1
+            if omicron_dict and skill_id in omicron_dict and actual_skill_tier >= int(omicron_dict[skill_id]):
+                omicrons_count += 1
+            if zeta_dict and skill_id in zeta_dict and actual_skill_tier >= int(zeta_dict[skill_id]):
+                zetas_count += 1
+                
         roster[base_id] = {
             "base_id": base_id,
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
+            "zetas": zetas_count,
+            "omicrons": omicrons_count
         }
     return roster or None
 
@@ -157,7 +176,8 @@ class CounterSuggestionView(discord.ui.View):
                 "owned": True if u else False,
                 "missing_omicron": cid in sugg.get("missing_omicron", []),
                 "zetas": u.get("zetas", 0) if u else 0,
-                "omicrons": u.get("omicrons", 0) if u else 0
+                "omicrons": u.get("omicrons", 0) if u else 0,
+                "rarity": u.get("rarity", 7) if u else 7
             })
             
         mock_suggestions = [{"enemy_team": team_dict, "counters": counter_units}]

@@ -175,6 +175,7 @@ def _draw_portrait_cell(
     level: int = 85,
     zetas: int = 0,
     omicrons: int = 0,
+    stars: int = 7,
 ) -> None:
     draw = ImageDraw.Draw(canvas)
     
@@ -337,11 +338,11 @@ def _draw_portrait_cell(
 
     # Dessin des étoiles
     star_path = Path("assets/overlays/tex.charui_star_character.png")
-    if star_path.exists():
+    if star_path.exists() and stars > 0:
         star = Image.open(star_path).convert("RGBA").resize((12, 12), Image.LANCZOS)
-        start_x = x + (PORTRAIT_CELL - (7 * 10)) // 2 + 2
+        start_x = x + (PORTRAIT_CELL - (stars * 10)) // 2 + 2
         sy = y + PORTRAIT_CELL - 10
-        for i in range(7):
+        for i in range(stars):
             canvas.paste(star, (start_x + (i * 10), sy), star)
 
 
@@ -369,6 +370,7 @@ def _draw_portrait_row(
             level=unit.get("level", 85),
             zetas=unit.get("zetas", 0),
             omicrons=unit.get("omicrons", 0),
+            stars=unit.get("rarity", 7),
         )
         x += PORTRAIT_CELL + PORTRAIT_GAP
 
@@ -478,6 +480,7 @@ def generate_gac_report(
                 "owned":      True,
                 "zetas":      unit_data.get("zetas", 0),
                 "omicrons":   unit_data.get("omicrons", 0),
+                "rarity":     unit_data.get("rarity", 7),
             })
         _draw_portrait_row(canvas, enemy_units, y, is_enemy=True)
 

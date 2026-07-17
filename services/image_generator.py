@@ -172,6 +172,7 @@ def _draw_portrait_cell(
     is_enemy: bool = False,
     missing_omicron: bool = False,
     is_ship: bool = False,
+    level: int = 85,
 ) -> None:
     draw = ImageDraw.Draw(canvas)
     
@@ -267,8 +268,7 @@ def _draw_portrait_cell(
             my = y + PORTRAIT_CELL - 24
             canvas.paste(lvl_img, (mx, my), lvl_img)
             
-            unit_level = unit.get("level", 85)
-            draw.text((x + PORTRAIT_CELL//2, my + 16), str(unit_level), font=level_font, fill=(255, 255, 255), anchor="mm")
+            draw.text((x + PORTRAIT_CELL//2, my + 16), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
 
     # --- 6. Zetas / Omicrons ---
     # Omicro placeholder (on collera tex.charui_omicron.png plus tard)
@@ -314,6 +314,7 @@ def _draw_portrait_row(
             is_enemy=is_enemy,
             missing_omicron=unit.get("missing_omicron", False),
             is_ship=unit.get("combat_type") == 2,
+            level=unit.get("level", 85),
         )
         x += PORTRAIT_CELL + PORTRAIT_GAP
 

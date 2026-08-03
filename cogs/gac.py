@@ -57,6 +57,44 @@ async def unit_autocomplete(interaction: discord.Interaction, current: str) -> l
     ]
 
 
+async def slot_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
+    zone = getattr(interaction.namespace, "zone", "North") or "North"
+    discord_id = str(interaction.user.id)
+    
+    from database.db import get_db
+    from services.unit_names import get_name
+    
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT slot_index, base_id 
+            FROM active_round_units 
+            WHERE discord_id = ? AND zone = ? AND used_type = 'defense'
+            ORDER BY slot_index ASC
+            """,
+            (discord_id, zone)
+        )
+        rows = await cursor.fetchall()
+        
+    choices = []
+    if rows:
+        slots_dict = {}
+        for r in rows:
+            s_idx = r["slot_index"] or 1
+            if s_idx not in slots_dict:
+                slots_dict[s_idx] = r["base_id"]
+                
+        for s_idx, ldr_id in slots_dict.items():
+            label = f"Slot #{s_idx} : {get_name(ldr_id)}"
+            choices.append(app_commands.Choice(name=label[:100], value=s_idx))
+            
+    if not choices:
+        for i in range(1, 6):
+            choices.append(app_commands.Choice(name=f"Slot #{i}", value=i))
+            
+    return choices[:25]
+
+
 class GacCog(commands.Cog, name="GAC"):
     """Commandes d'analyse et de gestion de la Grande Arène."""
 
@@ -119,7 +157,7 @@ class GacCog(commands.Cog, name="GAC"):
     @app_commands.describe(
         cote="Choisir si c'est ta défense ou la défense adverse",
         zone="La zone de la carte à modifier",
-        slot="Numéro de l'emplacement (1, 2, 3...)",
+        slot="Numéro de l'emplacement (autocomplétion avec le nom de l'équipe actuelle)",
         leader="Leader de l'équipe (autocomplétion disponible)",
         membre_2="2ème membre de l'équipe (optionnel)",
         membre_3="3ème membre de l'équipe (optionnel)",
@@ -139,12 +177,14 @@ class GacCog(commands.Cog, name="GAC"):
         ]
     )
     @app_commands.autocomplete(
+        slot=slot_autocomplete,
         leader=unit_autocomplete,
         membre_2=unit_autocomplete,
         membre_3=unit_autocomplete,
         membre_4=unit_autocomplete,
         membre_5=unit_autocomplete,
     )
+
     async def edit_slot(
         self,
         interaction: discord.Interaction,

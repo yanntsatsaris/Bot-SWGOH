@@ -9,152 +9,6 @@ from services.unit_names import get_name
 
 log = logging.getLogger(__name__)
 
-# ─── MODAL D'ÉDITION D'UN SLOT DE DÉFENSE ────────────────────────────────────
-
-class SlotEditModal(discord.ui.Modal):
-    def __init__(self, parent_view, zone: str, slot_index: int, is_enemy: bool = False, current_leader: str = "", current_members: str = ""):
-        side_name = "Ennemie" if is_enemy else "Ma Défense"
-        super().__init__(title=f"Éditer {zone} ({side_name}) — Équipe #{slot_index}")
-        self.parent_view = parent_view
-        self.zone = zone
-        self.slot_index = slot_index
-        self.is_enemy = is_enemy
-
-        self.leader_input = discord.ui.TextInput(
-            label="ID / Nom du Leader",
-            placeholder="Ex: GLREY, JEDIMASTERKENOBI...",
-            default=current_leader,
-            required=True,
-            max_length=50
-        )
-        self.members_input = discord.ui.TextInput(
-            label="Membres (séparés par des virgules)",
-            placeholder="Ex: BAZEMALBUS, CAPTAINDROGAN...",
-            default=current_members,
-            required=False,
-            max_length=200
-        )
-        self.add_item(self.leader_input)
-        self.add_item(self.members_input)
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        leader_raw = self.leader_input.value.strip().upper()
-        members_raw = [m.strip().upper() for m in self.members_input.value.split(",") if m.strip()]
-        
-        target_zones = self.parent_view.enemy_zones if self.is_enemy else self.parent_view.my_zones
-        zone_teams = target_zones.get(self.zone, [])
-        while len(zone_teams) < self.slot_index:
-            zone_teams.append({"leader_id": "EMPTY", "members_ids": [], "source": "custom"})
-            
-        zone_teams[self.slot_index - 1] = {
-            "leader_id": leader_raw,
-            "members_ids": members_raw,
-            "source": "custom"
-        }
-        
-        if self.is_enemy:
-            self.parent_view.enemy_zones[self.zone] = zone_teams
-        else:
-            self.parent_view.my_zones[self.zone] = zone_teams
-            # Si c'est notre défense, on met aussi à jour la BDD pour le brûlage des persos
-            await save_user_defense_slot(str(interaction.user.id), self.zone, self.slot_index, leader_raw, members_raw)
-        
-        from services.scout_image import generate_scout_map
-        if self.is_enemy:
-            img = generate_scout_map(
-                self.parent_view.enemy_zones, self.parent_view.quotas, self.parent_view.league, self.parent_view.fmt,
-                self.parent_view.enemy_name + " (Défense Ennemie Modifiée)", "Édité par le Joueur", None
-            )
-            filename = "enemy_defense.png"
-        else:
-            img = generate_scout_map(
-                self.parent_view.my_zones, self.parent_view.quotas, self.parent_view.league, self.parent_view.fmt,
-                self.parent_view.my_name + " (Ma Défense Modifiée)", "Défense Personnalisée", self.parent_view.my_roster_index
-            )
-            filename = "my_defense.png"
-            
-        file_updated = discord.File(img, filename=filename)
-        
-        side_txt = "Défense Adverse" if self.is_enemy else "Ta Défense"
-        await interaction.followup.send(
-            f"✅ **{side_txt} mise à jour !** ({self.zone} — Équipe #{self.slot_index} : **{get_name(leader_raw)}**).",
-            file=file_updated,
-            ephemeral=True
-        )
-
-
-# ─── VUES SELECT POUR L'ÉDITEUR DE SLOT ──────────────────────────────────────
-
-class SlotSelectView(discord.ui.View):
-    def __init__(self, parent_view, zone: str, is_enemy: bool = False):
-        super().__init__(timeout=60)
-        self.parent_view = parent_view
-        self.zone = zone
-        self.is_enemy = is_enemy
-
-        target_zones = parent_view.enemy_zones if is_enemy else parent_view.my_zones
-        teams = target_zones.get(zone, [])
-        max_slots = max(len(teams), parent_view.quotas.get(zone, 1))
-        
-        options = []
-        for idx in range(1, max_slots + 1):
-            curr_leader = teams[idx-1].get("leader_id", "Aucun") if idx <= len(teams) else "Aucun"
-            options.append(discord.SelectOption(
-                label=f"Équipe #{idx} : {get_name(curr_leader)}",
-                value=str(idx)
-            ))
-            
-        select = discord.ui.Select(placeholder=f"Choisis l'équipe de la zone {zone} à modifier...", options=options)
-        select.callback = self.on_select_slot
-        self.add_item(select)
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.parent_view.original_user_id:
-            await interaction.response.send_message("❌ Ces menus ne te sont pas destinés.", ephemeral=True)
-            return False
-        return True
-
-    async def on_select_slot(self, interaction: discord.Interaction):
-        slot_idx = int(interaction.data["values"][0])
-        target_zones = self.parent_view.enemy_zones if self.is_enemy else self.parent_view.my_zones
-        teams = target_zones.get(self.zone, [])
-        curr_leader = teams[slot_idx-1].get("leader_id", "") if slot_idx <= len(teams) else ""
-        curr_members = ",".join(teams[slot_idx-1].get("members_ids", [])) if slot_idx <= len(teams) else ""
-        
-        modal = SlotEditModal(self.parent_view, self.zone, slot_idx, self.is_enemy, curr_leader, curr_members)
-        await interaction.response.send_modal(modal)
-
-
-class ZoneSelectView(discord.ui.View):
-    def __init__(self, parent_view, is_enemy: bool = False):
-        super().__init__(timeout=60)
-        self.parent_view = parent_view
-        self.is_enemy = is_enemy
-
-        options = [
-            discord.SelectOption(label="Zone Nord (North)", value="North", emoji="⬆️"),
-            discord.SelectOption(label="Zone Sud (South)", value="South", emoji="⬇️"),
-            discord.SelectOption(label="Zone Arrière (Back)", value="Back", emoji="⬅️"),
-            discord.SelectOption(label="Flotte (Fleet)", value="Fleet", emoji="🚀"),
-        ]
-        select = discord.ui.Select(placeholder="Choisis la zone à modifier...", options=options)
-        select.callback = self.on_select_zone
-        self.add_item(select)
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.parent_view.original_user_id:
-            await interaction.response.send_message("❌ Ces menus ne te sont pas destinés.", ephemeral=True)
-            return False
-        return True
-
-    async def on_select_zone(self, interaction: discord.Interaction):
-        zone = interaction.data["values"][0]
-        slot_view = SlotSelectView(self.parent_view, zone, self.is_enemy)
-        side_txt = "Défense Ennemie" if self.is_enemy else "Ta Défense"
-        await interaction.response.send_message(f"📍 **{side_txt} — Zone {zone} sélectionnée.** Choisis l'emplacement :", view=slot_view, ephemeral=True)
-
-
 
 # ─── VUE PRINCIPALE DÉFENSE & PLAN D'ATTAQUE ──────────────────────────────────
 
@@ -198,16 +52,6 @@ class DefenseValidationView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="✏️ Ma Défense", style=discord.ButtonStyle.primary, custom_id="btn_edit_my_def")
-    async def btn_edit_my_def(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = ZoneSelectView(self, is_enemy=False)
-        await interaction.response.send_message("📌 **Modification de TA Défense** — Sélectionne la Zone à ajuster :", view=view, ephemeral=True)
-
-    @discord.ui.button(label="✏️ Défense Ennemie", style=discord.ButtonStyle.primary, custom_id="btn_edit_enemy_def")
-    async def btn_edit_enemy_def(self, interaction: discord.Interaction, button: discord.ui.Button):
-        view = ZoneSelectView(self, is_enemy=True)
-        await interaction.response.send_message("📌 **Modification de la Défense ADVERSE** — Sélectionne la Zone vue en jeu :", view=view, ephemeral=True)
-
     @discord.ui.button(label="⚔️ Plan d'Attaque Global", style=discord.ButtonStyle.danger, custom_id="btn_attack_plan")
     async def btn_attack_plan(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=False)
@@ -236,7 +80,6 @@ class DefenseValidationView(discord.ui.View):
         await interaction.response.defer(ephemeral=True)
         await clear_used_units(str(interaction.user.id))
         await interaction.followup.send("✅ **Round réinitialisé !** Tous tes personnages sont de nouveau disponibles.", ephemeral=True)
-
 
 
 # ─── COG ─────────────────────────────────────────────────────────────────────
@@ -352,7 +195,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     files = _build_files(scout_data)
 
                     msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !\n"
-                    msg += "⚠️ *Note : Les prédictions sont générées automatiquement. Utilise les boutons ci-dessous pour valider ou ajuster ta défense.*\n"
+                    msg += "⚠️ *Note : Les prédictions sont générées automatiquement. Utilise le bouton [🔒 Valider ma Défense] pour verrouiller tes persos posés, ou [⚔️ Plan d'Attaque Global] pour obtenir la stratégie complète d'attaque.*\n"
+                    msg += "*Pour réajuster un slot spécifique sur la carte, utilise `/gac-edit-slot` avec autocomplétion des persos.*\n"
                     
                     def_view = None
                     if "my_zones" in scout_data:
@@ -367,7 +211,6 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                             scout_data["enemy_name"],
                             scout_data.get("my_roster_index", {})
                         )
-
                         
                     try:
                         if def_view:

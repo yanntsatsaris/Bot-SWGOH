@@ -773,15 +773,14 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
 async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str) -> dict:
     """
     Génère un plan d'attaque global pour l'ensemble de la carte ennemie.
-    Pour chaque emplacement (zone/slot) de l'ennemi, assigne le meilleur contre 100% prêt
-    depuis le roster du joueur en excluant strictement les persos posés en défense
-    et les persos déjà attribués à une autre zone d'attaque.
+    Prend en compte les statuts de secteurs (CLEARED, FAILED, OPEN) et les offsets
+    d'alternatives de contres choisis par le joueur avec rééquilibrage automatique.
     """
-    from database.db import get_used_units
+    from database.db import get_used_units, get_active_sector_statuses
     from services.gac_attack_planner import get_best_counter_with_memory
     
-    # Obtenir les unités brûlées en BDD (défense posée + attaques passées)
     used_units = await get_used_units(discord_id)
+    sector_statuses = await get_active_sector_statuses(discord_id)
     
     attack_plan = {}
     
@@ -797,6 +796,20 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             if not def_leader or def_leader in ["USED", "None", "EMPTY"]:
                 continue
                 
+            sec_info = sector_statuses.get((zone, slot_idx), {})
+            status = sec_info.get("status", "OPEN")
+            offset = sec_info.get("counter_offset", 0)
+            
+            if status == "CLEARED":
+                zone_plan.append({
+                    "slot_index": slot_idx,
+                    "enemy_team": enemy_team,
+                    "counter": None,
+                    "win_pct": 100,
+                    "status": "CLEARED"
+                })
+                continue
+                
             counters = await get_best_counter_with_memory(
                 def_leader_id=def_leader,
                 def_members_ids=def_members,
@@ -806,24 +819,32 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             )
             
             if counters:
-                best_c = counters[0]
-                all_atk = [best_c["atk_leader_id"]] + best_c.get("atk_members_ids", [])
+                target_idx = offset if offset < len(counters) else 0
+                chosen_c = counters[target_idx]
+                all_atk = [chosen_c["atk_leader_id"]] + chosen_c.get("atk_members_ids", [])
                 used_units.update(all_atk)
                 
                 zone_plan.append({
                     "slot_index": slot_idx,
                     "enemy_team": enemy_team,
-                    "counter": best_c,
-                    "win_pct": best_c.get("win_pct", 0)
+                    "counter": chosen_c,
+                    "win_pct": chosen_c.get("win_pct", 0),
+                    "status": status,
+                    "counter_offset": target_idx,
+                    "total_options": len(counters)
                 })
             else:
                 zone_plan.append({
                     "slot_index": slot_idx,
                     "enemy_team": enemy_team,
                     "counter": None,
-                    "win_pct": 0
+                    "win_pct": 0,
+                    "status": status,
+                    "counter_offset": 0,
+                    "total_options": 0
                 })
         attack_plan[zone] = zone_plan
         
     return attack_plan
+
 

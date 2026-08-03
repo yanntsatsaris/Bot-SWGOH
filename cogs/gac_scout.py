@@ -10,6 +10,166 @@ from services.unit_names import get_name
 log = logging.getLogger(__name__)
 
 
+# ─── VUE DU PLAN D'ATTAQUE INTERACTIF ──────────────────────────────────────────
+
+class SectorOutcomeSelectView(discord.ui.View):
+    def __init__(self, parent_view, zone: str, slot_index: int):
+        super().__init__(timeout=60)
+        self.parent_view = parent_view
+        self.zone = zone
+        self.slot_index = slot_index
+
+    @discord.ui.button(label="✅ Victoire (Secteur Tombé)", style=discord.ButtonStyle.success)
+    async def btn_win(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        from database.db import set_sector_status, add_used_units
+        await set_sector_status(str(interaction.user.id), self.zone, self.slot_index, "CLEARED")
+        
+        plan = await self.parent_view.get_plan(interaction.user.id)
+        slot_info = None
+        for s in plan.get(self.zone, []):
+            if s["slot_index"] == self.slot_index:
+                slot_info = s
+                break
+        if slot_info and slot_info.get("counter"):
+            c = slot_info["counter"]
+            all_atk = [c["atk_leader_id"]] + c.get("atk_members_ids", [])
+            await add_used_units(str(interaction.user.id), all_atk, used_type="attack", zone=self.zone, slot_index=self.slot_index)
+            
+        await interaction.followup.send(f"✅ **Secteur {self.zone} #{self.slot_index} marqué comme VICTOIRE (TOMBÉ) !**\nL'équipe d'attaque a été verrouillée.", ephemeral=True)
+        await self.parent_view.refresh_plan_message(interaction)
+
+    @discord.ui.button(label="❌ Échec (Défaite)", style=discord.ButtonStyle.danger)
+    async def btn_loss(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        from database.db import set_sector_status, add_used_units
+        await set_sector_status(str(interaction.user.id), self.zone, self.slot_index, "FAILED")
+        
+        plan = await self.parent_view.get_plan(interaction.user.id)
+        slot_info = None
+        for s in plan.get(self.zone, []):
+            if s["slot_index"] == self.slot_index:
+                slot_info = s
+                break
+        if slot_info and slot_info.get("counter"):
+            c = slot_info["counter"]
+            all_atk = [c["atk_leader_id"]] + c.get("atk_members_ids", [])
+            await add_used_units(str(interaction.user.id), all_atk, used_type="attack", zone=self.zone, slot_index=self.slot_index)
+            
+        await interaction.followup.send(f"⚠ **Secteur {self.zone} #{self.slot_index} marqué comme ÉCHEC !**\nUn contre de rattrapage a été réattribué avec tes unités disponibles restantes.", ephemeral=True)
+        await self.parent_view.refresh_plan_message(interaction)
+
+
+class SectorSlotSelectView(discord.ui.View):
+    def __init__(self, parent_view, zone: str, action: str):
+        super().__init__(timeout=60)
+        self.parent_view = parent_view
+        self.zone = zone
+        self.action = action
+
+        teams = parent_view.enemy_zones.get(zone, [])
+        options = []
+        for idx in range(1, len(teams) + 1):
+            curr_leader = teams[idx-1].get("leader_id", "Inconnu")
+            options.append(discord.SelectOption(
+                label=f"Équipe #{idx} : {get_name(curr_leader)}",
+                value=str(idx)
+            ))
+            
+        select = discord.ui.Select(placeholder=f"Choisis l'emplacement de la zone {zone}...", options=options)
+        select.callback = self.on_select_slot
+        self.add_item(select)
+
+    async def on_select_slot(self, interaction: discord.Interaction):
+        slot_idx = int(interaction.data["values"][0])
+        if self.action == "record":
+            outcome_view = SectorOutcomeSelectView(self.parent_view, self.zone, slot_idx)
+            await interaction.response.send_message(f"📌 **Secteur {self.zone} #{slot_idx}** — Sélectionne le résultat de ton combat :", view=outcome_view, ephemeral=True)
+        else:
+            from database.db import cycle_sector_counter_offset
+            new_off = await cycle_sector_counter_offset(str(interaction.user.id), self.zone, slot_idx)
+            await interaction.response.defer(ephemeral=True)
+            await interaction.followup.send(f"🔄 **Secteur {self.zone} #{slot_idx}** — Passage à l'Alternative #{new_off + 1} ! Le plan global a été rééquilibré.", ephemeral=True)
+            await self.parent_view.refresh_plan_message(interaction)
+
+
+class SectorZoneSelectView(discord.ui.View):
+    def __init__(self, parent_view, action: str):
+        super().__init__(timeout=60)
+        self.parent_view = parent_view
+        self.action = action
+
+        options = [
+            discord.SelectOption(label="Zone Nord (North)", value="North", emoji="⬆️"),
+            discord.SelectOption(label="Zone Sud (South)", value="South", emoji="⬇️"),
+            discord.SelectOption(label="Zone Arrière (Back)", value="Back", emoji="⬅️"),
+            discord.SelectOption(label="Flotte (Fleet)", value="Fleet", emoji="🚀"),
+        ]
+        select = discord.ui.Select(placeholder="Choisis la zone du secteur...", options=options)
+        select.callback = self.on_select_zone
+        self.add_item(select)
+
+    async def on_select_zone(self, interaction: discord.Interaction):
+        zone = interaction.data["values"][0]
+        slot_view = SectorSlotSelectView(self.parent_view, zone, self.action)
+        await interaction.response.send_message(f"📍 **Zone {zone} sélectionnée.** Choisis l'emplacement :", view=slot_view, ephemeral=True)
+
+
+class AttackPlanView(discord.ui.View):
+    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict):
+        super().__init__(timeout=None)
+        self.original_user_id = original_user_id
+        self.my_zones = my_zones
+        self.enemy_zones = enemy_zones
+        self.quotas = quotas
+        self.league = league
+        self.fmt = fmt
+        self.my_name = my_name
+        self.enemy_name = enemy_name
+        self.my_roster_index = my_roster_index
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.original_user_id:
+            await interaction.response.send_message("❌ Ces boutons ne te sont pas destinés.", ephemeral=True)
+            return False
+        return True
+
+    async def get_plan(self, discord_id: int):
+        from services.scouting import generate_attack_plan
+        return await generate_attack_plan(str(discord_id), self.my_roster_index, self.enemy_zones, self.fmt)
+
+    async def refresh_plan_message(self, interaction: discord.Interaction):
+        from services.scouting import generate_attack_plan
+        from services.scout_image import generate_attack_plan_image
+        
+        plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt)
+        img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index)
+        file_plan = discord.File(img_buf, filename="attack_plan.png")
+        
+        msg = (
+            f"⚔️ **PLAN D'ATTAQUE GLOBAL GAC — {self.my_name} vs {self.enemy_name}**\n"
+            f"Carte d'attribution mise à jour en temps réel !\n"
+            f"⚠️ *Les secteurs tombés apparaissent en grisé (✔ TOMBÉ) et les contres restants sont automatiquement rééquilibrés.*"
+        )
+        await interaction.channel.send(content=msg, file=file_plan, view=self)
+
+    @discord.ui.button(label="⚔️ Enregistrer Combat", style=discord.ButtonStyle.success, custom_id="btn_record_combat")
+    async def btn_record_combat(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = SectorZoneSelectView(self, action="record")
+        await interaction.response.send_message("📌 **Enregistrement de Combat** — Sélectionne la Zone du secteur :", view=view, ephemeral=True)
+
+    @discord.ui.button(label="🔄 Autre Option", style=discord.ButtonStyle.primary, custom_id="btn_cycle_counter")
+    async def btn_cycle_counter(self, interaction: discord.Interaction, button: discord.ui.Button):
+        view = SectorZoneSelectView(self, action="cycle")
+        await interaction.response.send_message("📌 **Changement de Contre** — Sélectionne le secteur dont tu souhaites voir l'Alternative suivante :", view=view, ephemeral=True)
+
+    @discord.ui.button(label="🔄 Actualiser Carte", style=discord.ButtonStyle.secondary, custom_id="btn_refresh_plan")
+    async def btn_refresh_plan(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        await self.refresh_plan_message(interaction)
+        await interaction.followup.send("✅ Carte d'attaque actualisée !", ephemeral=True)
+
+
 # ─── VUE PRINCIPALE DÉFENSE & PLAN D'ATTAQUE ──────────────────────────────────
 
 class DefenseValidationView(discord.ui.View):
@@ -68,9 +228,12 @@ class DefenseValidationView(discord.ui.View):
             msg = (
                 f"⚔️ **PLAN D'ATTAQUE GLOBAL GAC — {self.my_name} vs {self.enemy_name}**\n"
                 f"Voici la carte d'attribution optimale de tes contres d'attaque pour détruire la défense de {self.enemy_name} !\n"
-                f"⚠️ *Tes personnages posés en défense ont été automatiquement exclus.*"
+                f"⚠️ *Utilise les boutons ci-dessous pour enregistrer tes victoires/défaites ou changer de contre (`[🔄 Autre Option]`).*"
             )
-            await interaction.channel.send(content=msg, file=file_plan)
+            atk_view = AttackPlanView(
+                interaction.user.id, self.my_zones, self.enemy_zones, self.quotas, self.league, self.fmt, self.my_name, self.enemy_name, self.my_roster_index
+            )
+            await interaction.channel.send(content=msg, file=file_plan, view=atk_view)
         except Exception as e:
             log.exception("Erreur lors de la génération du plan d'attaque : %s", e)
             await interaction.followup.send(f"❌ Erreur lors de la génération du plan d'attaque : {e}")
@@ -102,7 +265,6 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         - Mardi 23h (Fin Combat R3 / Fin Event)
         """
         weekday = datetime.datetime.utcnow().weekday()
-        # 4 = Vendredi, 6 = Dimanche, 1 = Mardi
         if weekday in [4, 6, 1]:
             log.info("⏰ 23h00 (Paris) — Fin de phase de combat GAC détectée. Réinitialisation des unités brûlées...")
             await clear_used_units()

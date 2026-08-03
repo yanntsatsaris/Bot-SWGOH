@@ -181,5 +181,18 @@ CREATE_TABLES_SQL: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_active_units_user ON active_round_units(discord_id)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS active_sector_status (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        discord_id     TEXT    NOT NULL,
+        zone           TEXT    NOT NULL,
+        slot_index     INTEGER NOT NULL,
+        status         TEXT    NOT NULL DEFAULT 'OPEN',
+        counter_offset INTEGER NOT NULL DEFAULT 0,
+        created_at     TEXT    DEFAULT (datetime('now')),
+        UNIQUE(discord_id, zone, slot_index)
+    )
+    """,
 ]
+
 

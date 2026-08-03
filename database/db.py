@@ -290,14 +290,78 @@ async def get_used_units(discord_id: str) -> set[str]:
     return {row["base_id"].upper() for row in rows}
 
 async def clear_used_units(discord_id: str | None = None):
-    """Réinitialise les unités brûlées pour un joueur ou pour tous les joueurs (changement de round à 23h)."""
+    """Réinitialise les unités brûlées et les états de secteurs pour un joueur ou pour tous les joueurs."""
     async with get_db() as db:
         if discord_id:
             await db.execute("DELETE FROM active_round_units WHERE discord_id = ?", (discord_id,))
+            await db.execute("DELETE FROM active_sector_status WHERE discord_id = ?", (discord_id,))
         else:
             await db.execute("DELETE FROM active_round_units")
+            await db.execute("DELETE FROM active_sector_status")
         await db.commit()
-    log.info(f"Unités brûlées réinitialisées ({'joueur ' + discord_id if discord_id else 'tous les joueurs'}).")
+    log.info(f"Unités brûlées et secteurs réinitialisés ({'joueur ' + discord_id if discord_id else 'tous les joueurs'}).")
+
+async def set_sector_status(discord_id: str, zone: str, slot_index: int, status: str, counter_offset: int | None = None):
+    """Met à jour le statut d'un secteur (OPEN, CLEARED, FAILED) et optionnellement son offset de contre."""
+    async with get_db() as db:
+        if counter_offset is not None:
+            await db.execute(
+                """
+                INSERT INTO active_sector_status (discord_id, zone, slot_index, status, counter_offset)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(discord_id, zone, slot_index) DO UPDATE SET
+                    status = excluded.status,
+                    counter_offset = excluded.counter_offset
+                """,
+                (discord_id, zone, slot_index, status, counter_offset)
+            )
+        else:
+            await db.execute(
+                """
+                INSERT INTO active_sector_status (discord_id, zone, slot_index, status)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(discord_id, zone, slot_index) DO UPDATE SET
+                    status = excluded.status
+                """,
+                (discord_id, zone, slot_index, status)
+            )
+        await db.commit()
+
+async def cycle_sector_counter_offset(discord_id: str, zone: str, slot_index: int) -> int:
+    """Incrémente l'offset du contre pour ce secteur (Option #1 -> Option #2...) et retourne la nouvelle valeur."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT counter_offset FROM active_sector_status WHERE discord_id = ? AND zone = ? AND slot_index = ?",
+            (discord_id, zone, slot_index)
+        )
+        row = await cursor.fetchone()
+        current_offset = row["counter_offset"] if row else 0
+        new_offset = (current_offset + 1) % 5
+        
+        await db.execute(
+            """
+            INSERT INTO active_sector_status (discord_id, zone, slot_index, status, counter_offset)
+            VALUES (?, ?, ?, 'OPEN', ?)
+            ON CONFLICT(discord_id, zone, slot_index) DO UPDATE SET
+                counter_offset = excluded.counter_offset
+            """,
+            (discord_id, zone, slot_index, new_offset)
+        )
+        await db.commit()
+    return new_offset
+
+async def get_active_sector_statuses(discord_id: str) -> dict:
+    """Retourne un dictionnaire {(zone, slot_index): {'status': status, 'counter_offset': offset}}."""
+    if not discord_id:
+        return {}
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT zone, slot_index, status, counter_offset FROM active_sector_status WHERE discord_id = ?",
+            (discord_id,)
+        )
+        rows = await cursor.fetchall()
+    return {(row["zone"], row["slot_index"]): {"status": row["status"], "counter_offset": row["counter_offset"]} for row in rows}
+
 
 async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, leader_id: str, members_ids: list[str]):
     """Remplace l'équipe posée sur un emplacement (zone + slot_index) spécifique."""

@@ -213,11 +213,22 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             e_team = slot["enemy_team"]
             c_info = slot["counter"]
             win_pct = slot["win_pct"]
+            status = slot.get("status", "OPEN")
+            offset = slot.get("counter_offset", 0)
+            
+            panel_fill = (18, 20, 26) if status == "CLEARED" else C_SECTION
+            panel_border = C_READY if status == "CLEARED" else (C_ENEMY if status == "FAILED" else C_BORDER)
             
             panel_rect = [PADDING, current_y, width - PADDING, current_y + row_height - 5]
-            draw.rounded_rectangle(panel_rect, radius=SECTION_RADIUS, fill=C_SECTION, outline=C_BORDER, width=1)
+            draw.rounded_rectangle(panel_rect, radius=SECTION_RADIUS, fill=panel_fill, outline=panel_border, width=2 if status != "OPEN" else 1)
             
-            draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi", font=label_font, fill=C_ENEMY)
+            # Label secteur + badge statut
+            if status == "CLEARED":
+                draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi — ✔ TOMBÉ", font=label_font, fill=C_READY)
+            elif status == "FAILED":
+                draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi — ⚠ ÉCHEC", font=label_font, fill=C_ENEMY)
+            else:
+                draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi", font=label_font, fill=C_ENEMY)
             
             e_leader = e_team.get("leader_id")
             e_members = e_team.get("members_ids", [])
@@ -227,32 +238,49 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             y_portraits = current_y + 28
             for bid in all_e_ids[: (3 if fmt == "3v3" else 5)]:
                 _draw_portrait_cell(canvas, draw, bid, x_def, y_portraits, unit_data=None, is_leader=(bid == e_leader))
+                if status == "CLEARED":
+                    # Overlay grisant pour secteur tombé
+                    overlay = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL), (0, 0, 0, 160))
+                    canvas.paste(overlay, (x_def, y_portraits), overlay)
                 x_def += PORTRAIT_CELL + PORTRAIT_GAP
                 
             x_mid = x_def + 30
-            draw.text((x_mid, current_y + 35), "⚔️", font=title_font, fill=C_GOLD)
-            if c_info:
-                draw.text((x_mid - 15, current_y + 65), f"{win_pct}% Win", font=label_font, fill=C_READY if win_pct >= 75 else C_TEXT)
+            if status == "CLEARED":
+                draw.text((x_mid, current_y + 35), "✅", font=title_font, fill=C_READY)
+                draw.text((x_mid - 15, current_y + 65), "Victoire", font=label_font, fill=C_READY)
             else:
-                draw.text((x_mid - 20, current_y + 65), "Aucun contre", font=label_font, fill=C_ENEMY)
+                draw.text((x_mid, current_y + 35), "⚔️", font=title_font, fill=C_GOLD)
+                if c_info:
+                    draw.text((x_mid - 15, current_y + 65), f"{win_pct}% Win", font=label_font, fill=C_READY if win_pct >= 75 else C_TEXT)
+                else:
+                    draw.text((x_mid - 20, current_y + 65), "Aucun contre", font=label_font, fill=C_ENEMY)
                 
             x_counter = x_mid + 90
-            draw.text((x_counter, current_y + 10), "Contre Réalisable", font=label_font, fill=C_READY)
-            
-            if c_info:
-                c_leader = c_info["atk_leader_id"]
-                c_members = c_info.get("atk_members_ids", [])
-                all_c_ids = [c_leader] + [m for m in c_members if m]
-                
-                for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
-                    u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
-                    _draw_portrait_cell(canvas, draw, bid, x_counter, y_portraits, unit_data=u_data, is_leader=(bid == c_leader))
-                    x_counter += PORTRAIT_CELL + PORTRAIT_GAP
+            opt_str = f" (Option #{offset + 1})" if offset > 0 else ""
+            if status == "CLEARED":
+                draw.text((x_counter, current_y + 10), "Secteur Vaincu", font=label_font, fill=C_MUTED)
+                draw.text((x_counter, current_y + 40), "✔ Territoire libéré", font=sub_font, fill=C_READY)
+            elif status == "FAILED":
+                draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}", font=label_font, fill=C_ENEMY)
             else:
-                draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
+                draw.text((x_counter, current_y + 10), f"Contre Réalisable{opt_str}", font=label_font, fill=C_READY)
+            
+            if status != "CLEARED":
+                if c_info:
+                    c_leader = c_info["atk_leader_id"]
+                    c_members = c_info.get("atk_members_ids", [])
+                    all_c_ids = [c_leader] + [m for m in c_members if m]
+                    
+                    for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
+                        u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
+                        _draw_portrait_cell(canvas, draw, bid, x_counter, y_portraits, unit_data=u_data, is_leader=(bid == c_leader))
+                        x_counter += PORTRAIT_CELL + PORTRAIT_GAP
+                else:
+                    draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
                 
             current_y += row_height
         current_y += PADDING
+
 
     canvas_hd = canvas.resize((canvas.width * 2, canvas.height * 2), Image.LANCZOS)
     out = io.BytesIO()

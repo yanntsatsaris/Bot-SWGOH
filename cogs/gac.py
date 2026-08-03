@@ -59,14 +59,18 @@ async def unit_autocomplete(interaction: discord.Interaction, current: str) -> l
 
 async def slot_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
     zone = getattr(interaction.namespace, "zone", "North") or "North"
+    cote = getattr(interaction.namespace, "cote", "my") or "my"
     discord_id = str(interaction.user.id)
     
     from database.db import get_db
     from services.unit_names import get_name
     from utils.gac_config import get_gac_quotas
+    from services.comlink import get_player
+    
+    used_type_target = "defense" if cote == "my" else "enemy_defense"
     
     ally_code = None
-    league = "CHROMIUM"
+    league = "BRONZIUM"
     format_type = "3v3"
     
     async with get_db() as db:
@@ -76,13 +80,25 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
             ally_code = row["ally_code"]
             
         cursor = await db.execute(
-            "SELECT league, format FROM gac_rounds WHERE player_code = ? ORDER BY id DESC LIMIT 1",
+            "SELECT league, format FROM gac_rounds WHERE player_code = ? AND league IS NOT NULL ORDER BY id DESC LIMIT 1",
             (ally_code,) if ally_code else (discord_id,)
         )
         r_row = await cursor.fetchone()
         if r_row:
             if r_row["league"]: league = r_row["league"].upper()
             if r_row["format"]: format_type = r_row["format"]
+        elif ally_code:
+            try:
+                profile = await get_player(ally_code)
+                if profile:
+                    season_status = profile.get("seasonStatus", [])
+                    if season_status:
+                        last_season = season_status[-1]
+                        l_val = last_season.get("league", "BRONZIUM")
+                        if isinstance(l_val, str):
+                            league = l_val.split("_")[-1].upper()
+            except Exception:
+                pass
 
         quotas = get_gac_quotas(league, format_type)
         max_slots = quotas.get(zone, 3)
@@ -91,10 +107,10 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
             """
             SELECT slot_index, base_id 
             FROM active_round_units 
-            WHERE discord_id = ? AND zone = ? AND used_type = 'defense'
+            WHERE discord_id = ? AND zone = ? AND used_type = ?
             ORDER BY slot_index ASC
             """,
-            (discord_id, zone)
+            (discord_id, zone, used_type_target)
         )
         rows = await cursor.fetchall()
         
@@ -115,6 +131,7 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
         choices.append(app_commands.Choice(name=label[:100], value=s_idx))
         
     return choices[:25]
+
 
 
 

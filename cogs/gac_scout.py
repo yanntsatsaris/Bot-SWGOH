@@ -174,6 +174,13 @@ class GACScoutCog(commands.Cog, name="GACScout"):
 
                     scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code, progress_callback=cb)
                     
+                    from database.db import save_user_defense_zones
+                    if "my_zones" in scout_data:
+                        await save_user_defense_zones(str(inter.user.id), scout_data["my_zones"], "defense")
+                    if "zones" in scout_data:
+                        await save_user_defense_zones(str(inter.user.id), scout_data["zones"], "enemy_defense")
+
+                    
                     def _build_files(sd):
                         result_files = []
                         e_img = generate_scout_map(

@@ -302,3 +302,34 @@ async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, le
             )
         await db.commit()
 
+
+async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: str = "defense"):
+
+    """Enregistre l'ensemble des zones de défense (joueur ou ennemie) dans active_round_units."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM active_round_units WHERE discord_id = ? AND used_type = ?",
+            (discord_id, used_type)
+        )
+        for zone, teams in zones_dict.items():
+            for idx, team in enumerate(teams, 1):
+                leader = team.get("leader_id")
+                members = team.get("members_ids", [])
+                all_units = [leader] + [m for m in members if m]
+                for bid in all_units:
+                    if not bid or bid in ["USED", "None", "EMPTY"]:
+                        continue
+                    await db.execute(
+                        """
+                        INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                            used_type = excluded.used_type,
+                            zone = excluded.zone,
+                            slot_index = excluded.slot_index
+                        """,
+                        (discord_id, bid.upper(), used_type, zone, idx)
+                    )
+        await db.commit()
+
+

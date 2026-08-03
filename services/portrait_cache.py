@@ -180,6 +180,9 @@ def get_portrait_path(base_id: str) -> Path:
         "BISHOP": "colonelward",
         "RACCOON": "rotta",
         "REYJEDITRAINING": "rey_tlj",
+        "TRIPLEZERO": "triplezero",
+        "BT1": "bt1",
+
 
         # --- Vaisseaux ---
         "GEONOSIANSTARFIGHTER1": "geonosis_fighter_sunfac",

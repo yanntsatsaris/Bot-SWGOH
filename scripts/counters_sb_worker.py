@@ -57,12 +57,14 @@ def scrape(targets, format_type="5v5", season_id="current"):
 
                 
                 counters_data = []
+                max_pages = int(target.get("max_pages", 6))
+                dprint(f"[WORKER] Scraping optimisé jusqu'à {max_pages} pages des contres récents...")
                 
-                for page in range(1, 11):
+                for page in range(1, max_pages + 1):
                     page_url = url + f"&page={page}"
                     dprint(f"[WORKER] Navigation vers {page_url}...")
-                    sb.uc_open_with_reconnect(page_url, reconnect_time=4)
-                    
+                    sb.uc_open_with_reconnect(page_url, reconnect_time=3)
+
                     quick_check = sb.get_page_source()
                     cloudflare_present = (
                         "Just a moment" in quick_check
@@ -71,39 +73,38 @@ def scrape(targets, format_type="5v5", season_id="current"):
                         or "Checking your browser" in quick_check
                     )
                     
-                    if cloudflare_present:
-                        dprint(f"[WORKER] Page {page} : Cloudflare détecté, tentative de clic...")
+                    if page == 1 and cloudflare_present:
+                        dprint(f"[WORKER] Page 1 : Cloudflare détecté, tentative de clic...")
                         try:
                             sb.uc_gui_click_captcha()
                         except:
                             pass
-                        wait_time = 12
+                        wait_time = 10
+                    elif page == 1:
+                        wait_time = 4
                     else:
-                        dprint(f"[WORKER] Page {page} : Pas de Cloudflare.")
-                        wait_time = 6
+                        wait_time = 2  # Cookies déjà actifs pour les pages suivantes
     
-                    dprint(f"[WORKER] Page {page} : Attente adaptative ({wait_time}s max)...")
-                    for _ in range(wait_time * 2):
-                        sb.sleep(0.5)
+                    for _ in range(int(wait_time * 5)):
+                        sb.sleep(0.2)
                         source_check = sb.get_page_source()
                         if "data-unit-def-tooltip-app" in source_check or "panel--size-sm" in source_check:
-                            dprint(f"[WORKER] Page {page} : Contenu counter détecté, stop de l'attente !")
                             break
     
                     panels_found = False
-                    for _ in range(10):
+                    for _ in range(5):
                         if sb.is_element_present("div.panel"):
                             panels_found = True
                             break
-                        sb.sleep(0.5)
+                        sb.sleep(0.2)
     
                     if not panels_found:
-                        dprint(f"[WORKER] Page {page} : Aucun panneau de counter trouvé (fin des résultats ou erreur).")
-                        dprint(f"[DEBUG HTML snippet]: {quick_check[:500]}")
+                        dprint(f"[WORKER] Page {page} : Fin des contres disponibles.")
                         break
                         
-                    sb.sleep(2)
+                    sb.sleep(0.5)
                     page_source = sb.get_page_source()
+
                     
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(page_source, "html.parser")

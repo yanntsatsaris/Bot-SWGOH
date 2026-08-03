@@ -168,14 +168,16 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             y_team = y_current + H_ZONE_TITLE + (i * fleet_row_h)
             _draw_zone_team(t, PADDING + 20, y_team, is_fleet=True)
 
+    # Suréchantillonnage 2x LANCZOS pour affichage Retina HD net sur mobile
+    canvas_hd = canvas.resize((canvas.width * 2, canvas.height * 2), Image.LANCZOS)
     out = io.BytesIO()
-    canvas.save(out, format="PNG")
+    canvas_hd.save(out, format="PNG", optimize=True)
     out.seek(0)
     return out
 
 def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_name: str, my_name: str, my_roster_index: dict = None) -> io.BytesIO:
     """
-    Génère l'image PNG du Plan d'Attaque Global GAC.
+    Génère l'image PNG du Plan d'Attaque Global GAC (Retina HD).
     Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
     """
     width = 1100
@@ -252,7 +254,9 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             current_y += row_height
         current_y += PADDING
 
+    canvas_hd = canvas.resize((canvas.width * 2, canvas.height * 2), Image.LANCZOS)
     out = io.BytesIO()
-    canvas.save(out, format="PNG")
+    canvas_hd.save(out, format="PNG", optimize=True)
     out.seek(0)
     return out
+

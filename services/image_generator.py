@@ -556,14 +556,13 @@ def generate_gac_report(
         y += H_PORTRAIT_ROW + PADDING + H_SEPARATOR
 
     # -----------------------------------------------------------------------
-    final = canvas.convert("RGB").resize(
-        (IMG_WIDTH, height), Image.LANCZOS
-    )
+    final = canvas.convert("RGB")
 
     buf = io.BytesIO()
     final.save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return discord.File(buf, filename="gac_report.png")
+
 
 
 def base_id_from_name(name: str) -> str | None:

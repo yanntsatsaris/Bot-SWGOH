@@ -72,10 +72,15 @@ def filter_counters_by_roster(
                 "composite_score": final_score * (1.5 if all_ready else availability),
             })
     
+    # Si au moins un contre est 100% prêt, on ne garde QUE les contres 100% prêts !
+    complete_results = [c for c in result if c["all_members_ready"]]
+    if complete_results:
+        result = complete_results
+
     # Tri multi-critères :
-    # 1. Équipes 100% complètes en PREMIER (1 vs 0)
-    # 2. Correspondance compo ennemie exacte (1 vs 0)
-    # 3. Disponibilité du roster (1.0 vs 0.8 vs 0.6)
+    # 1. Équipes 100% complètes en PREMIER
+    # 2. Correspondance compo ennemie exacte
+    # 3. Disponibilité du roster
     # 4. Puissance des persos du joueur (persos les plus montés)
     # 5. Score final (win rate / feedback)
     result.sort(key=lambda c: (
@@ -95,6 +100,7 @@ def filter_counters_by_roster(
             dedup.append(c)
             
     return dedup
+
 
 async def get_best_counter_with_memory(
     def_leader_id: str, 

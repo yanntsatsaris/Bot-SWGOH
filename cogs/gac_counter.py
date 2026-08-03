@@ -165,7 +165,9 @@ class CounterSuggestionView(discord.ui.View):
             u = self.my_roster.get(cid)
             relic = u["relic_tier"] if u else None
             gear = u["gear_tier"] if u else None
-            is_ready = True if u and (relic >= 5 or gear >= 13) else False
+            is_ready = True if u and ((relic and relic >= 1) or (gear and gear >= 12)) else False
+
+
             
             counter_units.append({
                 "base_id": cid,

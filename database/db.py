@@ -26,10 +26,31 @@ async def init_db() -> None:
         for sql in CREATE_TABLES_SQL:
             await db.execute(sql)
             
+        # Migration : Supprimer la contrainte CHECK de active_round_units si elle existe
+        try:
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS active_round_units_new (
+                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_id  TEXT    NOT NULL,
+                    base_id     TEXT    NOT NULL,
+                    used_type   TEXT    NOT NULL DEFAULT 'defense',
+                    zone        TEXT,
+                    slot_index  INTEGER,
+                    created_at  TEXT    DEFAULT (datetime('now')),
+                    UNIQUE(discord_id, base_id)
+                )
+            """)
+            await db.execute("INSERT OR IGNORE INTO active_round_units_new SELECT * FROM active_round_units")
+            await db.execute("DROP TABLE active_round_units")
+            await db.execute("ALTER TABLE active_round_units_new RENAME TO active_round_units")
+        except Exception:
+            pass
+
         await db.commit()
 
 
     log.info("Base de données initialisée : %s", DATABASE_PATH)
+
 
 
 @asynccontextmanager

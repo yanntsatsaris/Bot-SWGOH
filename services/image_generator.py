@@ -443,8 +443,10 @@ def generate_gac_report(
 
 
     # Helpers de mise à l'échelle locaux (les globales du module NE sont PAS modifiées)
+    S = RENDER_SCALE
     def _sc(v: int) -> int:  return v * S          # coordonnée / taille
     def _font(style, size):  return _get_font(style, size * S)  # police scalée
+
 
 
     # -----------------------------------------------------------------------

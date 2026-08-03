@@ -154,9 +154,9 @@ async def sync():
                     dest_dir.mkdir(parents=True, exist_ok=True)
                     
                     image_path = None
-                    # 1. Vérification par get_portrait_path (doit faire > 10 Ko pour être considéré comme HD)
+                    # 1. Vérification par get_portrait_path (doit faire > 3 Ko pour être valide et éviter les vieilles vignettes corrompues)
                     existing_path = get_portrait_path(bid)
-                    if existing_path and existing_path.exists() and existing_path.stat().st_size > 10000:
+                    if existing_path and existing_path.exists() and existing_path.stat().st_size > 3000:
                         image_path = existing_path.as_posix()
                     else:
                         # 2. Vérification si un fichier HD existe déjà sous un nom nettoyé
@@ -170,9 +170,10 @@ async def sync():
                             possible_files.append(dest_dir / f"{clean_thumb}.png")
 
                         for p in possible_files:
-                            if p.exists() and p.stat().st_size > 10000:
+                            if p.exists() and p.stat().st_size > 3000:
                                 image_path = p.as_posix()
                                 break
+
 
                         # 3. Téléchargement de la version Ultra HD (18-24 KB) depuis le CDN EA
                         if not image_path and thumb:

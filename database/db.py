@@ -26,32 +26,8 @@ async def init_db() -> None:
         for sql in CREATE_TABLES_SQL:
             await db.execute(sql)
             
-        # Migration : Ajouter 'league' à 'meta_teams' si elle n'existe pas
-        try:
-            await db.execute("ALTER TABLE meta_teams ADD COLUMN league TEXT NOT NULL DEFAULT 'KYBER'")
-            log.info("Migration: colonne 'league' ajoutée à meta_teams.")
-        except aiosqlite.OperationalError:
-            pass  # La colonne existe déjà
-
-        # Migrations GAC Rounds et Matches
-        migrations = [
-            "ALTER TABLE gac_rounds ADD COLUMN opponent_code TEXT",
-            "ALTER TABLE gac_rounds ADD COLUMN result TEXT",
-            "ALTER TABLE gac_rounds ADD COLUMN player_banners INTEGER",
-            "ALTER TABLE gac_rounds ADD COLUMN opponent_banners INTEGER",
-            "ALTER TABLE gac_rounds ADD COLUMN format TEXT NOT NULL DEFAULT '5v5'",
-            "ALTER TABLE gac_rounds ADD COLUMN league TEXT",
-            "ALTER TABLE gac_matches ADD COLUMN format TEXT",
-            "ALTER TABLE gac_matches ADD COLUMN zone TEXT"
-        ]
-        for migration in migrations:
-            try:
-                await db.execute(migration)
-                log.info(f"Migration appliquée : {migration}")
-            except aiosqlite.OperationalError:
-                pass # Colonne existante
-            
         await db.commit()
+
 
     log.info("Base de données initialisée : %s", DATABASE_PATH)
 

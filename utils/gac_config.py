@@ -33,3 +33,11 @@ def get_gac_quotas(league: str, fmt: str) -> dict[str, int]:
         # Fallback de sécurité (ex: si le joueur n'a pas de ligue)
         league_upper = "CARBONITE"
     return GAC_DEFENSE_QUOTAS[league_upper].get(fmt, GAC_DEFENSE_QUOTAS[league_upper]["5v5"])
+
+
+# Restrictions d'unités : certains persos ne peuvent jouer qu'avec un leader spécifique.
+# Ex : EZRABRIDGEREXILE ne peut jouer que dans une équipe menée par GLAHSOKATANO.
+UNIT_RESTRICTIONS: dict[str, list[str]] = {
+    "EZRABRIDGEREXILE": ["GLAHSOKATANO"],
+}
+

@@ -3,7 +3,6 @@ services/comlink.py — Client HTTP vers SWGOH Comlink utilisant le wrapper offi
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 import logging
-import asyncio
 import base64
 import zipfile
 import io
@@ -134,15 +133,12 @@ async def get_player_roster(ally_code: str) -> list[dict]:
         })
     return roster
 
+
 async def check_health() -> dict:
     return await comlink_client.get_game_metadata()
 
-async def get_player_arena(ally_code: str) -> dict:
-    clean = str(ally_code).replace("-", "").strip()
-    ally_int = int(clean) if clean.isdigit() else clean
-    return await comlink_client.get_player_arena(allycode=ally_int)
-
 async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: list[int] | None = None) -> list[dict]:
+    import asyncio
     leagues = leagues or [20, 40, 60, 80, 100]
     divisions = divisions or [5, 10, 15, 20, 25]
     
@@ -169,3 +165,4 @@ async def scan_all_leaderboards(leagues: list[int] | None = None, divisions: lis
                 log.warning("Erreur scan_all_leaderboards (L%s D%s): %s", league, division, e)
                 continue
     return all_players
+

@@ -186,7 +186,7 @@ class GacPlanner:
             )
             
             valid_members = []
-            from services.scouting import UNIT_RESTRICTIONS
+            from utils.gac_config import UNIT_RESTRICTIONS
             
             for candidate_id, _ in sorted_candidates:
                 if candidate_id in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate_id]:

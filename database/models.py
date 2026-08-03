@@ -15,27 +15,6 @@ CREATE_TABLES_SQL: list[str] = [
     )
     """,
     """
-    CREATE TABLE IF NOT EXISTS gac_seasons (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        player_id   INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-        season      TEXT    NOT NULL,
-        division    INTEGER,
-        league      TEXT,
-        rank        INTEGER,
-        wins        INTEGER NOT NULL DEFAULT 0,
-        losses      INTEGER NOT NULL DEFAULT 0,
-        recorded_at TEXT    NOT NULL DEFAULT (datetime('now'))
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS characters_cache (
-        base_id     TEXT    PRIMARY KEY,
-        name        TEXT    NOT NULL,
-        data_json   TEXT    NOT NULL,
-        cached_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-    )
-    """,
-    """
     CREATE TABLE IF NOT EXISTS meta_teams (
         id           INTEGER PRIMARY KEY AUTOINCREMENT,
         leader_name  TEXT    NOT NULL,
@@ -47,29 +26,6 @@ CREATE_TABLES_SQL: list[str] = [
         usage_rate   REAL,
         source_url   TEXT,
         updated_at   TEXT    NOT NULL DEFAULT (datetime('now'))
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS gac_history (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        enemy_id        TEXT    NOT NULL,
-        format          TEXT    NOT NULL CHECK(format IN ('3v3', '5v5', 'fleet')),
-        zone            TEXT    NOT NULL CHECK(zone IN ('North', 'South', 'Back', 'Fleet')),
-        leader_id       TEXT    NOT NULL,
-        members_ids     TEXT    NOT NULL,
-        date_scanned    TEXT    NOT NULL DEFAULT (datetime('now'))
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS counter_performance (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        enemy_leader    TEXT    NOT NULL,
-        enemy_members   TEXT    NOT NULL,
-        player_leader   TEXT    NOT NULL,
-        player_members  TEXT    NOT NULL,
-        wins            INTEGER NOT NULL DEFAULT 0,
-        losses          INTEGER NOT NULL DEFAULT 0,
-        target_enemy_id TEXT
     )
     """,
     """
@@ -93,48 +49,6 @@ CREATE_TABLES_SQL: list[str] = [
         skill_id      TEXT    PRIMARY KEY,
         zeta_tier     INTEGER NOT NULL
     )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS gac_roster_snapshots (
-        id           INTEGER PRIMARY KEY AUTOINCREMENT,
-        player_id    TEXT    NOT NULL,
-        ally_code    TEXT,
-        player_name  TEXT,
-        guild_id     TEXT,
-        league       INTEGER,
-        division     INTEGER,
-        skill_rating INTEGER,
-        season_id    TEXT    NOT NULL,
-        scanned_at   TEXT    NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(player_id, season_id)
-    )
-    """,
-    """
-    CREATE TABLE IF NOT EXISTS gac_roster_units (
-        id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        snapshot_id INTEGER NOT NULL REFERENCES gac_roster_snapshots(id) ON DELETE CASCADE,
-        unit_id     TEXT    NOT NULL,
-        relic_tier  INTEGER DEFAULT 0,
-        gear_tier   INTEGER DEFAULT 0,
-        stars       INTEGER DEFAULT 7,
-        has_omicron INTEGER DEFAULT 0,
-        combat_type INTEGER DEFAULT 1
-    )
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_snapshots_season ON gac_roster_snapshots(season_id)
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_snapshots_league ON gac_roster_snapshots(league, division)
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_units_snapshot ON gac_roster_units(snapshot_id)
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_units_unit ON gac_roster_units(unit_id)
-    """,
-    """
-    CREATE INDEX IF NOT EXISTS idx_gac_history_enemy ON gac_history(enemy_id)
     """,
     """
     CREATE TABLE IF NOT EXISTS gac_meta_squads (
@@ -163,6 +77,7 @@ CREATE_TABLES_SQL: list[str] = [
         player_banners   INTEGER,
         opponent_banners INTEGER,
         format           TEXT    NOT NULL DEFAULT '5v5' CHECK(format IN ('3v3','5v5')),
+        league           TEXT,
         recorded_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     )
     """,
@@ -250,11 +165,4 @@ CREATE_TABLES_SQL: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_feedback_def ON counter_feedback(def_leader_id, format)
     """,
-    """
-    CREATE TABLE IF NOT EXISTS gac_unit_slugs (
-        base_id     TEXT PRIMARY KEY,
-        swgoh_slug  TEXT NOT NULL,
-        FOREIGN KEY(base_id) REFERENCES game_characters(base_id)
-    )
-    """
 ]

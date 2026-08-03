@@ -2,7 +2,6 @@ import asyncio
 import os
 import sys
 import aiohttp
-from bs4 import BeautifulSoup
 from pathlib import Path
 import sqlite3
 
@@ -17,22 +16,25 @@ SHIPS_DIR = ASSETS_DIR / "vaisseaux"
 PORTRAITS_DIR.mkdir(parents=True, exist_ok=True)
 SHIPS_DIR.mkdir(parents=True, exist_ok=True)
 
-async def fetch_page(session, url):
-    print(f"🌍 Téléchargement de {url}...")
-    async with session.get(url) as response:
-        response.raise_for_status()
-        return await response.text()
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+}
 
-async def download_image(session, img_url, dest_path):
+async def fetch_json(session: aiohttp.ClientSession, url: str):
+    print(f"🌍 Téléchargement API : {url}...")
+    async with session.get(url, headers=HEADERS) as response:
+        response.raise_for_status()
+        return await response.json()
+
+async def download_image(session: aiohttp.ClientSession, img_url: str, dest_path: Path) -> bool:
     if dest_path.exists():
-        return True # Déjà téléchargé
+        return True
         
     try:
-        async with session.get(img_url) as response:
+        async with session.get(img_url, headers=HEADERS) as response:
             if response.status == 200:
                 content = await response.read()
-                with open(dest_path, "wb") as f:
-                    f.write(content)
+                dest_path.write_bytes(content)
                 return True
             else:
                 print(f"⚠️ Erreur {response.status} pour l'image {img_url}")
@@ -42,12 +44,11 @@ async def download_image(session, img_url, dest_path):
         return False
 
 async def process_swgoh_gg():
-    print("🚀 Début du scraping SWGOH.GG...")
+    print("🚀 Début de la synchro des personnages via l'API SWGOH.GG...")
     
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
-    # On crée la table si elle n'existe pas
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS game_characters (
             base_id TEXT PRIMARY KEY,
@@ -60,90 +61,93 @@ async def process_swgoh_gg():
     """)
     conn.commit()
 
+    downloaded_list = []
+    chars = []
+    ships = []
+
     async with aiohttp.ClientSession() as session:
         # 1. Personnages
-        html = await fetch_page(session, "https://swgoh.gg/characters/")
-        soup = BeautifulSoup(html, "html.parser")
-        
-        # Structure swgoh.gg: <li class="media list-group-item p-0 character">
-        chars = soup.find_all("li", class_="character")
-        if not chars:
-            # Fallback ancienne structure
-            chars = soup.find_all("div", class_="collection-char")
+        try:
+            chars = await fetch_json(session, "https://swgoh.gg/api/characters/")
+            print(f"👥 {len(chars)} personnages récupérés depuis l'API.")
             
-        print(f"👥 {len(chars)} personnages trouvés sur la page.")
-        
-        downloaded_list = []
-        for char in chars:
-            img_tag = char.find("img", class_="character-portrait__img")
-            if not img_tag:
-                continue
+            for item in chars:
+                base_id = item.get("base_id", "").upper()
+                name = item.get("name", "")
+                img_url = item.get("image", "")
                 
-            img_url = img_tag.get("src")
-            name = img_tag.get("alt", "")
-            filename = img_url.split("/")[-1]
-            thumbnail_name = filename.replace(".png", "")
-            
-            dest_path = PORTRAITS_DIR / filename
-            is_new = not dest_path.exists()
-            success = await download_image(session, img_url, dest_path)
-            
-            if success:
-                if is_new:
-                    downloaded_list.append(name or thumbnail_name)
-                cursor.execute("""
-                    UPDATE game_characters 
-                    SET image_path = ?, is_image_valid = 1 
-                    WHERE thumbnail_name = ?
-                """, (str(dest_path.as_posix()), thumbnail_name))
-        
-        conn.commit()
-        
+                if not base_id or not img_url:
+                    continue
+                    
+                filename = img_url.split("/")[-1]
+                thumbnail_name = filename.replace(".png", "")
+                dest_path = PORTRAITS_DIR / filename
+                
+                is_new = not dest_path.exists()
+                success = await download_image(session, img_url, dest_path)
+                
+                if success:
+                    if is_new:
+                        downloaded_list.append(name)
+                    cursor.execute("""
+                        INSERT INTO game_characters (base_id, name, type, thumbnail_name, image_path, is_image_valid)
+                        VALUES (?, ?, 1, ?, ?, 1)
+                        ON CONFLICT(base_id) DO UPDATE SET
+                            name = excluded.name,
+                            thumbnail_name = excluded.thumbnail_name,
+                            image_path = excluded.image_path,
+                            is_image_valid = 1
+                    """, (base_id, name, thumbnail_name, str(dest_path.as_posix())))
+            conn.commit()
+        except Exception as e:
+            print(f"❌ Erreur API Personnages : {e}")
+
         # 2. Vaisseaux
-        html = await fetch_page(session, "https://swgoh.gg/ships/")
-        soup = BeautifulSoup(html, "html.parser")
-        
-        ships = soup.find_all("li", class_="ship")
-        if not ships:
-            ships = soup.find_all("div", class_="collection-ship")
+        try:
+            ships = await fetch_json(session, "https://swgoh.gg/api/ships/")
+            print(f"✈️ {len(ships)} vaisseaux récupérés depuis l'API.")
             
-        print(f"✈️ {len(ships)} vaisseaux trouvés sur la page.")
-        
-        for ship in ships:
-            img_tag = ship.find("img", class_="ship-portrait__img")
-            if not img_tag:
-                continue
+            for item in ships:
+                base_id = item.get("base_id", "").upper()
+                name = item.get("name", "")
+                img_url = item.get("image", "")
                 
-            img_url = img_tag.get("src")
-            name = img_tag.get("alt", "")
-            filename = img_url.split("/")[-1]
-            thumbnail_name = filename.replace(".png", "")
-            
-            dest_path = SHIPS_DIR / filename
-            is_new = not dest_path.exists()
-            success = await download_image(session, img_url, dest_path)
-            
-            if success:
-                if is_new:
-                    downloaded_list.append(name or thumbnail_name)
-                cursor.execute("""
-                    UPDATE game_characters 
-                    SET image_path = ?, is_image_valid = 1 
-                    WHERE thumbnail_name = ?
-                """, (str(dest_path.as_posix()), thumbnail_name))
+                if not base_id or not img_url:
+                    continue
+                    
+                filename = img_url.split("/")[-1]
+                thumbnail_name = filename.replace(".png", "")
+                dest_path = SHIPS_DIR / filename
                 
-        conn.commit()
-        conn.close()
-        
-        summary = {
-            "total_chars": len(chars),
-            "total_ships": len(ships),
-            "new_downloads_count": len(downloaded_list),
-            "new_downloaded_names": downloaded_list
-        }
-        print(f"✅ Scraping terminé ! {len(downloaded_list)} nouveaux portraits téléchargés : {downloaded_list}")
-        return summary
+                is_new = not dest_path.exists()
+                success = await download_image(session, img_url, dest_path)
+                
+                if success:
+                    if is_new:
+                        downloaded_list.append(name)
+                    cursor.execute("""
+                        INSERT INTO game_characters (base_id, name, type, thumbnail_name, image_path, is_image_valid)
+                        VALUES (?, ?, 2, ?, ?, 1)
+                        ON CONFLICT(base_id) DO UPDATE SET
+                            name = excluded.name,
+                            thumbnail_name = excluded.thumbnail_name,
+                            image_path = excluded.image_path,
+                            is_image_valid = 1
+                    """, (base_id, name, thumbnail_name, str(dest_path.as_posix())))
+            conn.commit()
+        except Exception as e:
+            print(f"❌ Erreur API Vaisseaux : {e}")
+            
+    conn.close()
+    
+    summary = {
+        "total_chars": len(chars),
+        "total_ships": len(ships),
+        "new_downloads_count": len(downloaded_list),
+        "new_downloaded_names": downloaded_list
+    }
+    print(f"✅ Synchro terminée ! {len(downloaded_list)} nouveaux portraits téléchargés : {downloaded_list}")
+    return summary
 
 if __name__ == "__main__":
     asyncio.run(process_swgoh_gg())
-

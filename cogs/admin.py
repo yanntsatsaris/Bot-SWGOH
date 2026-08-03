@@ -144,27 +144,33 @@ class AdminCog(commands.Cog, name="Admin"):
         try:
             await interaction.followup.send("⏳ **Resynchronisation manuelle en cours...** (Téléchargement des nouveaux personnages et portraits)...", ephemeral=True)
             
+            from sync_all_units import sync as sync_comlink_units
+            comlink_summary = await sync_comlink_units()
+            
             from scripts.sync_portraits_swgoh import process_swgoh_gg
-            summary = await process_swgoh_gg()
+            gg_summary = await process_swgoh_gg()
             
             from services.unit_names import build_name_cache
             from services.portrait_cache import build_portrait_cache
             await build_name_cache()
             await build_portrait_cache()
             
-            new_cnt = summary.get("new_downloads_count", 0) if summary else 0
-            names = summary.get("new_downloaded_names", []) if summary else []
+            total_units = comlink_summary.get("total_comlink", 0) if comlink_summary else (gg_summary.get("total_chars", 0) + gg_summary.get("total_ships", 0) if gg_summary else 0)
+            new_cnt = (comlink_summary.get("new_portraits_count", 0) if comlink_summary else 0) + (gg_summary.get("new_downloads_count", 0) if gg_summary else 0)
+            
+            names = (comlink_summary.get("downloaded_names", []) if comlink_summary else []) + (gg_summary.get("new_downloaded_names", []) if gg_summary else [])
+            unique_names = list(dict.fromkeys(names))
             
             msg = f"✅ **Resynchronisation terminée avec succès !**\n"
-            msg += f"• **Personnages scannés** : {summary.get('total_chars', 0) if summary else 0}\n"
-            msg += f"• **Vaisseaux scannés** : {summary.get('total_ships', 0) if summary else 0}\n"
+            msg += f"• **Total Unités (Comlink & SWGOH)** : {total_units}\n"
             if new_cnt > 0:
-                names_str = ", ".join(names[:10]) + ("..." if len(names) > 10 else "")
+                names_str = ", ".join(unique_names[:10]) + ("..." if len(unique_names) > 10 else "")
                 msg += f"• 🆕 **{new_cnt} nouveaux portraits téléchargés** : `{names_str}`"
             else:
-                msg += f"• ✨ **Aucun nouveau portrait manquant** (Tous les personnages étaient déjà à jour dans le cache !)"
+                msg += f"• ✨ **Aucun nouveau portrait manquant** (Toutes les {total_units} unités sont déjà à jour dans le cache !)"
                 
             await interaction.followup.send(msg, ephemeral=True)
+
         except Exception as e:
             log.exception("Erreur lors de la synchronisation manuelle des unités : %s", e)
             await interaction.followup.send(f"❌ Erreur lors de la synchronisation : {e}", ephemeral=True)

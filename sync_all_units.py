@@ -133,38 +133,69 @@ async def sync():
             # On charge les portraits validés pour éviter de les réattribuer !
             await build_portrait_cache()
 
+            new_portraits_count = 0
+            downloaded_names = []
+
             async with get_db() as db:
                 for unit in playable_units:
                     bid = unit.get("baseId", "")
                     name_key = unit.get("nameKey", "")
                     name_key = name_key.strip()
 
-                    # Logique de Fallback
                     final_name = bid
                     if name_key in name_map and name_map[name_key]:
                         final_name = name_map[name_key]
 
                     combat_type = unit.get("combatType", 1)
                     unit_type = "character" if combat_type == 1 else "ship"
-                    thumb = unit.get("thumbnailName", "").replace("tex.avatars_", "")
+                    thumb = unit.get("thumbnailName", "")
 
-                    path_obj = get_portrait_path(bid)
-                    image_path = path_obj.as_posix() if path_obj else None
+                    dest_dir = Path("assets/vaisseaux") if combat_type == 2 else Path("assets/portraits")
+                    dest_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    image_path = None
+                    if thumb:
+                        filename = f"{thumb}.png" if not thumb.endswith(".png") else thumb
+                        local_file = dest_dir / filename
+                        
+                        if not local_file.exists():
+                            urls_to_try = [
+                                f"https://game-assets.swgoh.gg/textures/{filename}",
+                                f"https://game-assets.swgoh.gg/{filename}",
+                                f"https://swgoh.gg/static/img/assets/{filename}",
+                            ]
+                            for u in urls_to_try:
+                                try:
+                                    async with session.get(u) as r:
+                                        if r.status == 200:
+                                            local_file.write_bytes(await r.read())
+                                            new_portraits_count += 1
+                                            downloaded_names.append(final_name)
+                                            print(f"  ✅ Portrait téléchargé : {final_name} ({bid}) -> {local_file.name}")
+                                            break
+                                except Exception:
+                                    pass
+                        if local_file.exists():
+                            image_path = local_file.as_posix()
+
+                    if not image_path:
+                        path_obj = get_portrait_path(bid)
+                        image_path = path_obj.as_posix() if (path_obj and path_obj.exists()) else None
 
                     await db.execute(
                         """
-                        INSERT INTO game_characters (base_id, name, type, thumbnail_name, image_path)
-                        VALUES (?, ?, ?, ?, ?)
+                        INSERT INTO game_characters (base_id, name, type, thumbnail_name, image_path, is_image_valid)
+                        VALUES (?, ?, ?, ?, ?, ?)
                         ON CONFLICT(base_id) DO UPDATE SET
                             name=excluded.name,
                             type=excluded.type,
                             thumbnail_name=excluded.thumbnail_name,
-                            image_path=CASE WHEN game_characters.is_image_valid IS NOT 1 THEN excluded.image_path ELSE game_characters.image_path END
+                            image_path=COALESCE(excluded.image_path, game_characters.image_path),
+                            is_image_valid=CASE WHEN excluded.image_path IS NOT NULL THEN 1 ELSE game_characters.is_image_valid END
                     """,
-                        (bid, final_name, unit_type, thumb, image_path),
+                        (bid, final_name, unit_type, thumb, image_path, 1 if image_path else 0),
                     )
                     
-                # Sauvegarde des Omicrons et Zetas
                 print(" -> Traitement des Omicrons et Zetas...")
                 await db.execute("DELETE FROM game_omicrons")
                 await db.execute("DELETE FROM game_zetas")
@@ -184,7 +215,15 @@ async def sync():
                             zetas_found += 1
                             
                 await db.commit()
-            print(f"Terminé ! La base de données SQLite est mise à jour ({omicrons_found} Omicrons, {zetas_found} Zetas trouvés).")
+            
+            summary = {
+                "total_comlink": len(playable_units),
+                "new_portraits_count": new_portraits_count,
+                "downloaded_names": downloaded_names
+            }
+            print(f"✅ Terminé ! {len(playable_units)} unités Comlink synchronisées en BDD ({new_portraits_count} nouveaux portraits téléchargés, {omicrons_found} Omicrons, {zetas_found} Zetas).")
+            return summary
+
 
     except Exception as e:
         print(f"❌ Erreur lors de la synchronisation : {e}")

@@ -168,7 +168,91 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             y_team = y_current + H_ZONE_TITLE + (i * fleet_row_h)
             _draw_zone_team(t, PADDING + 20, y_team, is_fleet=True)
 
-    buf = io.BytesIO()
-    canvas.convert("RGB").save(buf, format="PNG", optimize=True)
-    buf.seek(0)
-    return buf
+    out = io.BytesIO()
+    canvas.save(out, format="PNG")
+    out.seek(0)
+    return out
+
+def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_name: str, my_name: str, my_roster_index: dict = None) -> io.BytesIO:
+    """
+    Génère l'image PNG du Plan d'Attaque Global GAC.
+    Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
+    """
+    width = 1100
+    row_height = PORTRAIT_CELL + 35
+    
+    height = 100 + PADDING
+    for zone, slots in attack_plan.items():
+        if slots:
+            height += H_ZONE_TITLE + (len(slots) * row_height) + PADDING
+            
+    canvas = Image.new("RGBA", (width, height), C_BG)
+    draw = ImageDraw.Draw(canvas)
+    
+    title_font = _get_font("bold", 22)
+    sub_font = _get_font("regular", 16)
+    section_font = _get_font("bold", 18)
+    label_font = _get_font("bold", 13)
+    
+    draw.text((PADDING, 20), f"PLAN D'ATTAQUE GLOBAL GAC — {league} ({fmt})", font=title_font, fill=C_GOLD)
+    draw.text((PADDING, 50), f"Stratégie : {my_name} ⚔️ {enemy_name}", font=sub_font, fill=C_TEXT)
+    
+    current_y = 100
+    
+    for zone, slots in attack_plan.items():
+        if not slots:
+            continue
+            
+        draw.text((PADDING, current_y), f"ZONE : {zone.upper()}", font=section_font, fill=C_GOLD)
+        current_y += H_ZONE_TITLE
+        
+        for slot in slots:
+            s_idx = slot["slot_index"]
+            e_team = slot["enemy_team"]
+            c_info = slot["counter"]
+            win_pct = slot["win_pct"]
+            
+            panel_rect = [PADDING, current_y, width - PADDING, current_y + row_height - 5]
+            draw.rounded_rectangle(panel_rect, radius=SECTION_RADIUS, fill=C_SECTION, outline=C_BORDER, width=1)
+            
+            draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi", font=label_font, fill=C_ENEMY)
+            
+            e_leader = e_team.get("leader_id")
+            e_members = e_team.get("members_ids", [])
+            all_e_ids = [e_leader] + [m for m in e_members if m]
+            
+            x_def = PADDING + 15
+            y_portraits = current_y + 28
+            for bid in all_e_ids[: (3 if fmt == "3v3" else 5)]:
+                _draw_portrait_cell(canvas, draw, bid, x_def, y_portraits, unit_data=None, is_leader=(bid == e_leader))
+                x_def += PORTRAIT_CELL + PORTRAIT_GAP
+                
+            x_mid = x_def + 30
+            draw.text((x_mid, current_y + 35), "⚔️", font=title_font, fill=C_GOLD)
+            if c_info:
+                draw.text((x_mid - 15, current_y + 65), f"{win_pct}% Win", font=label_font, fill=C_READY if win_pct >= 75 else C_TEXT)
+            else:
+                draw.text((x_mid - 20, current_y + 65), "Aucun contre", font=label_font, fill=C_ENEMY)
+                
+            x_counter = x_mid + 90
+            draw.text((x_counter, current_y + 10), "Contre Réalisable", font=label_font, fill=C_READY)
+            
+            if c_info:
+                c_leader = c_info["atk_leader_id"]
+                c_members = c_info.get("atk_members_ids", [])
+                all_c_ids = [c_leader] + [m for m in c_members if m]
+                
+                for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
+                    u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
+                    _draw_portrait_cell(canvas, draw, bid, x_counter, y_portraits, unit_data=u_data, is_leader=(bid == c_leader))
+                    x_counter += PORTRAIT_CELL + PORTRAIT_GAP
+            else:
+                draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
+                
+            current_y += row_height
+        current_y += PADDING
+
+    out = io.BytesIO()
+    canvas.save(out, format="PNG")
+    out.seek(0)
+    return out

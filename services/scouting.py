@@ -771,3 +771,61 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
             result["my_roster_index"] = my_index
 
     return result
+
+async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str) -> dict:
+    """
+    Génère un plan d'attaque global pour l'ensemble de la carte ennemie.
+    Pour chaque emplacement (zone/slot) de l'ennemi, assigne le meilleur contre 100% prêt
+    depuis le roster du joueur en excluant strictement les persos posés en défense
+    et les persos déjà attribués à une autre zone d'attaque.
+    """
+    from database.db import get_used_units
+    from services.gac_attack_planner import get_best_counter_with_memory
+    
+    # Obtenir les unités brûlées en BDD (défense posée + attaques passées)
+    used_units = await get_used_units(discord_id)
+    
+    attack_plan = {}
+    
+    for zone, teams in enemy_zones.items():
+        if zone == "Fleet":
+            continue
+            
+        zone_plan = []
+        for slot_idx, enemy_team in enumerate(teams, 1):
+            def_leader = enemy_team.get("leader_id")
+            def_members = enemy_team.get("members_ids", [])
+            
+            if not def_leader or def_leader in ["USED", "None", "EMPTY"]:
+                continue
+                
+            counters = await get_best_counter_with_memory(
+                def_leader_id=def_leader,
+                def_members_ids=def_members,
+                format_type=fmt,
+                my_roster_index=my_index,
+                excluded_chars=used_units
+            )
+            
+            if counters:
+                best_c = counters[0]
+                all_atk = [best_c["atk_leader_id"]] + best_c.get("atk_members_ids", [])
+                used_units.update(all_atk)
+                
+                zone_plan.append({
+                    "slot_index": slot_idx,
+                    "enemy_team": enemy_team,
+                    "counter": best_c,
+                    "win_pct": best_c.get("win_pct", 0)
+                })
+            else:
+                zone_plan.append({
+                    "slot_index": slot_idx,
+                    "enemy_team": enemy_team,
+                    "counter": None,
+                    "win_pct": 0
+                })
+        attack_plan[zone] = zone_plan
+        
+    return attack_plan
+

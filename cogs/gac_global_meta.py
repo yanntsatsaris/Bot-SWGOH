@@ -18,12 +18,17 @@ class GacGlobalMetaCog(commands.Cog):
     def cog_unload(self):
         self.daily_meta_update.cancel()
 
-    @tasks.loop(time=datetime.time(hour=0, minute=0))  # Minuit UTC (2h FR) — nuit lundi→mardi, après fin du dernier combat GAC
+    @tasks.loop(time=datetime.time(hour=21, minute=0, tzinfo=datetime.timezone.utc))  # 23h00 Paris le Mercredi (Jour d'inscription)
     async def daily_meta_update(self):
         """
-        Tâche de fond quotidienne pour mettre à jour la Meta GAC globale (Attack & Defense pour 5v5 et 3v3).
+        Tâche de fond hebdomadaire pour mettre à jour la Meta GAC globale (Attack & Defense pour 5v5 et 3v3).
+        Exécutée spécifiquement le Mercredi (Jour d'inscription GAC) pour capturer les dernières stats swgoh.gg.
         """
-        logger.info("Démarrage de la mise à jour quotidienne de la Meta GAC...")
+        weekday = datetime.datetime.utcnow().weekday()
+        if weekday != 2:
+            return  # S'exécute uniquement le Mercredi (2)
+
+        logger.info("Démarrage de la mise à jour hebdomadaire de la Meta GAC (Mercredi — Jour d'inscription)...")
         
         # 5v5 Attack
         await self.scraper.fetch_and_parse(format_type="5v5", mode="attack")
@@ -34,7 +39,8 @@ class GacGlobalMetaCog(commands.Cog):
         # 3v3 Defense
         await self.scraper.fetch_and_parse(format_type="3v3", mode="defense")
         
-        logger.info("Mise à jour quotidienne de la Meta GAC terminée.")
+        logger.info("Mise à jour hebdomadaire de la Meta GAC (Mercredi) terminée avec succès.")
+
 
     @daily_meta_update.before_loop
     async def before_daily_meta_update(self):

@@ -46,14 +46,15 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     
                 dprint(f"[WORKER] Démarrage du scraping pour le leader {def_leader_slug} (membres: {d_members})...")
                 
-                # URL cible
-                url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0"
+                # URL cible avec format explicite (3v3 ou 5v5)
+                url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0&gac_f={format_type}&format={format_type}"
                 if season_id and season_id != "current":
                     url += f"&season_id={season_id}"
                 if d_members:
                     import urllib.parse
                     url += f"&d_member={urllib.parse.quote(d_members)}"
                 dprint(f"[WORKER] URL de base : {url}")
+
                 
                 counters_data = []
                 
@@ -109,7 +110,10 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     
                     page_counters = []
                     counter_panels = soup.select("div.panel.panel--size-sm")
+                    if not counter_panels:
+                        counter_panels = soup.select("div.panel")
                     dprint(f"[WORKER] Page {page} : {len(counter_panels)} panneaux trouvés.")
+
                     
                     for panel in counter_panels:
                         atk_container = panel.select_one("div.justify-center.lg\\:justify-end")

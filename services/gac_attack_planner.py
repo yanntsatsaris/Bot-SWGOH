@@ -15,11 +15,17 @@ NEEDS_GAC_OMICRON = {
     "CAPTAINREX", "DARTHTRAYA", "ZAMWESELL", "ZORIIBLISS", "DASHRENDAR"
 }
 
-def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, format_type: str, min_relic: int = 0, min_gear: int = 12) -> list[dict]:
+def filter_counters_by_roster(
+    counters: list[dict], 
+    my_roster_index: dict, 
+    format_type: str, 
+    min_relic: int = 0, 
+    min_gear: int = 12
+) -> list[dict]:
     """
     Filtre et enrichit les counters selon le roster du joueur.
-    Ajoute un flag 'needs_omicron' si un des personnages du contre
-    requiert un Omicron GAC que le joueur ne possède pas encore.
+    Classe les équipes 100% complètes en priorité absolue,
+    puis par niveau de relique/gear des personnages du joueur, puis par win rate.
     """
     result = []
     
@@ -30,71 +36,92 @@ def filter_counters_by_roster(counters: list[dict], my_roster_index: dict, forma
         available = []
         missing = []
         missing_omicron = []  # Personnages présents mais sans leur omicron GAC
+        roster_power = 0
         
         for unit_id in all_ids:
             unit = my_roster_index.get(unit_id.upper())
             if unit and (unit.get("relic_tier", 0) >= min_relic or unit.get("gear_tier", 0) >= min_gear):
                 available.append(unit_id)
+                # Score de puissance basé sur le niveau réel du joueur (relique = 10 pts/niveau, gear = 1 pt/niveau)
+                r_tier = unit.get("relic_tier", 0)
+                g_tier = unit.get("gear_tier", 0)
+                roster_power += (r_tier * 10) + g_tier
+                
                 # Vérifier si ce personnage a besoin d'un omicron GAC
-                # has_omicron est False = le joueur n'a pas activé l'omicron GAC.
-                # On vérifie aussi 'omicrons > 0' pour compenser les erreurs de parsing d'ID de skills.
                 if unit_id.upper() in NEEDS_GAC_OMICRON and not (unit.get("has_omicron") or unit.get("omicrons", 0) > 0):
                     missing_omicron.append(unit_id)
             else:
                 missing.append(unit_id)
         
         availability = len(available) / max(len(all_ids), 1)
+        all_ready = (len(available) == len(all_ids))
         
-        # On demande au moins 50% de présence, pour proposer même si l'équipe est incomplète (le score la triera plus bas)
-        min_availability = 0.5
-        
-        if availability >= min_availability:
+        # On demande au moins 50% de présence, mais les équipes incomplètes passeront toujours APRES les complètes
+        if availability >= 0.5:
+            win_pct = counter.get("win_pct", 0)
+            final_score = counter.get("final_score", win_pct / 100 if win_pct > 1 else win_pct)
+            
             result.append({
                 **counter,
                 "roster_availability": availability,
-                "all_members_ready": availability == 1.0,
+                "all_members_ready": all_ready,
+                "roster_power": roster_power,
                 "missing": missing,
                 "missing_omicron": missing_omicron,
                 "needs_omicron": len(missing_omicron) > 0,
-                "composite_score": counter.get("win_pct", 0) * availability,
+                "composite_score": final_score * (1.5 if all_ready else availability),
             })
     
-    result.sort(key=lambda c: c.get("composite_score", 0), reverse=True)
+    # Tri multi-critères :
+    # 1. Équipes 100% complètes en PREMIER (1 vs 0)
+    # 2. Correspondance compo ennemie exacte (1 vs 0)
+    # 3. Disponibilité du roster (1.0 vs 0.8 vs 0.6)
+    # 4. Puissance des persos du joueur (persos les plus montés)
+    # 5. Score final (win rate / feedback)
+    result.sort(key=lambda c: (
+        1 if c["all_members_ready"] else 0,
+        c.get("is_def_match", 0),
+        c["roster_availability"],
+        c["roster_power"],
+        c.get("final_score", 0),
+    ), reverse=True)
     
+    # Déduplication par leader d'attaque : conserve la MEILLEURE compo pour ce leader
     dedup = []
-    seen = set()
+    seen_leaders = set()
     for c in result:
-        if c["atk_leader_id"] not in seen:
-            seen.add(c["atk_leader_id"])
+        if c["atk_leader_id"] not in seen_leaders:
+            seen_leaders.add(c["atk_leader_id"])
             dedup.append(c)
             
     return dedup
 
-async def get_best_counter_with_memory(def_leader_id: str, def_members_ids: list[str], format_type: str, my_roster_index: dict, excluded_chars: set = None) -> list[dict]:
+async def get_best_counter_with_memory(
+    def_leader_id: str, 
+    def_members_ids: list[str], 
+    format_type: str, 
+    my_roster_index: dict, 
+    excluded_chars: set = None
+) -> list[dict]:
     """
-    Sélectionne les meilleurs counters en intégrant l'historique de feedback.
+    Sélectionne les meilleurs counters en intégrant l'historique de feedback et le roster du joueur.
     """
     counters = await get_counters_from_db(def_leader_id, format_type)
+    if not counters:
+        return []
     
     # -------------------------------------------------------------
-    # Filtrage par composition exacte de l'ennemi (si on a les membres)
+    # Évaluation de la correspondance de la défense
+    # (Bonus aux contres spécifiques, mais SANS supprimer les autres contres)
     # -------------------------------------------------------------
-    if def_members_ids:
-        def_set = set(m.upper() for m in def_members_ids)
-        filtered_by_def = []
-        for c in counters:
-            c_def_set = set(m.upper() for m in c.get("def_members_ids", []))
+    def_set = set(m.upper() for m in def_members_ids) if def_members_ids else set()
+    for counter in counters:
+        c_def_set = set(m.upper() for m in counter.get("def_members_ids", []))
+        if def_set and len(def_set.intersection(c_def_set)) >= max(1, len(def_set) - 1):
+            counter["is_def_match"] = 1
+        else:
+            counter["is_def_match"] = 0
             
-            # On cherche une correspondance stricte ou quasi-stricte (tolérance d'1 perso différent)
-            # Car les stats swgoh.gg peuvent lister plusieurs variations
-            if len(def_set.intersection(c_def_set)) >= max(1, len(def_set) - 1):
-                filtered_by_def.append(c)
-                
-        # S'il a trouvé des counters spécifiques à CETTE équipe exacte, on les priorise
-        if filtered_by_def:
-            counters = filtered_by_def
-    # -------------------------------------------------------------
-    
     for counter in counters:
         feedback = await get_counter_feedback_stats(counter["atk_leader_id"], def_leader_id, format_type)
         counter["feedback_wins"] = feedback["wins"]
@@ -114,10 +141,5 @@ async def get_best_counter_with_memory(def_leader_id: str, def_members_ids: list
         ]
         
     filtered = filter_counters_by_roster(counters, my_roster_index, format_type)
-    
-    # Recalculate composite_score using final_score
-    for c in filtered:
-        c["composite_score"] = c["final_score"] * c["roster_availability"]
-        
-    filtered.sort(key=lambda c: c["composite_score"], reverse=True)
     return filtered
+

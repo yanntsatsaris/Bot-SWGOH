@@ -63,8 +63,30 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
     
     from database.db import get_db
     from services.unit_names import get_name
+    from utils.gac_config import get_gac_quotas
+    
+    ally_code = None
+    league = "CHROMIUM"
+    format_type = "3v3"
     
     async with get_db() as db:
+        cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (discord_id,))
+        row = await cursor.fetchone()
+        if row:
+            ally_code = row["ally_code"]
+            
+        cursor = await db.execute(
+            "SELECT league, format FROM gac_rounds WHERE player_code = ? ORDER BY id DESC LIMIT 1",
+            (ally_code,) if ally_code else (discord_id,)
+        )
+        r_row = await cursor.fetchone()
+        if r_row:
+            if r_row["league"]: league = r_row["league"].upper()
+            if r_row["format"]: format_type = r_row["format"]
+
+        quotas = get_gac_quotas(league, format_type)
+        max_slots = quotas.get(zone, 3)
+
         cursor = await db.execute(
             """
             SELECT slot_index, base_id 
@@ -76,23 +98,24 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
         )
         rows = await cursor.fetchall()
         
-    choices = []
+    slots_dict = {}
     if rows:
-        slots_dict = {}
         for r in rows:
             s_idx = r["slot_index"] or 1
             if s_idx not in slots_dict:
                 slots_dict[s_idx] = r["base_id"]
                 
-        for s_idx, ldr_id in slots_dict.items():
+    choices = []
+    for s_idx in range(1, max_slots + 1):
+        ldr_id = slots_dict.get(s_idx)
+        if ldr_id:
             label = f"Slot #{s_idx} : {get_name(ldr_id)}"
-            choices.append(app_commands.Choice(name=label[:100], value=s_idx))
-            
-    if not choices:
-        for i in range(1, 6):
-            choices.append(app_commands.Choice(name=f"Slot #{i}", value=i))
-            
+        else:
+            label = f"Slot #{s_idx} (Vide / À modifier)"
+        choices.append(app_commands.Choice(name=label[:100], value=s_idx))
+        
     return choices[:25]
+
 
 
 class GacCog(commands.Cog, name="GAC"):

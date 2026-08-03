@@ -33,7 +33,13 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Constantes de layout
 # ---------------------------------------------------------------------------
+# Résolution finale exportée (en pixels)
 IMG_WIDTH      = 860
+# Facteur de rendu interne (2× pour éviter la pixelisation sur mobile)
+RENDER_SCALE   = 2
+
+# Toutes les constantes de layout sont en coordonnées «logiques» (1×)
+# Le canvas interne est RENDER_SCALE× plus grand, converti à la fin
 PADDING        = 24
 PORTRAIT_SIZE  = 72          # taille de l'image portrait
 PORTRAIT_CELL  = 88          # cellule totale (portrait + bordure)
@@ -46,6 +52,8 @@ H_TEAM_LABEL   = 44          # "Équipe ennemie : ..."
 H_PORTRAIT_ROW = PORTRAIT_CELL + 50  # portraits + badge + text
 H_COUNTER_LABEL= 34          # "▶ Contres recommandés"
 H_SEPARATOR    = 18
+
+TOTAL_STARS    = 7           # Nombre total d'étoiles toujours affichées
 
 # Couleurs (dark theme GitHub-inspired)
 C_BG          = (13, 17, 23)        # fond global
@@ -335,14 +343,27 @@ def _draw_portrait_cell(
         text_color = (255, 255, 255) if not missing_omicron else (255, 100, 100)
         draw.text((ox + 14, oy + 14), text_val, font=_get_font("bold", 12), fill=text_color, anchor="mm")
 
-    # Dessin des étoiles
-    star_path = Path("assets/overlays/star.png")
-    if star_path.exists() and stars > 0:
-        star = Image.open(star_path).convert("RGBA").resize((12, 12), Image.LANCZOS)
-        start_x = x + (PORTRAIT_CELL - (stars * 10)) // 2 + 2
-        sy = y + PORTRAIT_CELL + 6
-        for i in range(stars):
-            canvas.paste(star, (start_x + (i * 10), sy), star)
+    # Dessin des étoiles — toujours 7 au total (pleines puis vides), centrées
+    star_path       = Path("assets/overlays/star.png")
+    star_empty_path = Path("assets/overlays/star_empty.png")
+    STAR_SIZE = 11   # taille de chaque étoile en px
+    STAR_GAP  = 1    # espacement entre étoiles
+    n_filled  = max(0, min(stars, TOTAL_STARS))
+    n_empty   = TOTAL_STARS - n_filled
+    total_width = TOTAL_STARS * STAR_SIZE + (TOTAL_STARS - 1) * STAR_GAP
+    start_x = x + (PORTRAIT_CELL - total_width) // 2
+    sy = y + PORTRAIT_CELL + 6
+    if star_path.exists():
+        star_img = Image.open(star_path).convert("RGBA").resize((STAR_SIZE, STAR_SIZE), Image.LANCZOS)
+        star_empty_img = None
+        if star_empty_path.exists():
+            star_empty_img = Image.open(star_empty_path).convert("RGBA").resize((STAR_SIZE, STAR_SIZE), Image.LANCZOS)
+        for i in range(TOTAL_STARS):
+            sx = start_x + i * (STAR_SIZE + STAR_GAP)
+            if i < n_filled:
+                canvas.paste(star_img, (sx, sy), star_img)
+            elif star_empty_img:
+                canvas.paste(star_empty_img, (sx, sy), star_empty_img)
 
 
 def _draw_portrait_row(
@@ -414,32 +435,49 @@ def generate_gac_report(
         discord.File prêt à être envoyé dans un salon Discord.
     """
     height = _compute_height(suggestions)
-    canvas = Image.new("RGBA", (IMG_WIDTH, height), C_BG)
+    # Canvas interne en haute résolution (RENDER_SCALE×) pour éviter la pixelisation
+    rw = IMG_WIDTH * RENDER_SCALE
+    rh = height    * RENDER_SCALE
+    canvas = Image.new("RGBA", (rw, rh), C_BG)
     draw   = ImageDraw.Draw(canvas)
+
+
+    # Helpers de mise à l'échelle locaux (les globales du module NE sont PAS modifiées)
+    def _sc(v: int) -> int:  return v * S          # coordonnée / taille
+    def _font(style, size):  return _get_font(style, size * S)  # police scalée
+
 
     # -----------------------------------------------------------------------
     # Header
     # -----------------------------------------------------------------------
-    title_font    = _get_font("bold", 22)
-    subtitle_font = _get_font("regular", 16)
+    title_font    = _font("bold", 22)
+    subtitle_font = _font("regular", 16)
 
     label = "5 contre 5" if fmt == "5v5" else "3 contre 3"
-    draw.text((PADDING, 18), f"RAPPORT GAC — FORMAT {label.upper()}", font=title_font, fill=C_GOLD)
+    draw.text((_sc(PADDING), _sc(18)), f"RAPPORT GAC — FORMAT {label.upper()}", font=title_font, fill=C_GOLD)
     vs_text = f"{my_name}  ⚔  {enemy_name}"
-    draw.text((PADDING, 48), vs_text, font=subtitle_font, fill=C_TEXT)
+    draw.text((_sc(PADDING), _sc(48)), vs_text, font=subtitle_font, fill=C_TEXT)
 
     # Ligne de séparation sous le header
     y = H_HEADER
-    draw.line([(0, y), (IMG_WIDTH, y)], fill=C_BORDER, width=1)
+    draw.line([(0, _sc(y)), (_sc(IMG_WIDTH), _sc(y))], fill=C_BORDER, width=S)
     y += PADDING
 
     # -----------------------------------------------------------------------
     # Sections par équipe
     # -----------------------------------------------------------------------
     medals      = ["#1", "#2", "#3", "#4", "#5"]
-    team_font   = _get_font("bold", 16)
-    label_font  = _get_font("regular", 14)
-    small_font  = _get_font("regular", 12)
+    team_font   = _font("bold", 16)
+    label_font  = _font("regular", 14)
+    small_font  = _font("regular", 12)
+
+    def _draw_portrait_row_hd(units, y_logical, is_enemy):
+        """Génère une rangée de portraits à 1×, la scale à S×, puis la colle."""
+        row_h = PORTRAIT_CELL + 50
+        row_canvas = Image.new("RGBA", (IMG_WIDTH, row_h), (0, 0, 0, 0))
+        _draw_portrait_row(row_canvas, units, 0, is_enemy=is_enemy)
+        row_scaled = row_canvas.resize((_sc(IMG_WIDTH), _sc(row_h)), Image.LANCZOS)
+        canvas.paste(row_scaled, (0, _sc(y_logical)), row_scaled)
 
     for i, suggestion in enumerate(suggestions):
         team     = suggestion["enemy_team"]
@@ -449,27 +487,27 @@ def generate_gac_report(
         # Fond de la section
         section_bottom = y + H_TEAM_LABEL + H_PORTRAIT_ROW + H_COUNTER_LABEL + H_PORTRAIT_ROW + PADDING
         draw.rounded_rectangle(
-            [PADDING // 2, y - 4, IMG_WIDTH - PADDING // 2, section_bottom],
-            radius=SECTION_RADIUS,
+            [_sc(PADDING // 2), _sc(y - 4), _sc(IMG_WIDTH - PADDING // 2), _sc(section_bottom)],
+            radius=_sc(SECTION_RADIUS),
             fill=C_SECTION,
             outline=C_BORDER,
-            width=1,
+            width=S,
         )
 
         # --- Label équipe ennemie ---
         draw.text(
-            (PADDING, y + 6),
+            (_sc(PADDING), _sc(y + 6)),
             f"{medal}  Équipe ennemie  ·  {team['leader_name']}",
             font=team_font,
             fill=C_ENEMY,
         )
         y += H_TEAM_LABEL
 
-        # --- Portraits ennemis (avec vrais tiers relic/gear si disponibles) ---
+        # --- Portraits ennemis ---
         enemy_units = []
         members_ids = team.get("members_base_ids", [])
-        for i, m in enumerate(team["members"]):
-            bid = members_ids[i] if i < len(members_ids) else base_id_from_name(m)
+        for j, m in enumerate(team["members"]):
+            bid = members_ids[j] if j < len(members_ids) else base_id_from_name(m)
             unit_data = team.get("units_data", {}).get(bid.upper() if bid else "", {})
             enemy_units.append({
                 "base_id":    bid,
@@ -481,20 +519,20 @@ def generate_gac_report(
                 "omicrons":   unit_data.get("omicrons", 0),
                 "rarity":     unit_data.get("rarity", 7),
             })
-        _draw_portrait_row(canvas, enemy_units, y, is_enemy=True)
+        _draw_portrait_row_hd(enemy_units, y, is_enemy=True)
 
         # Noms sous les portraits ennemis
         xe = PADDING
         for m in team["members"]:
             name_short = m[:12] + "…" if len(m) > 12 else m
-            draw.text((xe, y + PORTRAIT_CELL + 22), name_short, font=small_font, fill=C_MUTED)
+            draw.text((_sc(xe), _sc(y + PORTRAIT_CELL + 22)), name_short, font=small_font, fill=C_MUTED)
             xe += PORTRAIT_CELL + PORTRAIT_GAP
         y += H_PORTRAIT_ROW
 
         # --- Label contres ---
         nb_ready = sum(1 for c in counters if c.get("ready") and c.get("owned"))
         draw.text(
-            (PADDING, y + 6),
+            (_sc(PADDING), _sc(y + 6)),
             f"▶  Contres recommandés  ({nb_ready}/{len(counters)} prêts)",
             font=label_font,
             fill=C_READY if nb_ready > 0 else C_WARN,
@@ -503,23 +541,25 @@ def generate_gac_report(
 
         # --- Portraits contres ---
         if counters:
-            _draw_portrait_row(canvas, counters, y, is_enemy=False)
+            _draw_portrait_row_hd(counters, y, is_enemy=False)
             xc = PADDING
             for c in counters:
                 name_short = c["name"][:12] + "…" if len(c["name"]) > 12 else c["name"]
                 color = C_READY if c.get("ready") and c.get("owned") else (C_WARN if c.get("owned") else C_MISSING)
-                draw.text((xc, y + PORTRAIT_CELL + 22), name_short, font=small_font, fill=color)
+                draw.text((_sc(xc), _sc(y + PORTRAIT_CELL + 22)), name_short, font=small_font, fill=color)
                 xc += PORTRAIT_CELL + PORTRAIT_GAP
         else:
-            draw.text((PADDING, y + 20), "Aucun contre répertorié", font=label_font, fill=C_MUTED)
+            draw.text((_sc(PADDING), _sc(y + 20)), "Aucun contre répertorié", font=label_font, fill=C_MUTED)
 
         y += H_PORTRAIT_ROW + PADDING + H_SEPARATOR
 
     # -----------------------------------------------------------------------
-    # Export en buffer mémoire → discord.File
-    # -----------------------------------------------------------------------
+    final = canvas.convert("RGB").resize(
+        (IMG_WIDTH, height), Image.LANCZOS
+    )
+
     buf = io.BytesIO()
-    canvas.convert("RGB").save(buf, format="PNG", optimize=True)
+    final.save(buf, format="PNG", optimize=True)
     buf.seek(0)
     return discord.File(buf, filename="gac_report.png")
 

@@ -40,11 +40,21 @@ def filter_counters_by_roster(
         
         for unit_id in all_ids:
             unit = my_roster_index.get(unit_id.upper())
-            if unit and (unit.get("relic_tier", 0) >= min_relic or unit.get("gear_tier", 0) >= min_gear):
+            r_tier = unit.get("relic_tier", 0) if unit else 0
+            g_tier = unit.get("gear_tier", 0) if unit else 0
+            rarity = unit.get("rarity", 0) if unit else 0
+            
+            # Une unité n'est prête que si elle a 7 étoiles ET (au moins Relique 1+ OU Gear 12+)
+            unit_ready = False
+            if unit and rarity == 7:
+                if r_tier > 0:
+                    unit_ready = (min_relic <= 0 or r_tier >= min_relic)
+                else:
+                    unit_ready = (g_tier >= min_gear)
+            
+            if unit_ready:
                 available.append(unit_id)
-                # Score de puissance basé sur le niveau réel du joueur (relique = 10 pts/niveau, gear = 1 pt/niveau)
-                r_tier = unit.get("relic_tier", 0)
-                g_tier = unit.get("gear_tier", 0)
+                # Score de puissance basé sur le niveau réel du joueur
                 roster_power += (r_tier * 10) + g_tier
                 
                 # Vérifier si ce personnage a besoin d'un omicron GAC
@@ -52,6 +62,7 @@ def filter_counters_by_roster(
                     missing_omicron.append(unit_id)
             else:
                 missing.append(unit_id)
+
         
         availability = len(available) / max(len(all_ids), 1)
         all_ready = (len(available) == len(all_ids))

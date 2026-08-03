@@ -165,4 +165,20 @@ CREATE_TABLES_SQL: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_feedback_def ON counter_feedback(def_leader_id, format)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS active_round_units (
+        id          INTEGER PRIMARY KEY AUTOINCREMENT,
+        discord_id  TEXT    NOT NULL,
+        base_id     TEXT    NOT NULL,
+        used_type   TEXT    CHECK(used_type IN ('defense', 'attack')),
+        zone        TEXT,
+        slot_index  INTEGER,
+        created_at  TEXT    DEFAULT (datetime('now')),
+        UNIQUE(discord_id, base_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_active_units_user ON active_round_units(discord_id)
+    """,
 ]
+

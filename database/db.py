@@ -234,3 +234,71 @@ async def get_counter_feedback_stats(atk_leader_id: str, def_leader_id: str, for
         "wins": wins,
         "win_rate": win_rate
     }
+
+async def add_used_units(discord_id: str, base_ids: list[str], used_type: str = "attack", zone: str = None, slot_index: int = None):
+    """Enregistre une liste d'unités comme brûlées/utilisées pour le round en cours."""
+    if not base_ids or not discord_id:
+        return
+    async with get_db() as db:
+        for bid in base_ids:
+            if not bid or bid in ["USED", "None", "EMPTY"]:
+                continue
+            await db.execute(
+                """
+                INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                    used_type = excluded.used_type,
+                    zone = excluded.zone,
+                    slot_index = excluded.slot_index
+                """,
+                (discord_id, bid.upper(), used_type, zone, slot_index)
+            )
+        await db.commit()
+
+async def get_used_units(discord_id: str) -> set[str]:
+    """Retourne l'ensemble des base_ids des personnages brûlés/utilisés par le joueur dans le round actif."""
+    if not discord_id:
+        return set()
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT base_id FROM active_round_units WHERE discord_id = ?",
+            (discord_id,)
+        )
+        rows = await cursor.fetchall()
+    return {row["base_id"].upper() for row in rows}
+
+async def clear_used_units(discord_id: str | None = None):
+    """Réinitialise les unités brûlées pour un joueur ou pour tous les joueurs (changement de round à 23h)."""
+    async with get_db() as db:
+        if discord_id:
+            await db.execute("DELETE FROM active_round_units WHERE discord_id = ?", (discord_id,))
+        else:
+            await db.execute("DELETE FROM active_round_units")
+        await db.commit()
+    log.info(f"Unités brûlées réinitialisées ({'joueur ' + discord_id if discord_id else 'tous les joueurs'}).")
+
+async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, leader_id: str, members_ids: list[str]):
+    """Remplace l'équipe posée sur un emplacement (zone + slot_index) spécifique."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM active_round_units WHERE discord_id = ? AND zone = ? AND slot_index = ? AND used_type = 'defense'",
+            (discord_id, zone, slot_index)
+        )
+        all_units = [leader_id] + [m for m in members_ids if m]
+        for bid in all_units:
+            if not bid or bid in ["USED", "None", "EMPTY"]:
+                continue
+            await db.execute(
+                """
+                INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
+                VALUES (?, ?, 'defense', ?, ?)
+                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                    used_type = 'defense',
+                    zone = excluded.zone,
+                    slot_index = excluded.slot_index
+                """,
+                (discord_id, bid.upper(), zone, slot_index)
+            )
+        await db.commit()
+

@@ -238,12 +238,17 @@ class CounterSuggestionView(discord.ui.View):
             str(interaction.user.id)
         )
 
+        user_id = str(self.original_interaction.user.id)
+        # Enregistrer toute l'équipe engagée (leader + membres) comme brûlée pour le reste du round
+        all_engaged_units = [atk_leader] + atk_members
+        from database.db import add_used_units
+        await add_used_units(user_id, all_engaged_units, used_type="attack")
+
+        if user_id not in self.used_attack_teams:
+            self.used_attack_teams[user_id] = set()
+        self.used_attack_teams[user_id].update(all_engaged_units)
+
         if won:
-            user_id = str(self.original_interaction.user.id)
-            if user_id not in self.used_attack_teams:
-                self.used_attack_teams[user_id] = set()
-            self.used_attack_teams[user_id].add(atk_leader)
-            
             # En cas de victoire, c'est terminé, on désactive les boutons
             for child in self.children:
                 child.disabled = True
@@ -254,6 +259,7 @@ class CounterSuggestionView(discord.ui.View):
             self.current_index = (self.current_index + 1) % len(self.suggestions)
             content, img_file = await self._build_message_and_file()
             content += "\n❌ **Défaite enregistrée — merci ! Voici une autre option :**"
+
         
         if img_file:
             await interaction.response.edit_message(content=content, embed=None, view=self, attachments=[img_file])
@@ -373,8 +379,13 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
             return
 
         # ── 5. Filtrer par roster et trier ───────────────────────────────────
-        used_set = self.used_attack_teams.get(str(interaction.user.id), set())
+        from database.db import get_used_units
+        db_used = await get_used_units(str(interaction.user.id))
+        memory_used = self.used_attack_teams.get(str(interaction.user.id), set())
+        used_set = memory_used.union(db_used)
+        
         counters = await get_best_counter_with_memory(leader_id, members_list, fmt, my_roster, excluded_chars=used_set)
+
 
         if not counters:
             await interaction.followup.send(

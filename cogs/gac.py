@@ -86,6 +86,24 @@ class GacCog(commands.Cog, name="GAC"):
     async def help_command(self, interaction: discord.Interaction) -> None:
         await interaction.response.send_message(HELP_MESSAGE, ephemeral=True)
 
+    # ------------------------------------------------------------------
+    # /gac-reset-round — Réinitialisation manuelle des unités brûlées
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="gac-reset-round",
+        description="Réinitialise tes unités brûlées (défense et attaques) pour le round en cours.",
+    )
+    async def reset_round(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        from database.db import clear_used_units
+        await clear_used_units(str(interaction.user.id))
+        await interaction.followup.send(
+            "✅ **Tes unités pour ce round ont été réinitialisées !**\n"
+            "Toutes tes unités sont de nouveau disponibles pour `/gac-counter`.",
+            ephemeral=True
+        )
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(GacCog(bot))
+

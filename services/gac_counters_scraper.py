@@ -197,58 +197,62 @@ class GacCountersScraper:
 
     async def ensure_counters_available(self, leaders_dict: dict, format_type: str, progress_callback=None) -> None:
         """
-        Vérifie si les counters sont récents pour chaque leader fourni,
-        et lance le scraper si les données manquent ou sont trop vieilles.
-        leaders_dict: dictionnaire { leader_id: "MEMBRE1,MEMBRE2,..." }
+        Vérifie la présence des contres en BDD.
+        - Si un leader n'a AUCUN contre en BDD : effectue une extraction synchrone.
+        - Si un leader a des contres datant de > 7 jours : répond immédiatement au joueur et lance un rafraîchissement en arrière-plan.
         """
         from database.db import get_db
         import datetime
+        import asyncio
         
         missing_leaders = {}
+        stale_leaders = {}
+        
         async with get_db() as db:
             for l_id, members in leaders_dict.items():
                 if not l_id or l_id in ["USED", "None"]:
                     continue
                     
-                # Vérifie si le leader existe avec un âge < 7 jours
                 cursor = await db.execute(
                     "SELECT last_updated FROM gac_counters WHERE def_leader_id = ? AND format = ? ORDER BY last_updated DESC LIMIT 1",
                     (l_id, format_type)
                 )
                 row = await cursor.fetchone()
                 
-                needs_scrape = True
                 if row:
-                    last_updated_str = row["last_updated"]
                     try:
-                        last_updated = datetime.datetime.strptime(last_updated_str, "%Y-%m-%d %H:%M:%S")
+                        last_updated = datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")
                         age = (datetime.datetime.utcnow() - last_updated).days
                         if age > 7:
-                            missing_leaders[l_id] = members
-                        else:
-                            needs_scrape = False
+                            stale_leaders[l_id] = members
                     except Exception as e:
                         log.error(f"Erreur date: {e}")
                 else:
                     missing_leaders[l_id] = members
         
+        # 1. Extraction bloquante uniquement pour les leaders 100% absents
         if missing_leaders:
-            log.info(f"Extraction nécessaire pour {len(missing_leaders)} leaders exacts : {list(missing_leaders.keys())}")
-            
+            log.info(f"Extraction bloquante nécessaire pour {len(missing_leaders)} leaders absents de la BDD : {list(missing_leaders.keys())}")
             batch_data = []
             for leader_id, members in missing_leaders.items():
                 members_list = members.split(",") if members else []
                 max_members = 2 if format_type == "3v3" else 4
-                
                 if len(members_list) > max_members:
-                    members_list = members_list[:max_members]
-                    members = ",".join(members_list)
-                    log.info(f"L'équipe de {leader_id} a été tronquée à {max_members} membres pour coller au format {format_type}.")
-                    
-                batch_data.append({
-                    "leader_id": leader_id,
-                    "members": members
-                })
+                    members = ",".join(members_list[:max_members])
+                batch_data.append({"leader_id": leader_id, "members": members})
                 
-            # Appel de la nouvelle méthode batch
             await self.refresh_counters_for_leaders_batch(batch_data, format_type, "current", progress_callback)
+
+        # 2. Extraction en arrière-plan pour les leaders dont les données ont > 7 jours (recherche instantanée pour l'utilisateur)
+        if stale_leaders:
+            log.info(f"Lancement du rafraîchissement arrière-plan pour {len(stale_leaders)} leaders (> 7 jours) : {list(stale_leaders.keys())}")
+            batch_stale = []
+            for leader_id, members in stale_leaders.items():
+                members_list = members.split(",") if members else []
+                max_members = 2 if format_type == "3v3" else 4
+                if len(members_list) > max_members:
+                    members = ",".join(members_list[:max_members])
+                batch_stale.append({"leader_id": leader_id, "members": members})
+                
+            asyncio.create_task(self.refresh_counters_for_leaders_batch(batch_stale, format_type, "current", None))
+

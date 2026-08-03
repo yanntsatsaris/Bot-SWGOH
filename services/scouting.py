@@ -723,28 +723,24 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                 from services.gac_counters_scraper import GacCountersScraper
                 scraper = GacCountersScraper()
                 
-                # Check d'abord combien en ont besoin (pour le message Discord)
-                from database.db import get_db
-                import datetime
                 missing_leaders = []
                 async with get_db() as db:
                     for l_id, members_str in leaders_to_scrape.items():
                         if not l_id or l_id in ["USED", "None"]: continue
-                        cursor = await db.execute("SELECT last_updated FROM gac_counters WHERE def_leader_id = ? AND format = ? ORDER BY last_updated DESC LIMIT 1", (l_id, fmt))
+                        cursor = await db.execute("SELECT 1 FROM gac_counters WHERE def_leader_id = ? AND format = ? LIMIT 1", (l_id, fmt))
                         row = await cursor.fetchone()
-                        if row:
-                            try:
-                                age = (datetime.datetime.utcnow() - datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")).days
-                                if age > 7: missing_leaders.append(l_id)
-                            except: pass
-                        else:
+                        if not row:
                             missing_leaders.append(l_id)
                 
                 if missing_leaders and progress_callback:
-                    estimated_time = 15 + (len(missing_leaders) * 5)
-                    await progress_callback(f"⏳ **[■■■■■■■□□□] 70%** : Analyse et calcul des meilleurs contres pour {len(missing_leaders)} équipes ennemies (≈ {estimated_time}s)...")
+                    total_sec = len(missing_leaders) * 35
+                    mins, secs = divmod(total_sec, 60)
+                    time_str = f"{mins} min {secs}s" if mins > 0 else f"{secs}s"
+                    await progress_callback(f"⏳ **[■■■■■■■□□□] 70%** : Extraction swgoh.gg pour {len(missing_leaders)} nouveaux leaders absents de la BDD (≈ {time_str})...")
+
                 
                 await scraper.ensure_counters_available(leaders_to_scrape, fmt, progress_callback=progress_callback)
+
         except Exception as e:
             log.error(f"Erreur lors de l'attente du scraping des counters: {e}")
     # ---------------------------------------------------------------------

@@ -154,15 +154,35 @@ async def sync():
                     dest_dir.mkdir(parents=True, exist_ok=True)
                     
                     image_path = None
-                    if thumb:
-                        filename = f"{thumb}.png" if not thumb.endswith(".png") else thumb
-                        local_file = dest_dir / filename
-                        
-                        if not local_file.exists():
+                    # 1. Vérification par get_portrait_path (doit faire > 10 Ko pour être considéré comme HD)
+                    existing_path = get_portrait_path(bid)
+                    if existing_path and existing_path.exists() and existing_path.stat().st_size > 10000:
+                        image_path = existing_path.as_posix()
+                    else:
+                        # 2. Vérification si un fichier HD existe déjà sous un nom nettoyé
+                        clean_thumb = thumb.replace("tex.avatars_", "").replace("tex.", "") if thumb else ""
+                        possible_files = []
+                        if thumb:
+                            possible_files.append(dest_dir / f"{thumb}.png")
+                        if clean_thumb:
+                            if not clean_thumb.startswith("charui_"):
+                                possible_files.append(dest_dir / f"charui_{clean_thumb}.png")
+                            possible_files.append(dest_dir / f"{clean_thumb}.png")
+
+                        for p in possible_files:
+                            if p.exists() and p.stat().st_size > 10000:
+                                image_path = p.as_posix()
+                                break
+
+                        # 3. Téléchargement de la version Ultra HD (18-24 KB) depuis le CDN EA
+                        if not image_path and thumb:
+                            target_filename = f"{thumb}.png" if thumb.startswith("tex.") else f"tex.{thumb}.png"
+                            local_file = dest_dir / target_filename
+                            
                             urls_to_try = [
-                                f"https://game-assets.swgoh.gg/textures/{filename}",
-                                f"https://game-assets.swgoh.gg/{filename}",
-                                f"https://swgoh.gg/static/img/assets/{filename}",
+                                f"https://game-assets.swgoh.gg/textures/{thumb}.png",
+                                f"https://game-assets.swgoh.gg/{thumb}.png",
+                                f"https://swgoh.gg/static/img/assets/{thumb}.png",
                             ]
                             for u in urls_to_try:
                                 try:
@@ -171,16 +191,14 @@ async def sync():
                                             local_file.write_bytes(await r.read())
                                             new_portraits_count += 1
                                             downloaded_names.append(final_name)
-                                            print(f"  ✅ Portrait téléchargé : {final_name} ({bid}) -> {local_file.name}")
+                                            print(f"  ✨ Portrait HD (18-24 KB) téléchargé : {final_name} ({bid}) -> {local_file.name}")
+                                            image_path = local_file.as_posix()
                                             break
                                 except Exception:
                                     pass
-                        if local_file.exists():
-                            image_path = local_file.as_posix()
 
-                    if not image_path:
-                        path_obj = get_portrait_path(bid)
-                        image_path = path_obj.as_posix() if (path_obj and path_obj.exists()) else None
+
+
 
                     await db.execute(
                         """

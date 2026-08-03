@@ -229,7 +229,8 @@ def get_portrait_path(base_id: str) -> Path:
     targets.append(bid_lower)
     targets.append(bid_lower.replace("capital", "").replace("ship_", "").replace("gl", ""))
 
-    prefixes = ["charui_", ""]
+    prefixes = ["charui_", "tex.charui_", "tex.avatars_", ""]
+
     
     def is_path_available(p: Path) -> bool:
         # On rejette si c'est déjà validé pour un autre perso

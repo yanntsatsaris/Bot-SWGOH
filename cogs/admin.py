@@ -131,5 +131,45 @@ class AdminCog(commands.Cog, name="Admin"):
         except Exception as e:
             await interaction.followup.send(f"Error: {e}")
 
+    # ------------------------------------------------------------------
+    # /sync-game-units — Synchro manuelle des nouveaux persos et portraits
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="sync-game-units",
+        description="[Admin] Télécharge les nouveaux personnages, portraits et alignements depuis swgoh.gg."
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def sync_game_units(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        try:
+            await interaction.followup.send("⏳ **Resynchronisation manuelle en cours...** (Téléchargement des nouveaux personnages et portraits)...", ephemeral=True)
+            
+            from scripts.sync_portraits_swgoh import process_swgoh_gg
+            summary = await process_swgoh_gg()
+            
+            from services.unit_names import build_name_cache
+            from services.portrait_cache import build_portrait_cache
+            await build_name_cache()
+            await build_portrait_cache()
+            
+            new_cnt = summary.get("new_downloads_count", 0) if summary else 0
+            names = summary.get("new_downloaded_names", []) if summary else []
+            
+            msg = f"✅ **Resynchronisation terminée avec succès !**\n"
+            msg += f"• **Personnages scannés** : {summary.get('total_chars', 0) if summary else 0}\n"
+            msg += f"• **Vaisseaux scannés** : {summary.get('total_ships', 0) if summary else 0}\n"
+            if new_cnt > 0:
+                names_str = ", ".join(names[:10]) + ("..." if len(names) > 10 else "")
+                msg += f"• 🆕 **{new_cnt} nouveaux portraits téléchargés** : `{names_str}`"
+            else:
+                msg += f"• ✨ **Aucun nouveau portrait manquant** (Tous les personnages étaient déjà à jour dans le cache !)"
+                
+            await interaction.followup.send(msg, ephemeral=True)
+        except Exception as e:
+            log.exception("Erreur lors de la synchronisation manuelle des unités : %s", e)
+            await interaction.followup.send(f"❌ Erreur lors de la synchronisation : {e}", ephemeral=True)
+
+
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AdminCog(bot))
+

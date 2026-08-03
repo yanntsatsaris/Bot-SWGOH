@@ -73,6 +73,7 @@ async def process_swgoh_gg():
             
         print(f"👥 {len(chars)} personnages trouvés sur la page.")
         
+        downloaded_list = []
         for char in chars:
             img_tag = char.find("img", class_="character-portrait__img")
             if not img_tag:
@@ -80,32 +81,16 @@ async def process_swgoh_gg():
                 
             img_url = img_tag.get("src")
             name = img_tag.get("alt", "")
-            
-            # Extract base_id from link
-            link_tag = char.find("a")
-            if not link_tag:
-                continue
-                
-            href = link_tag.get("href", "")
-            # /characters/darth-vader/ -> DARTHVADER
-            parts = [p for p in href.split("/") if p]
-            if len(parts) >= 2:
-                slug = parts[1]
-                # Approximation of Base ID (this might not be 100% accurate for weird names, but good enough as fallback)
-                # The exact base_id is best fetched from Comlink. But here we just want to save the image.
-                # Actually, SWGOH.GG stores the exact base_id in data attributes usually.
-                # Let's check parent attributes.
-            
-            # Since we want to update existing characters:
-            # We can find the character by matching the name or the image URL filename.
-            filename = img_url.split("/")[-1] # tex.charui_vader.png
+            filename = img_url.split("/")[-1]
             thumbnail_name = filename.replace(".png", "")
             
             dest_path = PORTRAITS_DIR / filename
+            is_new = not dest_path.exists()
             success = await download_image(session, img_url, dest_path)
             
             if success:
-                # Update DB using thumbnail_name which matches Comlink exactly!
+                if is_new:
+                    downloaded_list.append(name or thumbnail_name)
                 cursor.execute("""
                     UPDATE game_characters 
                     SET image_path = ?, is_image_valid = 1 
@@ -130,13 +115,17 @@ async def process_swgoh_gg():
                 continue
                 
             img_url = img_tag.get("src")
+            name = img_tag.get("alt", "")
             filename = img_url.split("/")[-1]
             thumbnail_name = filename.replace(".png", "")
             
             dest_path = SHIPS_DIR / filename
+            is_new = not dest_path.exists()
             success = await download_image(session, img_url, dest_path)
             
             if success:
+                if is_new:
+                    downloaded_list.append(name or thumbnail_name)
                 cursor.execute("""
                     UPDATE game_characters 
                     SET image_path = ?, is_image_valid = 1 
@@ -146,7 +135,15 @@ async def process_swgoh_gg():
         conn.commit()
         conn.close()
         
-        print("✅ Scraping et mise à jour terminés !")
+        summary = {
+            "total_chars": len(chars),
+            "total_ships": len(ships),
+            "new_downloads_count": len(downloaded_list),
+            "new_downloaded_names": downloaded_list
+        }
+        print(f"✅ Scraping terminé ! {len(downloaded_list)} nouveaux portraits téléchargés : {downloaded_list}")
+        return summary
 
 if __name__ == "__main__":
     asyncio.run(process_swgoh_gg())
+

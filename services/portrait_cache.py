@@ -308,11 +308,14 @@ def download_portrait(base_id: str) -> bool:
     if existing.exists():
         return True
 
-    # URLs candidates à essayer dans l'ordre
     urls_to_try = [
+        f"https://game-assets.swgoh.gg/tex.charui_{bid_lower}.png",
+        f"https://swgoh.gg/static/img/assets/tex.charui_{bid_lower}.png",
+        f"https://assets.swgoh.gg/tex.charui_{bid_lower}.png",
         f"https://swgoh.gg/static/img/assets/tex.avatars_{bid_lower}.png",
         f"https://game-assets.swgoh.gg/textures/tex.avatars_{bid_lower}.png",
     ]
+
 
     PORTRAITS_DIR.mkdir(parents=True, exist_ok=True)
     dest = PORTRAITS_DIR / f"{bid_lower}.png"

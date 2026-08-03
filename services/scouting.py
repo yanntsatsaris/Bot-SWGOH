@@ -721,10 +721,10 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                         
             if leaders_to_scrape:
                 from services.gac_counters_scraper import GacCountersScraper
-                scraper = GacCountersScraper()
-                
+                from database.db import get_db
                 missing_leaders = []
                 async with get_db() as db:
+
                     for l_id, members_str in leaders_to_scrape.items():
                         if not l_id or l_id in ["USED", "None"]: continue
                         cursor = await db.execute("SELECT 1 FROM gac_counters WHERE def_leader_id = ? AND format = ? LIMIT 1", (l_id, fmt))

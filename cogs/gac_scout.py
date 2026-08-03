@@ -109,6 +109,12 @@ class SlotSelectView(discord.ui.View):
         select.callback = self.on_select_slot
         self.add_item(select)
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.parent_view.original_user_id:
+            await interaction.response.send_message("❌ Ces menus ne te sont pas destinés.", ephemeral=True)
+            return False
+        return True
+
     async def on_select_slot(self, interaction: discord.Interaction):
         slot_idx = int(interaction.data["values"][0])
         target_zones = self.parent_view.enemy_zones if self.is_enemy else self.parent_view.my_zones
@@ -136,11 +142,18 @@ class ZoneSelectView(discord.ui.View):
         select.callback = self.on_select_zone
         self.add_item(select)
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.parent_view.original_user_id:
+            await interaction.response.send_message("❌ Ces menus ne te sont pas destinés.", ephemeral=True)
+            return False
+        return True
+
     async def on_select_zone(self, interaction: discord.Interaction):
         zone = interaction.data["values"][0]
         slot_view = SlotSelectView(self.parent_view, zone, self.is_enemy)
         side_txt = "Défense Ennemie" if self.is_enemy else "Ta Défense"
         await interaction.response.send_message(f"📍 **{side_txt} — Zone {zone} sélectionnée.** Choisis l'emplacement :", view=slot_view, ephemeral=True)
+
 
 
 # ─── VUE PRINCIPALE DÉFENSE & PLAN D'ATTAQUE ──────────────────────────────────

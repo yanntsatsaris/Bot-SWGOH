@@ -98,6 +98,16 @@ class SwgohBot(commands.Bot):
             await self.tree.sync()
             log.info("Slash commands synchronisées globalement")
 
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        user_str = f"{interaction.user} (ID: {interaction.user.id})"
+        if interaction.type == discord.InteractionType.application_command:
+            cmd_name = interaction.command.name if interaction.command else "Commande Inconnue"
+            log.info("📌 [COMMAND] Utilisation de /%s par %s", cmd_name, user_str)
+        elif interaction.type == discord.InteractionType.component:
+            custom_id = interaction.data.get("custom_id", "Bouton Inconnu")
+            log.info("🔘 [ACTION] Clic sur bouton [%s] par %s", custom_id, user_str)
+        await super().on_interaction(interaction)
+
     async def on_ready(self) -> None:
         log.info("Connecté en tant que %s (ID : %s)", self.user, self.user.id)
         await self.change_presence(

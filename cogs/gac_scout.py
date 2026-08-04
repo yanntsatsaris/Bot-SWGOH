@@ -296,6 +296,47 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             await clear_used_units()
             log.info("✅ Réinitialisation automatique terminée.")
 
+    async def _send_response(
+        self,
+        inter: discord.Interaction,
+        content: str = None,
+        attachments: list[discord.File] = None,
+        view: discord.ui.View = None
+    ) -> None:
+        """Envoie ou édite la réponse de l'interaction en toute sécurité avec fallback sur le salon textuel."""
+        try:
+            if inter.response.is_done():
+                kwargs = {}
+                if content is not None:
+                    kwargs["content"] = content
+                if attachments is not None:
+                    kwargs["attachments"] = attachments
+                if view is not None:
+                    kwargs["view"] = view
+                await inter.edit_original_response(**kwargs)
+            else:
+                kwargs = {}
+                if content is not None:
+                    kwargs["content"] = content
+                if attachments is not None:
+                    kwargs["files"] = attachments
+                if view is not None:
+                    kwargs["view"] = view
+                await inter.response.send_message(**kwargs)
+        except (discord.errors.NotFound, discord.errors.HTTPException) as e:
+            log.warning("Échec réponse interaction (%s) — fallback sur le salon textuel", e)
+            try:
+                user_tag = f"<@{inter.user.id}> "
+                full_content = f"{user_tag}{content}" if content else user_tag
+                kwargs = {"content": full_content}
+                if attachments:
+                    kwargs["files"] = attachments
+                if view:
+                    kwargs["view"] = view
+                await inter.channel.send(**kwargs)
+            except Exception as send_err:
+                log.error("Échec de l'envoi fallback sur le salon : %s", send_err)
+
     @app_commands.command(
         name="gac-scout",
         description="Scout le profil GAC d'un adversaire."
@@ -319,7 +360,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         force_sync: bool = False
     ) -> None:
         """Commande principale pour scouter un ennemi."""
-        await interaction.response.defer(ephemeral=False)
+        try:
+            await interaction.response.defer(ephemeral=False)
+        except (discord.errors.NotFound, discord.errors.HTTPException) as e:
+            log.warning("Impossible de defer l'interaction /gac-scout (délai 3s dépassé ou interaction inconnue) : %s", e)
         
         my_ally_code = None
         async with get_db() as db:
@@ -329,7 +373,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 my_ally_code = row["ally_code"]
                 
         if not my_ally_code:
-            await interaction.edit_original_response(content="❌ **Erreur** : Tu dois d'abord lier ton compte avec `/register <ton_ally_code>` pour utiliser le scouting ! Le bot a besoin de connaître ta ligue pour calibrer l'analyse.")
+            await self._send_response(interaction, content="❌ **Erreur** : Tu dois d'abord lier ton compte avec `/register <ton_ally_code>` pour utiliser le scouting ! Le bot a besoin de connaître ta ligue pour calibrer l'analyse.")
             return
 
         if hasattr(self.bot, "gac_scraper"):
@@ -342,7 +386,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         else:
             msg_attente = "⏳ **[■□□□□□□□□□] 10%** : Vérification de l'historique GAC..."
             
-        await interaction.edit_original_response(content=msg_attente)
+        await self._send_response(interaction, content=msg_attente)
         
         try:
             async def on_scrape_finished(ally_code: str, inter: discord.Interaction):
@@ -358,7 +402,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     from services.scout_image import generate_scout_map
                     
                     async def cb(msg):
-                        await inter.edit_original_response(content=msg)
+                        await self._send_response(inter, content=msg)
 
                     scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code, progress_callback=cb, discord_id=str(inter.user.id))
                     
@@ -388,7 +432,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                             result_files.append(discord.File(m_img, filename="my_defense.png"))
                         return result_files
 
-                    files = _build_files(scout_data)
+                    files = await asyncio.to_thread(_build_files, scout_data)
 
                     msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !\n"
                     msg += "⚠️ *Note : Les prédictions sont générées automatiquement. Utilise le bouton [🔒 Valider ma Défense] pour verrouiller tes persos posés, ou [⚔️ Plan d'Attaque Global] pour obtenir la stratégie complète d'attaque.*\n"
@@ -409,24 +453,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                             scout_data.get("roster_index", {})
                         )
                         
-                    try:
-                        if def_view:
-                            await inter.edit_original_response(content=msg, attachments=files, view=def_view)
-                        else:
-                            await inter.edit_original_response(content=msg, attachments=files)
-                    except discord.errors.HTTPException as e:
-                        log.warning(f"Impossible de mettre à jour le message original (timeout de 15min ?) : {e}")
-                        files_retry = _build_files(scout_data)
-                        if def_view:
-                            await inter.channel.send(content=msg, files=files_retry, view=def_view)
-                        else:
-                            await inter.channel.send(content=msg, files=files_retry)
+                    await self._send_response(inter, content=msg, attachments=files, view=def_view)
                 except Exception as e:
                     log.exception("Erreur lors de la génération de l'image de scouting : %s", e)
-                    try:
-                        await inter.edit_original_response(content=f"❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
-                    except:
-                        await inter.channel.send(f"<@{inter.user.id}> ❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
+                    await self._send_response(inter, content=f"❌ Impossible de scouter cet ennemi (pas de données ou erreur interne).")
 
             clean_code = code_ennemi.replace("-", "").strip()
             
@@ -439,18 +469,19 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 has_history = await cursor.fetchone() is not None
 
             if has_history and not force_sync:
-                await interaction.edit_original_response(content="⏳ Historique trouvé en base de données. Génération de la prédiction sans refaire de scan...")
+                await self._send_response(interaction, content="⏳ Historique trouvé en base de données. Génération de la prédiction sans refaire de scan...")
                 await on_scrape_finished(clean_code, interaction)
             else:
                 if not hasattr(self.bot, "gac_scraper"):
-                    await interaction.followup.send("❌ Le service d'extraction GAC (Scan) n'est pas actif sur ce serveur.")
+                    await self._send_response(interaction, content="❌ Le service d'extraction GAC (Scan) n'est pas actif sur ce serveur.")
                     return
                     
-                await interaction.edit_original_response(content="⏳ **[■□□□□□□□□□] 10%** : Analyse approfondie du profil GAC de l'adversaire...")
+                await self._send_response(interaction, content="⏳ **[■□□□□□□□□□] 10%** : Analyse approfondie du profil GAC de l'adversaire...")
 
                 scraper = self.bot.gac_scraper
                 if scraper.pending_tasks.get(clean_code, 0) > 0:
-                    await interaction.edit_original_response(
+                    await self._send_response(
+                        interaction,
                         content=f"⏳ **Un scan est déjà en cours** pour ce joueur ! Tu recevras automatiquement le résultat dès qu'il est prêt.\n"
                                 f"Tu es abonné(e) à la notification — pas besoin de retaper la commande."
                     )
@@ -460,7 +491,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)
-            await interaction.followup.send(f"❌ Impossible d'initier le scouting : {e}")
+            await self._send_response(interaction, content=f"❌ Impossible d'initier le scouting : {e}")
 
 async def setup(bot: commands.Bot) -> None:
     bot.add_view(DefenseValidationView())

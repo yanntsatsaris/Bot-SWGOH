@@ -633,8 +633,14 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             
         while len(f["members_ids"]) < f.get("target_size", 8) and leftover_ships:
             filler = leftover_ships.pop(0)
-    async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None, progress_callback=None, discord_id: str | None = None) -> dict:
+            f["members_ids"].append(filler)
+            used_base_ids.add(filler)
+
+    return zones
+
+async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None, progress_callback=None, discord_id: str | None = None) -> dict:
     clean_code = str(enemy_ally_code).replace("-", "").strip()
+
     profile = await get_player(clean_code)
     
     if not profile:

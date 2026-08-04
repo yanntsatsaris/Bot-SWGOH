@@ -236,8 +236,12 @@ def _draw_portrait_cell(
     badge_font = _get_font("bold", 12)
     level_font = _get_font("bold", 10)
     
-    gl_list = ["JEDIMASTERKENOBI", "LORDVADER", "JABBATHEHUTT", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "GLREY", "GRANDMASTERLUKE", "LEIAORGANA", "GLHONDO", "GLAHSOKATANO"]
-    is_gl = base_id in gl_list if base_id else False
+    gl_list = {
+        "JEDIMASTERKENOBI", "LORDVADER", "JABBATHEHUTT", "SUPREMELEADERKYLOREN", 
+        "SITHPALPATINE", "GLREY", "GRANDMASTERLUKE", "JEDIMASTERLUKE", "LEIAORGANA", 
+        "GLLEIA", "LEIAORGANAGL", "GLHONDO", "GLAHSOKATANO", "AHSOKATANOGL"
+    }
+    is_gl = base_id.upper() in gl_list if base_id else False
     
     # Détermination de la couleur (Light/Dark/Neutral)
     alignment = _get_alignment(base_id) if base_id else "Light Side"

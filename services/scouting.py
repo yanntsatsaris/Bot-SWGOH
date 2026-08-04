@@ -866,7 +866,7 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
 
         # ── Règle anti-gaspillage des Légendes Galactiques (GL Overkill) ──
         # Si l'équipe ennemie n'est PAS une GL, privilégier les contres non-GL à haut win rate
-        GL_UNITS = {"SITHPALPATINE", "SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI", "GLREY", "LORDVADER", "JEDIMASTERLUKE", "JABBATHEHUTT", "AHSOKATANO"}
+        GL_UNITS = {"SITHPALPATINE", "SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI", "GLREY", "LORDVADER", "JEDIMASTERLUKE", "JABBATHEHUTT", "AHSOKATANO", "GLAHSOKATANO", "GLLEIA", "LEIAORGANA", "LEIAORGANAGL"}
         def_leader_id = slot["enemy_team"].get("leader_id", "").upper()
         if def_leader_id not in GL_UNITS and offset == 0:
             available_candidates.sort(key=lambda c: (

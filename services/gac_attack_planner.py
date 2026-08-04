@@ -193,11 +193,12 @@ def filter_counters_by_roster(
 
     result.sort(key=lambda c: (
         1 if c["all_members_ready"] else 0,
-        1 if c.get("win_pct", 0) >= 50 else 0,
+        1 if c.get("win_pct", 0) >= 80 else (1 if c.get("win_pct", 0) >= 50 else 0),
+        c.get("relic_delta_score", 0),
+        c["roster_power"],
         c.get("final_score", 0),
         c.get("is_def_match", 0),
         c["roster_availability"],
-        c["roster_power"] + c.get("relic_delta_score", 0),
     ), reverse=True)
 
     dedup = []
@@ -217,6 +218,15 @@ def filter_counters_by_roster(
 
 # Dictionnaire de secours des contres méta universels (Hard Counters & Solos reconnus)
 UNIVERSAL_META_COUNTERS = {
+    "DARTHSIDIOUS": [
+        {"def_leader_id": "DARTHSIDIOUS", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 98.0, "seen": 900, "avg_banners": 63.0},
+        {"def_leader_id": "DARTHSIDIOUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 96.0, "seen": 1100, "avg_banners": 56.0},
+        {"def_leader_id": "DARTHSIDIOUS", "def_members_ids": [], "atk_leader_id": "SITHPALPATINE", "atk_members_ids": [], "win_pct": 99.0, "seen": 700, "avg_banners": 64.0},
+        {"def_leader_id": "DARTHSIDIOUS", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 98.0, "seen": 800, "avg_banners": 63.0},
+    ],
+    "SIDIOUS": [
+        {"def_leader_id": "SIDIOUS", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 98.0, "seen": 900, "avg_banners": 63.0},
+    ],
     "DARTHTRAYA": [
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 92.0, "seen": 800, "avg_banners": 62.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 95.0, "seen": 1200, "avg_banners": 55.0},

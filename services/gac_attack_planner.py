@@ -240,6 +240,18 @@ UNIVERSAL_META_COUNTERS = {
     "SIDIOUS": [
         {"def_leader_id": "SIDIOUS", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 98.0, "seen": 900, "avg_banners": 63.0},
     ],
+    "DARTHNIHILUS": [
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "BOSSK", "atk_members_ids": ["BOBAFETT", "MANDALORIAN"], "win_pct": 95.0, "seen": 800, "avg_banners": 56.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 96.0, "seen": 1000, "avg_banners": 56.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER"], "win_pct": 97.0, "seen": 900, "avg_banners": 58.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "CAPTAINREX", "atk_members_ids": ["CT7567", "CT210408"], "win_pct": 95.0, "seen": 700, "avg_banners": 57.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "JEDIKNIGHTREVAN", "atk_members_ids": ["GRANDMASTERYODA", "JOLEEBINDO"], "win_pct": 94.0, "seen": 850, "avg_banners": 54.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": [], "win_pct": 95.0, "seen": 600, "avg_banners": 62.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 99.0, "seen": 800, "avg_banners": 63.0},
+    ],
+    "NIHILUS": [
+        {"def_leader_id": "NIHILUS", "def_members_ids": [], "atk_leader_id": "BOSSK", "atk_members_ids": ["BOBAFETT", "MANDALORIAN"], "win_pct": 95.0, "seen": 800, "avg_banners": 56.0},
+    ],
     "DARTHTRAYA": [
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 92.0, "seen": 800, "avg_banners": 62.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 95.0, "seen": 1200, "avg_banners": 55.0},

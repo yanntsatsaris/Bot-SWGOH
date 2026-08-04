@@ -154,8 +154,8 @@ def filter_counters_by_roster(
                 owned_not_ready.append(unit_id)
                 roster_power += g_tier
 
-        # ── Règle absolue : aucun perso non-possédé toléré ──────────────────
-        if missing:
+        # ── Règle absolue : aucun perso non-possédé ni Zéta essentiel manquant ──
+        if missing or missing_zeta:
             continue
 
         # Une équipe avec des Zétas essentiels manquants n'est PAS considérée 100% prête

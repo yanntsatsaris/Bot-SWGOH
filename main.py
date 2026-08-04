@@ -106,7 +106,6 @@ class SwgohBot(commands.Bot):
         elif interaction.type == discord.InteractionType.component:
             custom_id = interaction.data.get("custom_id", "Bouton Inconnu")
             log.info("🔘 [ACTION] Clic sur bouton [%s] par %s", custom_id, user_str)
-        await super().on_interaction(interaction)
 
     async def on_ready(self) -> None:
         log.info("Connecté en tant que %s (ID : %s)", self.user, self.user.id)

@@ -45,17 +45,6 @@ LEAGUE_THRESHOLDS = {
     "KYBER":     {"min_gear": 12, "min_rarity": 7, "require_g12_or_relic": True },
 }
 
-# Substituts reliques de secours par leader pour remplacer automatiquement un membre G12 par un membre Relique de la même faction
-FACTION_RELIC_SUBSTITUTES = {
-    "DARTHREVAN": ["BASTILASHANFALLEN", "SITHMARAUDER", "SITHEMPIRETROOPER"],
-    "JEDIKNIGHTREVAN": ["GENERALKENOBI", "HERMITYODA", "JOLEEBINDO", "MACEWINDU", "AHSOKATANO", "PLOKOON"],
-    "COMMANDERLUKESKYWALKER": ["C3POLEGENDARY", "CHEWBACCADROID"],
-    "VEERS": ["RANGE_TROOPER", "MOFFGIDEONS1", "STORMTROOPER", "SNOWTROOPER"],
-    "IDENVERSIOEMPIRE": ["STORMTROOPER", "MAGMATROOPER", "SNOWTROOPER", "RANGE_TROOPER"],
-    "CAPTAINREX": ["CT7567", "CT5555", "CT210408", "ARCTROOPER501ST"],
-    "EMPERORPALPATINE": ["MARAJADE", "GRANDADMIRALTHRAWN", "DARTHVADER"],
-    "BOSSK": ["DENGAR", "FENECCSHAND", "BOBAFETT"],
-}
 
 # Leaders/Unités dont le Zéta est absolument indispensable pour l'efficacité du contre
 ZETA_DEPENDENT_LEADERS = {
@@ -88,32 +77,7 @@ def filter_counters_by_roster(
     
     for counter in counters:
         max_atk_members = 2 if format_type == "3v3" else 4
-        leader_id = counter["atk_leader_id"]
-        raw_members = counter.get("atk_members_ids", [])[:max_atk_members]
-
-        # ── Substitution automatique des membres G12 par des membres Reliques ──
-        subbed_members = []
-        possible_substitutes = FACTION_RELIC_SUBSTITUTES.get(leader_id.upper(), [])
-        
-        for m in raw_members:
-            m_unit = my_roster_index.get(m.upper())
-            m_relic = m_unit.get("relic_tier", 0) if m_unit else 0
-            if m_relic == 0 and possible_substitutes:
-                sub_found = None
-                for sub in possible_substitutes:
-                    sub_u = my_roster_index.get(sub.upper())
-                    if sub_u and sub_u.get("relic_tier", 0) >= 1 and sub not in subbed_members and sub.upper() != leader_id.upper():
-                        sub_found = sub
-                        break
-                if sub_found:
-                    subbed_members.append(sub_found)
-                else:
-                    subbed_members.append(m)
-            else:
-                subbed_members.append(m)
-
-        all_ids = [leader_id] + subbed_members
-        counter["atk_members_ids"] = subbed_members
+        all_ids = [counter["atk_leader_id"]] + counter.get("atk_members_ids", [])[:max_atk_members]
         
         available = []       # Possédés ET prêts (seuils league)
         owned_not_ready = [] # Possédés mais pas encore au niveau requis

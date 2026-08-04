@@ -6,7 +6,7 @@ import logging
 from PIL import Image, ImageDraw
 
 from services.image_generator import (
-    C_BG, C_SECTION, C_BORDER, C_GOLD, C_TEXT, C_MUTED, C_ENEMY, C_READY,
+    C_BG, C_SECTION, C_BORDER, C_GOLD, C_TEXT, C_MUTED, C_ENEMY, C_READY, C_WARN,
     PORTRAIT_CELL, PORTRAIT_GAP, SECTION_RADIUS, PADDING, IMG_WIDTH,
     _get_font, _draw_portrait_cell
 )

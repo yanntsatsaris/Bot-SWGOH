@@ -250,46 +250,61 @@ def _draw_portrait_cell(
 
     has_relic_borders = not is_ship and (gear_to_draw >= 13)
     
-    if has_relic_borders:
-        r_right_path = Path(f"assets/overlays/relic_{relic_color}_right.webp")
-        if r_right_path.exists():
-            orig_r_right = Image.open(r_right_path).convert("RGBA")
-            scale = 0.85
-            new_w = int(orig_r_right.width * scale)
-            new_h = int(orig_r_right.height * scale)
-            r_right = orig_r_right.resize((new_w, new_h), Image.LANCZOS)
-            
-            cx = x + PORTRAIT_CELL // 2
-            cy = y + PORTRAIT_CELL // 2
-            
-            # Côté gauche (l'image d'origine correspond à l'arc gauche)
-            canvas.paste(r_right, (cx - new_w, cy - new_h // 2), r_right)
-            
-            # Côté droit (image inversée)
-            r_left = r_right.transpose(Image.FLIP_LEFT_RIGHT)
-            canvas.paste(r_left, (cx, cy - new_h // 2), r_left)
-
-        # Macaron du niveau de relique
-        if relic_tier and relic_tier >= 1:
-            macaron_name = "relic_gl.webp" if is_gl else f"relic_{relic_color}.webp"
-            macaron_path = Path(f"assets/overlays/{macaron_name}")
-            if macaron_path.exists():
-                macaron = Image.open(macaron_path).convert("RGBA")
+    if (owned or is_enemy):
+        if has_relic_borders:
+            r_right_path = Path(f"assets/overlays/relic_{relic_color}_right.webp")
+            if r_right_path.exists():
+                orig_r_right = Image.open(r_right_path).convert("RGBA")
                 scale = 0.85
-                mw = int(macaron.width * scale)
-                mh = int(macaron.height * scale)
-                macaron = macaron.resize((mw, mh), Image.LANCZOS)
-                mx = x + (PORTRAIT_CELL - mw) // 2
-                my = y + PORTRAIT_CELL - (mh // 2) - 10
-                canvas.paste(macaron, (mx, my), macaron)
+                new_w = int(orig_r_right.width * scale)
+                new_h = int(orig_r_right.height * scale)
+                r_right = orig_r_right.resize((new_w, new_h), Image.LANCZOS)
                 
-                # Texte du tier
-                draw.text((x + PORTRAIT_CELL//2, my + mh//2), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
+                cx = x + PORTRAIT_CELL // 2
+                cy = y + PORTRAIT_CELL // 2
+                
+                # Côté gauche (l'image d'origine correspond à l'arc gauche)
+                canvas.paste(r_right, (cx - new_w, cy - new_h // 2), r_right)
+                
+                # Côté droit (image inversée)
+                r_left = r_right.transpose(Image.FLIP_LEFT_RIGHT)
+                canvas.paste(r_left, (cx, cy - new_h // 2), r_left)
+
+            # Macaron du niveau de relique
+            if relic_tier and relic_tier >= 1:
+                macaron_name = "relic_gl.webp" if is_gl else f"relic_{relic_color}.webp"
+                macaron_path = Path(f"assets/overlays/{macaron_name}")
+                if macaron_path.exists():
+                    macaron = Image.open(macaron_path).convert("RGBA")
+                    scale = 0.85
+                    mw = int(macaron.width * scale)
+                    mh = int(macaron.height * scale)
+                    macaron = macaron.resize((mw, mh), Image.LANCZOS)
+                    mx = x + (PORTRAIT_CELL - mw) // 2
+                    my = y + PORTRAIT_CELL - (mh // 2) - 10
+                    canvas.paste(macaron, (mx, my), macaron)
+                    
+                    # Texte du tier
+                    draw.text((x + PORTRAIT_CELL//2, my + mh//2), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
+                else:
+                    draw.ellipse([x + PORTRAIT_CELL//2 - 12, y + PORTRAIT_CELL - 20, x + PORTRAIT_CELL//2 + 12, y + PORTRAIT_CELL], fill=border_color)
+                    draw.text((x + PORTRAIT_CELL//2, y + PORTRAIT_CELL - 10), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
             else:
-                draw.ellipse([x + PORTRAIT_CELL//2 - 12, y + PORTRAIT_CELL - 20, x + PORTRAIT_CELL//2 + 12, y + PORTRAIT_CELL], fill=border_color)
-                draw.text((x + PORTRAIT_CELL//2, y + PORTRAIT_CELL - 10), str(relic_tier), font=badge_font, fill=(255, 255, 255), anchor="mm")
+                # Macaron de niveau (pour Gear 13 sans relique)
+                level_path = Path("assets/overlays/level.webp")
+                if level_path.exists():
+                    lvl_img = Image.open(level_path).convert("RGBA")
+                    mw, mh = 26, 26
+                    lvl_img = lvl_img.resize((mw, mh), Image.LANCZOS)
+                    mx = x + (PORTRAIT_CELL - mw) // 2
+                    my = y + PORTRAIT_CELL - (mh // 2) - 10
+                    canvas.paste(lvl_img, (mx, my), lvl_img)
+                    draw.text((x + PORTRAIT_CELL//2, my + mh//2), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
+                else:
+                    draw.ellipse([x + PORTRAIT_CELL//2 - 12, y + PORTRAIT_CELL - 20, x + PORTRAIT_CELL//2 + 12, y + PORTRAIT_CELL], fill=(20, 20, 20), outline=border_color, width=2)
+                    draw.text((x + PORTRAIT_CELL//2, y + PORTRAIT_CELL - 10), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
         else:
-            # Macaron de niveau (pour Gear 13 sans relique)
+            # Macaron de niveau classique
             level_path = Path("assets/overlays/level.webp")
             if level_path.exists():
                 lvl_img = Image.open(level_path).convert("RGBA")
@@ -298,22 +313,8 @@ def _draw_portrait_cell(
                 mx = x + (PORTRAIT_CELL - mw) // 2
                 my = y + PORTRAIT_CELL - (mh // 2) - 10
                 canvas.paste(lvl_img, (mx, my), lvl_img)
+                
                 draw.text((x + PORTRAIT_CELL//2, my + mh//2), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
-            else:
-                draw.ellipse([x + PORTRAIT_CELL//2 - 12, y + PORTRAIT_CELL - 20, x + PORTRAIT_CELL//2 + 12, y + PORTRAIT_CELL], fill=(20, 20, 20), outline=border_color, width=2)
-                draw.text((x + PORTRAIT_CELL//2, y + PORTRAIT_CELL - 10), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
-    else:
-        # Macaron de niveau classique
-        level_path = Path("assets/overlays/level.webp")
-        if level_path.exists():
-            lvl_img = Image.open(level_path).convert("RGBA")
-            mw, mh = 26, 26
-            lvl_img = lvl_img.resize((mw, mh), Image.LANCZOS)
-            mx = x + (PORTRAIT_CELL - mw) // 2
-            my = y + PORTRAIT_CELL - (mh // 2) - 10
-            canvas.paste(lvl_img, (mx, my), lvl_img)
-            
-            draw.text((x + PORTRAIT_CELL//2, my + mh//2), str(level), font=level_font, fill=(255, 255, 255), anchor="mm")
 
     # --- 6. Zetas / Omicrons ---
     # Zetas (Gauche)
@@ -352,7 +353,7 @@ def _draw_portrait_cell(
     n_empty   = TOTAL_STARS - n_filled
     total_width = TOTAL_STARS * STAR_SIZE + (TOTAL_STARS - 1) * STAR_GAP
     start_x = x + (PORTRAIT_CELL - total_width) // 2
-    sy = y + PORTRAIT_CELL + 6
+    sy = y + PORTRAIT_CELL + 2
     if star_path.exists():
         star_img = Image.open(star_path).convert("RGBA").resize((STAR_SIZE, STAR_SIZE), Image.LANCZOS)
         star_empty_img = None

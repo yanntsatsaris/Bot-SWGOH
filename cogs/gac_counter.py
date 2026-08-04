@@ -384,7 +384,20 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
         memory_used = self.used_attack_teams.get(str(interaction.user.id), set())
         used_set = memory_used.union(db_used)
         
-        counters = await get_best_counter_with_memory(leader_id, members_list, fmt, my_roster, excluded_chars=used_set)
+        # Récupérer la league du joueur pour adapter les seuils
+        player_league = "KYBER"
+        try:
+            my_profile = await get_player(used_code)
+            if my_profile:
+                season_status = my_profile.get("seasonStatus", [])
+                if season_status:
+                    league_val = season_status[-1].get("league", "KYBER")
+                    if isinstance(league_val, str):
+                        player_league = league_val.split("_")[-1].upper()
+        except Exception:
+            pass
+        
+        counters = await get_best_counter_with_memory(leader_id, members_list, fmt, my_roster, excluded_chars=used_set, league=player_league)
 
 
         if not counters:

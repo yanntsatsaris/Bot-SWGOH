@@ -90,6 +90,7 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
+            "level": unit.get("currentLevel", 85),
             "has_omicron": has_omicron,
             "omicrons": omicrons_count,
             "zetas": zetas_count,
@@ -427,7 +428,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
 
     return zones
 
-async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str, ship_base_ids: set, enemy_zones: dict = None) -> dict:
+async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str, ship_base_ids: set, enemy_zones: dict = None, league: str = "KYBER") -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
@@ -442,7 +443,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                     leader = team.get("leader_id")
                     members = team.get("members_ids", [])
                     if leader and leader != "USED" and leader != "None":
-                        counters = await get_best_counter_with_memory(leader, members, fmt, my_index, used_base_ids)
+                        counters = await get_best_counter_with_memory(leader, members, fmt, my_index, used_base_ids, league=league)
                         if counters:
                             best_counter = counters[0]
                             used_base_ids.add(best_counter["atk_leader_id"])
@@ -755,14 +756,14 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_profile = await get_player(my_clean)
         if my_profile:
             my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
-            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones)
+            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones, league_name)
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
             result["my_roster_index"] = my_index
 
     return result
 
-async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str) -> dict:
+async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER") -> dict:
     """
     Génère un plan d'attaque global pour l'ensemble de la carte ennemie.
     Prend en compte les statuts de secteurs (CLEARED, FAILED, OPEN) et les offsets
@@ -807,7 +808,8 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 def_members_ids=def_members,
                 format_type=fmt,
                 my_roster_index=my_index,
-                excluded_chars=used_units
+                excluded_chars=used_units,
+                league=league
             )
             
             if counters:

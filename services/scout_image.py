@@ -181,7 +181,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
     Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
     """
     width = 1100
-    row_height = PORTRAIT_CELL + 35
+    row_height = PORTRAIT_CELL + 46
     
     height = 100 + PADDING
     for zone, slots in attack_plan.items():
@@ -219,7 +219,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             panel_fill = (18, 20, 26) if status == "CLEARED" else C_SECTION
             panel_border = C_READY if status == "CLEARED" else (C_ENEMY if status == "FAILED" else C_BORDER)
             
-            panel_rect = [PADDING, current_y, width - PADDING, current_y + row_height - 5]
+            panel_rect = [PADDING, current_y, width - PADDING, current_y + row_height - 6]
             draw.rounded_rectangle(panel_rect, radius=SECTION_RADIUS, fill=panel_fill, outline=panel_border, width=2 if status != "OPEN" else 1)
             
             # Label secteur + badge statut
@@ -235,12 +235,16 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             all_e_ids = [e_leader] + [m for m in e_members if m]
             
             x_def = PADDING + 15
-            y_portraits = current_y + 28
+            y_portraits = current_y + 24
             for bid in all_e_ids[: (3 if fmt == "3v3" else 5)]:
                 e_data = enemy_roster_index.get(bid.upper()) if enemy_roster_index else None
-                e_rel = e_data.get("relic_tier") if e_data else None
-                e_gr  = e_data.get("gear_tier")  if e_data else None
-                _draw_portrait_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, False)
+                e_rel  = e_data.get("relic_tier") if e_data else None
+                e_gr   = e_data.get("gear_tier")  if e_data else None
+                e_zts  = e_data.get("zetas", 0)   if e_data else 0
+                e_omis = e_data.get("omicrons", 0) if e_data else 0
+                e_star = e_data.get("rarity", 7)  if e_data else 7
+                e_lvl  = e_data.get("level", 85)   if e_data else 85
+                _draw_portrait_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, False, e_lvl, e_zts, e_omis, e_star)
                 if status == "CLEARED":
                     # Overlay grisant pour secteur tombé
                     overlay = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL), (0, 0, 0, 160))
@@ -278,19 +282,21 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     
                     for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
                         u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
-                        rel  = u_data.get("relic_tier") if u_data else None
-                        gr   = u_data.get("gear_tier")  if u_data else None
-                        zts  = u_data.get("zetas", 0)   if u_data else 0
-                        omis = u_data.get("omicrons", 0) if u_data else 0
-                        owned = u_data is not None
-                        rarity = u_data.get("rarity", 0) if u_data else 0
+                        rel    = u_data.get("relic_tier") if u_data else None
+                        gr     = u_data.get("gear_tier")  if u_data else None
+                        zts    = u_data.get("zetas", 0)   if u_data else 0
+                        omis   = u_data.get("omicrons", 0) if u_data else 0
+                        owned  = u_data is not None
+                        rarity = u_data.get("rarity", 0)  if u_data else 0
+                        lvl    = u_data.get("level", 85)   if u_data else 85
                         is_ready = owned and rarity == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
-                        _draw_portrait_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, False, False, 85, zts, omis)
+                        _draw_portrait_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, False, False, lvl, zts, omis, rarity)
                         x_counter += PORTRAIT_CELL + PORTRAIT_GAP
                 else:
                     draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
                 
             current_y += row_height
+
         current_y += PADDING
 
 

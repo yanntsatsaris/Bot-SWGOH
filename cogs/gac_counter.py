@@ -111,26 +111,35 @@ async def unit_autocomplete(interaction: discord.Interaction, current: str) -> l
 
 class CounterSuggestionView(discord.ui.View):
     def __init__(
-        self, interaction: discord.Interaction, suggestions: list, def_leader: str,
-        def_members: list, format_type: str, adv_roster: dict | None,
-        adv_name: str, my_roster: dict, my_name: str, used_attack_teams: dict, current_index: int = 0
+        self, 
+        interaction: discord.Interaction = None, 
+        suggestions: list = None, 
+        def_leader: str = "",
+        def_members: list = None, 
+        format_type: str = "5v5", 
+        adv_roster: dict | None = None,
+        adv_name: str = "", 
+        my_roster: dict = None, 
+        my_name: str = "", 
+        used_attack_teams: dict = None, 
+        current_index: int = 0
     ):
         super().__init__(timeout=None)
         self.original_interaction = interaction
-        self.used_attack_teams = used_attack_teams
-        self.suggestions = suggestions
+        self.used_attack_teams = used_attack_teams or {}
+        self.suggestions = suggestions or []
         self.def_leader = def_leader
-        self.def_members = def_members
+        self.def_members = def_members or []
         self.format_type = format_type
         self.adv_roster = adv_roster
         self.adv_name = adv_name
-        self.my_roster = my_roster
+        self.my_roster = my_roster or {}
         self.my_name = my_name
         self.current_index = current_index
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         """Empêche les autres joueurs d'interagir avec les boutons."""
-        if interaction.user != self.original_interaction.user:
+        if self.original_interaction and interaction.user != self.original_interaction.user:
             await interaction.response.send_message("❌ Ces boutons ne te sont pas destinés.", ephemeral=True)
             return False
         return True

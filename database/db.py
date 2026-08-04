@@ -406,8 +406,14 @@ async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: 
                         """
                         INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                         VALUES (?, ?, ?, ?, ?)
-})
-    return results
+                        ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                            used_type = excluded.used_type,
+                            zone = excluded.zone,
+                            slot_index = excluded.slot_index
+                        """,
+                        (discord_id, bid.upper(), used_type, zone, idx)
+                    )
+        await db.commit()
 
 async def record_counter_feedback(def_leader_id: str, def_members_ids: list[str], atk_leader_id: str, atk_members_ids: list[str], format_type: str, outcome: str, player_discord_id: str):
     async with get_db() as db:

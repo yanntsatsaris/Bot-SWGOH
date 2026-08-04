@@ -406,6 +406,201 @@ async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: 
                         """
                         INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                         VALUES (?, ?, ?, ?, ?)
+})
+    return results
+
+async def record_counter_feedback(def_leader_id: str, def_members_ids: list[str], atk_leader_id: str, atk_members_ids: list[str], format_type: str, outcome: str, player_discord_id: str):
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO counter_feedback (
+                def_leader_id, def_members_ids, format,
+                atk_leader_id, atk_members_ids, outcome, player_discord_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                def_leader_id, json.dumps(sorted(def_members_ids)), format_type,
+                atk_leader_id, json.dumps(sorted(atk_members_ids)), outcome, player_discord_id
+            )
+        )
+        await db.commit()
+
+async def get_counter_feedback_stats(atk_leader_id: str, def_leader_id: str, format_type: str) -> dict:
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN outcome = 'win' THEN 1 ELSE 0 END) as wins
+            FROM counter_feedback
+            WHERE atk_leader_id = ? AND def_leader_id = ? AND format = ?
+            """,
+            (atk_leader_id, def_leader_id, format_type)
+        )
+        row = await cursor.fetchone()
+        
+    total = row["total"] if row else 0
+    wins = row["wins"] if row else 0
+    win_rate = (wins / total) if total > 0 else None
+    
+    return {
+        "total": total,
+        "wins": wins,
+        "win_rate": win_rate
+    }
+
+async def add_used_units(discord_id: str, base_ids: list[str], used_type: str = "attack", zone: str = None, slot_index: int = None):
+    """Enregistre une liste d'unités comme brûlées/utilisées pour le round en cours."""
+    if not base_ids or not discord_id:
+        return
+    async with get_db() as db:
+        for bid in base_ids:
+            if not bid or bid in ["USED", "None", "EMPTY"]:
+                continue
+            await db.execute(
+                """
+                INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                    used_type = excluded.used_type,
+                    zone = excluded.zone,
+                    slot_index = excluded.slot_index
+                """,
+                (discord_id, bid.upper(), used_type, zone, slot_index)
+            )
+        await db.commit()
+
+async def get_used_units(discord_id: str) -> set[str]:
+    """Retourne l'ensemble des base_ids des personnages brûlés/utilisés par le joueur dans le round actif."""
+    if not discord_id:
+        return set()
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT base_id FROM active_round_units WHERE discord_id = ?",
+            (discord_id,)
+        )
+        rows = await cursor.fetchall()
+    return {row["base_id"].upper() for row in rows}
+
+async def clear_used_units(discord_id: str | None = None):
+    """Réinitialise les unités brûlées et les états de secteurs pour un joueur ou pour tous les joueurs."""
+    async with get_db() as db:
+        if discord_id:
+            await db.execute("DELETE FROM active_round_units WHERE discord_id = ?", (discord_id,))
+            await db.execute("DELETE FROM active_sector_status WHERE discord_id = ?", (discord_id,))
+        else:
+            await db.execute("DELETE FROM active_round_units")
+            await db.execute("DELETE FROM active_sector_status")
+        await db.commit()
+    log.info(f"Unités brûlées et secteurs réinitialisés ({'joueur ' + discord_id if discord_id else 'tous les joueurs'}).")
+
+async def set_sector_status(discord_id: str, zone: str, slot_index: int, status: str, counter_offset: int | None = None):
+    """Met à jour le statut d'un secteur (OPEN, CLEARED, FAILED) et optionnellement son offset de contre."""
+    async with get_db() as db:
+        if counter_offset is not None:
+            await db.execute(
+                """
+                INSERT INTO active_sector_status (discord_id, zone, slot_index, status, counter_offset)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(discord_id, zone, slot_index) DO UPDATE SET
+                    status = excluded.status,
+                    counter_offset = excluded.counter_offset
+                """,
+                (discord_id, zone, slot_index, status, counter_offset)
+            )
+        else:
+            await db.execute(
+                """
+                INSERT INTO active_sector_status (discord_id, zone, slot_index, status)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(discord_id, zone, slot_index) DO UPDATE SET
+                    status = excluded.status
+                """,
+                (discord_id, zone, slot_index, status)
+            )
+        await db.commit()
+
+async def cycle_sector_counter_offset(discord_id: str, zone: str, slot_index: int) -> int:
+    """Incrémente l'offset du contre pour ce secteur (Option #1 -> Option #2...) et retourne la nouvelle valeur."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT counter_offset FROM active_sector_status WHERE discord_id = ? AND zone = ? AND slot_index = ?",
+            (discord_id, zone, slot_index)
+        )
+        row = await cursor.fetchone()
+        current_offset = row["counter_offset"] if row else 0
+        new_offset = (current_offset + 1) % 5
+        
+        await db.execute(
+            """
+            INSERT INTO active_sector_status (discord_id, zone, slot_index, status, counter_offset)
+            VALUES (?, ?, ?, 'OPEN', ?)
+            ON CONFLICT(discord_id, zone, slot_index) DO UPDATE SET
+                counter_offset = excluded.counter_offset
+            """,
+            (discord_id, zone, slot_index, new_offset)
+        )
+        await db.commit()
+    return new_offset
+
+async def get_active_sector_statuses(discord_id: str) -> dict:
+    """Retourne un dictionnaire {(zone, slot_index): {'status': status, 'counter_offset': offset}}."""
+    if not discord_id:
+        return {}
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT zone, slot_index, status, counter_offset FROM active_sector_status WHERE discord_id = ?",
+            (discord_id,)
+        )
+        rows = await cursor.fetchall()
+    return {(row["zone"], row["slot_index"]): {"status": row["status"], "counter_offset": row["counter_offset"]} for row in rows}
+
+
+async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, leader_id: str, members_ids: list[str]):
+    """Remplace l'équipe posée sur un emplacement (zone + slot_index) spécifique."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM active_round_units WHERE discord_id = ? AND zone = ? AND slot_index = ? AND used_type = 'defense'",
+            (discord_id, zone, slot_index)
+        )
+        all_units = [leader_id] + [m for m in members_ids if m]
+        for bid in all_units:
+            if not bid or bid in ["USED", "None", "EMPTY"]:
+                continue
+            await db.execute(
+                """
+                INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
+                VALUES (?, ?, 'defense', ?, ?)
+                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                    used_type = 'defense',
+                    zone = excluded.zone,
+                    slot_index = excluded.slot_index
+                """,
+                (discord_id, bid.upper(), zone, slot_index)
+            )
+        await db.commit()
+
+
+async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: str = "defense"):
+
+    """Enregistre l'ensemble des zones de défense (joueur ou ennemie) dans active_round_units."""
+    async with get_db() as db:
+        await db.execute(
+            "DELETE FROM active_round_units WHERE discord_id = ? AND used_type = ?",
+            (discord_id, used_type)
+        )
+        for zone, teams in zones_dict.items():
+            for idx, team in enumerate(teams, 1):
+                leader = team.get("leader_id")
+                members = team.get("members_ids", [])
+                all_units = [leader] + [m for m in members if m]
+                for bid in all_units:
+                    if not bid or bid in ["USED", "None", "EMPTY"]:
+                        continue
+                    await db.execute(
+                        """
+                        INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
+                        VALUES (?, ?, ?, ?, ?)
                         ON CONFLICT(discord_id, base_id) DO UPDATE SET
                             used_type = excluded.used_type,
                             zone = excluded.zone,
@@ -414,6 +609,14 @@ async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: 
                         (discord_id, bid.upper(), used_type, zone, idx)
                     )
         await db.commit()
+
+KNOWN_LEADERS = {
+    "GRIEVOUS", "JEDIKNIGHTREVAN", "DARTHTRAYA", "BOSSK", "VEERS", "COMMANDERLUKESKYWALKER",
+    "GRANDINQUISITOR", "EMPERORPALPATINE", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "JEDIMASTERKENOBI",
+    "GLREY", "LORDVADER", "JEDIMASTERLUKE", "JABBATHEHUTT", "IDENVERSIOEMPIRE", "HEROAMIRAL",
+    "GEONOSIANBROODALPHA", "MOTHERTALZIN", "NIGHTSISTERMOTHER", "NUTEGUNRAY", "QIRA", "CARTHONASI",
+    "FINN", "PADMEAMIDALA", "GARSAXON", "MANDALORIAN", "GREEFCARGA", "JANGOFETT", "MARAJADE", "MONMOTHMA", "SECONDSISTER"
+}
 
 async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -> dict:
     """Reconstruit le dictionnaire de zones (North, South, Back, Fleet) depuis active_round_units."""
@@ -424,7 +627,7 @@ async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -
             SELECT zone, slot_index, base_id
             FROM active_round_units
             WHERE discord_id = ? AND used_type = ?
-            ORDER BY zone, slot_index
+            ORDER BY zone, slot_index, id ASC
             """,
             (discord_id, used_type)
         )
@@ -439,6 +642,13 @@ async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -
         
     for (z, s_idx), units in slots_map.items():
         if z in zones:
+            # Auto-correction : Si un leader connu est présent dans l'équipe mais pas en position 0, le placer en leader
+            for idx, u in enumerate(units):
+                if u.upper() in KNOWN_LEADERS:
+                    leader_unit = units.pop(idx)
+                    units.insert(0, leader_unit)
+                    break
+
             leader = units[0] if units else None
             members = units[1:] if len(units) > 1 else []
             zones[z].append({

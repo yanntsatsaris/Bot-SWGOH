@@ -79,9 +79,18 @@ def filter_counters_by_roster(
         max_atk_members = 2 if format_type == "3v3" else 4
         all_ids = [counter["atk_leader_id"]] + counter.get("atk_members_ids", [])[:max_atk_members]
         
+        # ── Calcul préalable de la puissance relique ennemie ──────────────
+        def_ids = [counter.get("def_leader_id")] + counter.get("def_members_ids", [])
+        def_relics = []
+        if enemy_roster_index:
+            for duid in def_ids:
+                if duid and duid.upper() in enemy_roster_index:
+                    def_relics.append(enemy_roster_index[duid.upper()].get("relic_tier", 0))
+        def_relic_avg = (sum(def_relics) / max(len(def_relics), 1)) if def_relics else 3.0
+
         available = []       # Possédés ET prêts (seuils league)
         owned_not_ready = [] # Possédés mais pas encore au niveau requis
-        missing = []         # Complètement non possédés → éliminatoire
+        missing = []         # Complètement non possédés ou incompatibles → éliminatoire
         missing_omicron = []
         missing_zeta = []
         roster_power = 0
@@ -100,8 +109,15 @@ def filter_counters_by_roster(
             has_omi = unit.get("has_omicron") or unit.get("omicrons", 0) > 0
             z_count = unit.get("zetas", 0)
 
+            # ── Règle absolue 100% Reliques contre défenses Reliques ──────────
+            # Si l'adversaire a des reliques (def_relic_avg >= 1.0), interdire strictement
+            # tout membre d'attaque non-relique (r_tier == 0 / G12) sauf s'il s'agit d'un hard solo (Wampa/Bane)
+            is_hard_counter = unit_id.upper() in HARD_COUNTERS_BYPASS_DELTA or counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
+            if def_relic_avg >= 1.0 and r_tier == 0 and not is_hard_counter:
+                missing.append(unit_id)
+                continue
+
             # ── Règle anti-perso "Pas Monté" (Niveau 1 / Gear très bas) ───────
-            # Un personnage avec son Omicron GAC (ex: Wampa) contourne le filtre "Pas monté"
             min_playable_gear = max(6, min_gear - 2) if not require_g12_or_relic else 9
             is_unbuilt = (r_tier == 0) and (g_tier < min_playable_gear or level < 60) and not has_omi
 
@@ -151,13 +167,6 @@ def filter_counters_by_roster(
         atk_relics = [my_roster_index.get(uid.upper(), {}).get("relic_tier", 0) for uid in all_ids if my_roster_index.get(uid.upper())]
         atk_relic_avg = sum(atk_relics) / max(len(atk_relics), 1)
 
-        def_ids = [counter.get("def_leader_id")] + counter.get("def_members_ids", [])
-        def_relics = []
-        if enemy_roster_index:
-            for duid in def_ids:
-                if duid and duid.upper() in enemy_roster_index:
-                    def_relics.append(enemy_roster_index[duid.upper()].get("relic_tier", 0))
-        def_relic_avg = (sum(def_relics) / max(len(def_relics), 1)) if def_relics else 3.0
 
         relic_delta = atk_relic_avg - def_relic_avg
         is_hard_counter = counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA

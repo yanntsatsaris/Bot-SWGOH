@@ -27,10 +27,10 @@ async def init_db() -> None:
         for sql in CREATE_TABLES_SQL:
             await db.execute(sql)
             
-        # Migration : Supprimer la contrainte CHECK de active_round_units si elle existe
+        # Migration : Mise à jour de la contrainte UNIQUE pour dissocier defense, enemy_defense et attack
         try:
             await db.execute("""
-                CREATE TABLE IF NOT EXISTS active_round_units_new (
+                CREATE TABLE IF NOT EXISTS active_round_units_v3 (
                     id          INTEGER PRIMARY KEY AUTOINCREMENT,
                     discord_id  TEXT    NOT NULL,
                     base_id     TEXT    NOT NULL,
@@ -38,12 +38,12 @@ async def init_db() -> None:
                     zone        TEXT,
                     slot_index  INTEGER,
                     created_at  TEXT    DEFAULT (datetime('now')),
-                    UNIQUE(discord_id, base_id)
+                    UNIQUE(discord_id, base_id, used_type)
                 )
             """)
-            await db.execute("INSERT OR IGNORE INTO active_round_units_new SELECT * FROM active_round_units")
+            await db.execute("INSERT OR IGNORE INTO active_round_units_v3 SELECT * FROM active_round_units")
             await db.execute("DROP TABLE active_round_units")
-            await db.execute("ALTER TABLE active_round_units_new RENAME TO active_round_units")
+            await db.execute("ALTER TABLE active_round_units_v3 RENAME TO active_round_units")
         except Exception:
             pass
 
@@ -266,7 +266,7 @@ async def add_used_units(discord_id: str, base_ids: list[str], used_type: str = 
                 """
                 INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
                     used_type = excluded.used_type,
                     zone = excluded.zone,
                     slot_index = excluded.slot_index
@@ -376,7 +376,7 @@ async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, le
                 """
                 INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                 VALUES (?, ?, 'defense', ?, ?)
-                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
                     used_type = 'defense',
                     zone = excluded.zone,
                     slot_index = excluded.slot_index
@@ -406,7 +406,7 @@ async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: 
                         """
                         INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                         VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                        ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
                             used_type = excluded.used_type,
                             zone = excluded.zone,
                             slot_index = excluded.slot_index
@@ -467,7 +467,7 @@ async def add_used_units(discord_id: str, base_ids: list[str], used_type: str = 
                 """
                 INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                 VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
                     used_type = excluded.used_type,
                     zone = excluded.zone,
                     slot_index = excluded.slot_index
@@ -577,7 +577,7 @@ async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, le
                 """
                 INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                 VALUES (?, ?, 'defense', ?, ?)
-                ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
                     used_type = 'defense',
                     zone = excluded.zone,
                     slot_index = excluded.slot_index
@@ -607,7 +607,7 @@ async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: 
                         """
                         INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
                         VALUES (?, ?, ?, ?, ?)
-                        ON CONFLICT(discord_id, base_id) DO UPDATE SET
+                        ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
                             used_type = excluded.used_type,
                             zone = excluded.zone,
                             slot_index = excluded.slot_index

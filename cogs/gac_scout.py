@@ -382,7 +382,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                                 sd["my_zones"], sd["quotas"], sd["league"], sd["format"],
                                 sd["my_name"] + " (Ta Défense Suggérée)",
                                 "Contre-Défense Optimisée",
-                                sd.get("my_roster_index")
+                                sd.get("my_roster_index"),
+                                is_player=True
                             )
                             result_files.append(discord.File(m_img, filename="my_defense.png"))
                         return result_files

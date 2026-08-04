@@ -174,7 +174,7 @@ CREATE_TABLES_SQL: list[str] = [
         zone        TEXT,
         slot_index  INTEGER,
         created_at  TEXT    DEFAULT (datetime('now')),
-        UNIQUE(discord_id, base_id)
+        UNIQUE(discord_id, base_id, used_type)
     )
 
     """,

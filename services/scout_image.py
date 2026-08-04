@@ -237,7 +237,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             x_def = PADDING + 15
             y_portraits = current_y + 28
             for bid in all_e_ids[: (3 if fmt == "3v3" else 5)]:
-                _draw_portrait_cell(canvas, draw, bid, x_def, y_portraits, unit_data=None, is_leader=(bid == e_leader))
+                _draw_portrait_cell(canvas, x_def, y_portraits, bid, None, None, True, True, True, False, False)
                 if status == "CLEARED":
                     # Overlay grisant pour secteur tombé
                     overlay = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL), (0, 0, 0, 160))
@@ -273,7 +273,11 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     
                     for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
                         u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
-                        _draw_portrait_cell(canvas, draw, bid, x_counter, y_portraits, unit_data=u_data, is_leader=(bid == c_leader))
+                        rel = u_data.get("relic_tier") if u_data else None
+                        gr  = u_data.get("gear_tier")  if u_data else None
+                        zts = u_data.get("zetas", 0)   if u_data else 0
+                        omis = u_data.get("omicrons", 0) if u_data else 0
+                        _draw_portrait_cell(canvas, x_counter, y_portraits, bid, rel, gr, True, True, False, False, False, 85, zts, omis)
                         x_counter += PORTRAIT_CELL + PORTRAIT_GAP
                 else:
                     draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)

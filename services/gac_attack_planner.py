@@ -45,6 +45,14 @@ LEAGUE_THRESHOLDS = {
     "KYBER":     {"min_gear": 12, "min_rarity": 7, "require_g12_or_relic": True },
 }
 
+# Leaders/Unités dont le Zéta est absolument indispensable pour l'efficacité du contre
+ZETA_DEPENDENT_LEADERS = {
+    "COMMANDERLUKESKYWALKER", "JEDIKNIGHTREVAN", "VEERS", "BOSSK", "DARTHTRAYA",
+    "EMPERORPALPATINE", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "IDENVERSIOEMPIRE",
+    "GENERALHUX", "FINN", "PADMEAMIDALA", "MOTHERTALZIN", "GARSAXON", "MANDALORIAN",
+    "GREEFCARGA", "GEONOSIANBROODALPHA", "HEROAMIRAL", "JEDIMASTERKENOBI", "MARAJADE"
+}
+
 def filter_counters_by_roster(
     counters: list[dict], 
     my_roster_index: dict, 
@@ -52,12 +60,12 @@ def filter_counters_by_roster(
     league: str = "KYBER",
     enemy_roster_index: dict = None,
 ) -> list[dict]:
+
     """
     Filtre et enrichit les counters selon le roster du joueur.
 
-    Prend en compte le Relic Delta (différence de niveau de relique entre
-    l'attaque du joueur et la défense ennemie) pour privilégier les contres
-    de niveau équivalent, sauf pour les Hard Counters / Solos.
+    Prend en compte le Relic Delta et les Zétas/Omicrons vitaux pour garantir
+    des propositions de contres fiables avec un DPS suffisant.
     """
     thresh = LEAGUE_THRESHOLDS.get(league.upper(), LEAGUE_THRESHOLDS["KYBER"])
     min_gear             = thresh["min_gear"]
@@ -74,6 +82,7 @@ def filter_counters_by_roster(
         owned_not_ready = [] # Possédés mais pas encore au niveau requis
         missing = []         # Complètement non possédés → éliminatoire
         missing_omicron = []
+        missing_zeta = []
         roster_power = 0
 
         for unit_id in all_ids:
@@ -87,16 +96,19 @@ def filter_counters_by_roster(
             g_tier = unit.get("gear_tier", 0)
             rarity = unit.get("rarity", 0)
             level  = unit.get("level", 85)
+            has_omi = unit.get("has_omicron") or unit.get("omicrons", 0) > 0
+            z_count = unit.get("zetas", 0)
 
             # ── Règle anti-perso "Pas Monté" (Niveau 1 / Gear très bas) ───────
+            # Un personnage avec son Omicron GAC (ex: Wampa) contourne le filtre "Pas monté"
             min_playable_gear = max(6, min_gear - 2) if not require_g12_or_relic else 9
-            is_unbuilt = (r_tier == 0) and (g_tier < min_playable_gear or level < 60)
+            is_unbuilt = (r_tier == 0) and (g_tier < min_playable_gear or level < 60) and not has_omi
 
             if is_unbuilt:
                 missing.append(unit_id)
                 continue
 
-            # ── Logique de disponibilité adaptée par étoiles + league ─────────
+            # ── Logique de disponibilité adaptée par étoiles, omicrons & league ─
             meets_rarity = rarity >= min_rarity
             max_relic_for_rarity = MAX_RELIC_BY_RARITY.get(rarity, 0)
             has_relic = r_tier >= 1
@@ -104,21 +116,23 @@ def filter_counters_by_roster(
             is_7star = rarity == 7
 
             if require_g12_or_relic:
-                if has_relic:
-                    unit_ready = meets_rarity or at_relic_cap
+                if has_relic or has_omi:
+                    unit_ready = meets_rarity or at_relic_cap or has_omi
                 elif is_7star:
                     unit_ready = g_tier >= min_gear
                 else:
                     unit_ready = False
             else:
-                unit_ready = (rarity >= min_rarity) and (g_tier >= min_gear or has_relic)
+                unit_ready = (rarity >= min_rarity) and (g_tier >= min_gear or has_relic or has_omi)
+
+            # Vérification si le leader/membre a 0 Zéta alors qu'il est zéta-dépendant
+            if unit_id.upper() in ZETA_DEPENDENT_LEADERS and z_count == 0:
+                missing_zeta.append(unit_id)
 
             if unit_ready:
                 available.append(unit_id)
                 roster_power += (r_tier * 10) + g_tier
-                if unit_id.upper() in NEEDS_GAC_OMICRON and not (
-                    unit.get("has_omicron") or unit.get("omicrons", 0) > 0
-                ):
+                if unit_id.upper() in NEEDS_GAC_OMICRON and not has_omi:
                     missing_omicron.append(unit_id)
             else:
                 owned_not_ready.append(unit_id)
@@ -128,7 +142,8 @@ def filter_counters_by_roster(
         if missing:
             continue
 
-        all_ready    = len(owned_not_ready) == 0
+        # Une équipe avec des Zétas essentiels manquants n'est PAS considérée 100% prête
+        all_ready    = len(owned_not_ready) == 0 and len(missing_zeta) == 0
         availability = len(available) / max(len(all_ids), 1)
 
         # ── Calcul du Relic Delta (Attaque vs Défense) ──────────────────────
@@ -146,12 +161,14 @@ def filter_counters_by_roster(
         relic_delta = atk_relic_avg - def_relic_avg
         is_hard_counter = counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
 
-        # Si Hard Counter / Solo ou Delta Positif -> Pas de pénalité
-        # Si Delta Négatif -> Pénalité de score pour favoriser les contres à relique équivalente
         relic_delta_score = 0 if (is_hard_counter or relic_delta >= 0) else (relic_delta * 5)
 
         win_pct     = counter.get("win_pct", 0)
         final_score = counter.get("final_score", win_pct / 100 if win_pct > 1 else win_pct)
+        
+        # Pénalité si zéta vital manquant (ex: Mando 0 zéta)
+        if missing_zeta:
+            final_score *= 0.5
 
         result.append({
             **counter,
@@ -163,6 +180,7 @@ def filter_counters_by_roster(
             "relic_delta_score":    relic_delta_score,
             "missing":             owned_not_ready,
             "missing_omicron":     missing_omicron,
+            "missing_zeta":        missing_zeta,
             "needs_omicron":       len(missing_omicron) > 0,
             "composite_score":     final_score * (1.5 if all_ready else availability),
         })

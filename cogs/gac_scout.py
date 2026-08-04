@@ -116,21 +116,33 @@ class SectorZoneSelectView(discord.ui.View):
 
 
 class AttackPlanView(discord.ui.View):
-    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict, enemy_roster_index: dict = None):
+    def __init__(
+        self, 
+        original_user_id: int = 0, 
+        my_zones: dict = None, 
+        enemy_zones: dict = None, 
+        quotas: dict = None, 
+        league: str = "KYBER", 
+        fmt: str = "5v5", 
+        my_name: str = "", 
+        enemy_name: str = "", 
+        my_roster_index: dict = None, 
+        enemy_roster_index: dict = None
+    ):
         super().__init__(timeout=None)
         self.original_user_id = original_user_id
-        self.my_zones = my_zones
-        self.enemy_zones = enemy_zones
-        self.quotas = quotas
+        self.my_zones = my_zones or {}
+        self.enemy_zones = enemy_zones or {}
+        self.quotas = quotas or {}
         self.league = league
         self.fmt = fmt
         self.my_name = my_name
         self.enemy_name = enemy_name
-        self.my_roster_index = my_roster_index
+        self.my_roster_index = my_roster_index or {}
         self.enemy_roster_index = enemy_roster_index or {}
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.original_user_id:
+        if self.original_user_id and interaction.user.id != self.original_user_id:
             await interaction.response.send_message("❌ Ces boutons ne te sont pas destinés.", ephemeral=True)
             return False
         return True
@@ -174,21 +186,33 @@ class AttackPlanView(discord.ui.View):
 # ─── VUE PRINCIPALE DÉFENSE & PLAN D'ATTAQUE ──────────────────────────────────
 
 class DefenseValidationView(discord.ui.View):
-    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict, enemy_roster_index: dict = None):
+    def __init__(
+        self, 
+        original_user_id: int = 0, 
+        my_zones: dict = None, 
+        enemy_zones: dict = None, 
+        quotas: dict = None, 
+        league: str = "KYBER", 
+        fmt: str = "5v5", 
+        my_name: str = "", 
+        enemy_name: str = "", 
+        my_roster_index: dict = None, 
+        enemy_roster_index: dict = None
+    ):
         super().__init__(timeout=None)
         self.original_user_id = original_user_id
-        self.my_zones = my_zones
-        self.enemy_zones = enemy_zones
-        self.quotas = quotas
+        self.my_zones = my_zones or {}
+        self.enemy_zones = enemy_zones or {}
+        self.quotas = quotas or {}
         self.league = league
         self.fmt = fmt
         self.my_name = my_name
         self.enemy_name = enemy_name
-        self.my_roster_index = my_roster_index
+        self.my_roster_index = my_roster_index or {}
         self.enemy_roster_index = enemy_roster_index or {}
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id != self.original_user_id:
+        if self.original_user_id and interaction.user.id != self.original_user_id:
             await interaction.response.send_message("❌ Ces boutons ne te sont pas destinés.", ephemeral=True)
             return False
         return True
@@ -438,4 +462,6 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             await interaction.followup.send(f"❌ Impossible d'initier le scouting : {e}")
 
 async def setup(bot: commands.Bot) -> None:
+    bot.add_view(DefenseValidationView())
+    bot.add_view(AttackPlanView())
     await bot.add_cog(GACScoutCog(bot))

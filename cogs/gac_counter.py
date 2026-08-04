@@ -206,16 +206,19 @@ class CounterSuggestionView(discord.ui.View):
 
         return content, img_file
 
-    @discord.ui.button(label="✅ Victoire", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="✅ Victoire", style=discord.ButtonStyle.success, custom_id="btn_counter_win")
     async def btn_victoire(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._record_and_advance(interaction, won=True)
 
-    @discord.ui.button(label="❌ Défaite", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="❌ Défaite", style=discord.ButtonStyle.danger, custom_id="btn_counter_loss")
     async def btn_defaite(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._record_and_advance(interaction, won=False)
 
-    @discord.ui.button(label="🔄 Autre option", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="🔄 Autre option", style=discord.ButtonStyle.secondary, custom_id="btn_counter_next")
     async def btn_autre(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not self.suggestions:
+            await interaction.response.send_message("❌ Aucune suggestion disponible.", ephemeral=True)
+            return
         self.current_index = (self.current_index + 1) % len(self.suggestions)
         content, img_file = await self._build_message_and_file()
         
@@ -427,4 +430,5 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
 
 
 async def setup(bot: commands.Bot) -> None:
+    bot.add_view(CounterSuggestionView())
     await bot.add_cog(GACCounterCog(bot))

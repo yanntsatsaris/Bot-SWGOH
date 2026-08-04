@@ -1,6 +1,7 @@
 """
 services/scouting.py — Moteur de Scouting Hybride pour la GAC
 """
+import json
 import logging
 from database.db import get_db
 from services.comlink import get_player
@@ -82,12 +83,6 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             if zeta_dict and skill_id in zeta_dict and actual_skill_tier >= int(zeta_dict[skill_id]):
                 zetas_count += 1
                 
-        # DEBUG DUMP
-        if base_id == "GLREY":
-            import json
-            with open("debug_rey_skills.json", "w") as f:
-                json.dump({"skills": unit_skills, "zeta_keys": list(zeta_dict.keys())[:20]}, f)
-                
         combat_type = 2 if base_id in ship_base_ids else unit.get("combatType", 1)
 
         roster[base_id] = {
@@ -110,7 +105,6 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
     # 1. PERSONNAGES (Via la Meta Dynamique de swgoh.gg uniquement)
     # Récupérer les top teams défensives depuis la BDD
     dynamic_teams = []
-    import json
     async with get_db() as db:
         async with db.execute(
             "SELECT squad_units, hold_percent, avg_banners FROM gac_global_meta WHERE format = ? AND mode = 'defense' ORDER BY seen DESC LIMIT 150",
@@ -468,7 +462,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
     )
     
     if not suggestions:
-        return await _predict_zones(my_index, quotas, fmt, None)
+        return await _predict_zones(my_index, quotas, fmt, ship_base_ids)
 
     # Capturer la carte de synergie AVANT la boucle de placement (les leaders seront marqués "USED")
     leader_synergy_map = {}
@@ -507,7 +501,6 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
 
     # Enrichir la leader_synergy_map depuis la BDD pour les leaders placés
     # non couverts par les suggestions initiales (qui étaient limitées à 500 lignes)
-    import json as _json
     all_placed_leaders = {
         t.get("leader_id")
         for zone in ["North", "South", "Back"]
@@ -684,7 +677,6 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
             else:
                 league_name = LEAGUE_MAP.get(league_val, "CARBONITE")
     else:
-        from database.db import get_db
         async with get_db() as db:
             cursor = await db.execute("SELECT league FROM gac_rounds WHERE player_code = ? AND league IS NOT NULL ORDER BY id DESC LIMIT 1", (target_code,))
             row = await cursor.fetchone()

@@ -115,10 +115,12 @@ class AdminCog(commands.Cog, name="Admin"):
     async def debug_zetas(self, interaction: discord.Interaction, ally_code: str) -> None:
         await interaction.response.defer(ephemeral=False)
         try:
-            from services.comlink import comlink_client
+            from services.comlink import get_player
             clean = str(ally_code).replace("-", "").strip()
-            ally_int = int(clean) if clean.isdigit() else clean
-            data = await comlink_client.get_player(allycode=ally_int)
+            data = await get_player(clean)
+            if not data:
+                await interaction.followup.send("Profil introuvable.")
+                return
             raw_roster = data.get("rosterUnit", [])
             for u in raw_roster:
                 if "GLREY" in u.get("definitionId", ""):

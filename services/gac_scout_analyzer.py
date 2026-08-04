@@ -1,5 +1,7 @@
+import json
 import logging
 from database.db import get_db
+from services.gac_meta import GAC_FLEETS
 
 logger = logging.getLogger("gac_scout_analyzer")
 
@@ -142,9 +144,6 @@ class GacScoutAnalyzer:
                         }
                     }
                     
-                    import json
-                    from services.gac_meta import GAC_FLEETS
-                    
                     for r_row in scraped_rows:
                         try:
                             members = json.loads(r_row["defender_team"])
@@ -222,7 +221,6 @@ class GacScoutAnalyzer:
             else:
                 z = zone
 
-            import json
             try:
                 members = json.loads(row["members_ids"])
             except:

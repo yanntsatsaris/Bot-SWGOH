@@ -1,6 +1,7 @@
 """
 database/db.py — Gestion de la connexion SQLite asynchrone
 """
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -72,7 +73,6 @@ async def get_db() -> AsyncIterator[aiosqlite.Connection]:
             await db.rollback()
             raise
 
-import json
 
 async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
     """
@@ -145,7 +145,6 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
                  match.get("banners", 0), match.get("outcome", "Unknown"), detected_format, match.get("zone", "unknown"))
             )
         
-        await db.commit()
         log.info(f"✅ {len(parsed_data['matches'])} matchs sauvegardés en BDD pour {real_ally_code} (Round ID: {round_id})")
 
 async def save_counters_to_db(season_id: str, format_type: str, def_leader_id: str, counters_data: list[dict]):
@@ -178,7 +177,6 @@ async def save_counters_to_db(season_id: str, format_type: str, def_leader_id: s
                     counter.get("win_pct", 0.0), counter.get("avg_banners", 0.0)
                 )
             )
-        await db.commit()
 
 async def get_counters_from_db(def_leader_id: str, format_type: str) -> list[dict]:
     """

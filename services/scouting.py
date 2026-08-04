@@ -843,21 +843,34 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
         -max([c.get("win_pct", 0) for c in s["candidates"]], default=0) # Meilleurs win rate max
     ))
 
-    # 3. Affectation optimisée
+    # 3. Affectation optimisée (STRICTEMENT SANS DOUBLON DE PERSONNAGE)
     assigned_units = set(used_units)
 
     for slot in pending_slots:
         candidates = slot["candidates"]
-        if not candidates:
-            continue
-
+        def_leader = slot["enemy_team"].get("leader_id")
+        def_members = slot["enemy_team"].get("members_ids", [])
         offset = slot["counter_offset"]
 
-        # Filtrer les candidats qui n'utilisent aucun perso déjà assigné
+        # 1. Filtrer les candidats pré-calculés qui n'utilisent AUCUN perso déjà assigné
         available_candidates = [
             c for c in candidates
             if not set([c["atk_leader_id"]] + c.get("atk_members_ids", [])).intersection(assigned_units)
         ]
+
+        # 2. Si aucun candidat pré-calculé n'est totalement libre, interroger dynamiquement les contres alternatifs
+        # en excluant formellement la totalité des unités déjà assignées sur d'autres secteurs
+        if not available_candidates and def_leader and def_leader not in ["USED", "None", "EMPTY"]:
+            fresh_counters = await get_best_counter_with_memory(
+                def_leader_id=def_leader,
+                def_members_ids=def_members,
+                format_type=fmt,
+                my_roster_index=my_index,
+                excluded_chars=assigned_units,
+                league=league,
+                enemy_roster_index=enemy_roster_index
+            )
+            available_candidates = fresh_counters
 
         chosen_c = None
         if available_candidates:
@@ -866,7 +879,7 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             # ── Règle anti-gaspillage des Légendes Galactiques (GL Overkill) ──
             # Si l'équipe ennemie n'est PAS une GL, privilégier les contres non-GL à haut win rate
             GL_UNITS = {"SITHPALPATINE", "SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI", "GLREY", "LORDVADER", "JEDIMASTERLUKE", "JABBATHEHUTT", "AHSOKATANO", "GLAHSOKATANO", "GLLEIA", "LEIAORGANA", "LEIAORGANAGL"}
-            def_leader_id = slot["enemy_team"].get("leader_id", "").upper()
+            def_leader_id = (def_leader or "").upper()
             if def_leader_id not in GL_UNITS and offset == 0:
                 available_candidates.sort(key=lambda c: (
                     0 if c["atk_leader_id"].upper() not in GL_UNITS else 1,
@@ -879,16 +892,19 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 if positive_candidates:
                     chosen_c = positive_candidates[0]
 
-            all_atk = [chosen_c["atk_leader_id"]] + chosen_c.get("atk_members_ids", [])
-            assigned_units.update(all_atk)
-        elif candidates:
-            # Fallback : si l'intégralité des contres idéaux utilisent des unités déjà réparties,
-            # proposer tout de même le contre le plus performant pour ne jamais laisser une case vide.
-            chosen_c = dict(candidates[0])
+            # Vérification stricte anti-doublon avant validation
+            atk_units = set([chosen_c["atk_leader_id"]] + chosen_c.get("atk_members_ids", []))
+            if not atk_units.intersection(assigned_units):
+                assigned_units.update(atk_units)
+            else:
+                chosen_c = None
 
         if chosen_c:
             slot["counter"] = chosen_c
             slot["win_pct"] = chosen_c.get("win_pct", 0)
+        else:
+            slot["counter"] = None
+            slot["win_pct"] = 0
 
     # 4. Reconstruire l'attack_plan groupé par zone et trié par slot_index d'origine
     attack_plan = {}

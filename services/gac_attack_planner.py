@@ -87,6 +87,17 @@ def filter_counters_by_roster(
             r_tier = unit.get("relic_tier", 0)
             g_tier = unit.get("gear_tier", 0)
             rarity = unit.get("rarity", 0)
+            level  = unit.get("level", 85)
+
+            # ── Règle anti-perso "Pas Monté" (Niveau 1 / Gear très bas) ───────
+            # Un personnage non-relique avec un Gear < min_playable_gear ou Level < 60
+            # n'est pas utilisable en combat -> éliminatoire pour l'équipe
+            min_playable_gear = max(6, min_gear - 2) if not require_g12_or_relic else 9
+            is_unbuilt = (r_tier == 0) and (g_tier < min_playable_gear or level < 60)
+
+            if is_unbuilt:
+                missing.append(unit_id)
+                continue
 
             # ── Logique de disponibilité adaptée par étoiles + league ─────────
             # Rarity minimale selon la league

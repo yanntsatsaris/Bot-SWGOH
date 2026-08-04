@@ -109,6 +109,12 @@ def filter_counters_by_roster(
         if c["atk_leader_id"] not in seen_leaders:
             seen_leaders.add(c["atk_leader_id"])
             dedup.append(c)
+    
+    # Filtre 0% win rate : si des contres avec win_pct > 0 existent, on ne garde pas les 0%
+    # Un contre à 0% n'est conservé qu'en dernier recours (aucune alternative disponible)
+    has_positive_winrate = any(c.get("win_pct", 0) > 0 for c in dedup)
+    if has_positive_winrate:
+        dedup = [c for c in dedup if c.get("win_pct", 0) > 0]
             
     return dedup
 

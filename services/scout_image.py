@@ -175,7 +175,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     out.seek(0)
     return out
 
-def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_name: str, my_name: str, my_roster_index: dict = None) -> io.BytesIO:
+def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_name: str, my_name: str, my_roster_index: dict = None, enemy_roster_index: dict = None) -> io.BytesIO:
     """
     Génère l'image PNG du Plan d'Attaque Global GAC (Retina HD).
     Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
@@ -237,7 +237,10 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             x_def = PADDING + 15
             y_portraits = current_y + 28
             for bid in all_e_ids[: (3 if fmt == "3v3" else 5)]:
-                _draw_portrait_cell(canvas, x_def, y_portraits, bid, None, None, True, True, True, False, False)
+                e_data = enemy_roster_index.get(bid.upper()) if enemy_roster_index else None
+                e_rel = e_data.get("relic_tier") if e_data else None
+                e_gr  = e_data.get("gear_tier")  if e_data else None
+                _draw_portrait_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, False)
                 if status == "CLEARED":
                     # Overlay grisant pour secteur tombé
                     overlay = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL), (0, 0, 0, 160))
@@ -262,6 +265,8 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 draw.text((x_counter, current_y + 40), "✔ Territoire libéré", font=sub_font, fill=C_READY)
             elif status == "FAILED":
                 draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}", font=label_font, fill=C_ENEMY)
+            elif c_info and win_pct == 0:
+                draw.text((x_counter, current_y + 10), f"Contre Incertain{opt_str}", font=label_font, fill=C_WARN)
             else:
                 draw.text((x_counter, current_y + 10), f"Contre Réalisable{opt_str}", font=label_font, fill=C_READY)
             
@@ -273,11 +278,14 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     
                     for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
                         u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
-                        rel = u_data.get("relic_tier") if u_data else None
-                        gr  = u_data.get("gear_tier")  if u_data else None
-                        zts = u_data.get("zetas", 0)   if u_data else 0
+                        rel  = u_data.get("relic_tier") if u_data else None
+                        gr   = u_data.get("gear_tier")  if u_data else None
+                        zts  = u_data.get("zetas", 0)   if u_data else 0
                         omis = u_data.get("omicrons", 0) if u_data else 0
-                        _draw_portrait_cell(canvas, x_counter, y_portraits, bid, rel, gr, True, True, False, False, False, 85, zts, omis)
+                        owned = u_data is not None
+                        rarity = u_data.get("rarity", 0) if u_data else 0
+                        is_ready = owned and rarity == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
+                        _draw_portrait_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, False, False, 85, zts, omis)
                         x_counter += PORTRAIT_CELL + PORTRAIT_GAP
                 else:
                     draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)

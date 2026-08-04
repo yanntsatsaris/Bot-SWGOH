@@ -116,7 +116,7 @@ class SectorZoneSelectView(discord.ui.View):
 
 
 class AttackPlanView(discord.ui.View):
-    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict):
+    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict, enemy_roster_index: dict = None):
         super().__init__(timeout=None)
         self.original_user_id = original_user_id
         self.my_zones = my_zones
@@ -127,6 +127,7 @@ class AttackPlanView(discord.ui.View):
         self.my_name = my_name
         self.enemy_name = enemy_name
         self.my_roster_index = my_roster_index
+        self.enemy_roster_index = enemy_roster_index or {}
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.original_user_id:
@@ -143,7 +144,7 @@ class AttackPlanView(discord.ui.View):
         from services.scout_image import generate_attack_plan_image
         
         plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt)
-        img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index)
+        img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
         file_plan = discord.File(img_buf, filename="attack_plan.png")
         
         msg = (
@@ -173,7 +174,7 @@ class AttackPlanView(discord.ui.View):
 # ─── VUE PRINCIPALE DÉFENSE & PLAN D'ATTAQUE ──────────────────────────────────
 
 class DefenseValidationView(discord.ui.View):
-    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict):
+    def __init__(self, original_user_id: int, my_zones: dict, enemy_zones: dict, quotas: dict, league: str, fmt: str, my_name: str, enemy_name: str, my_roster_index: dict, enemy_roster_index: dict = None):
         super().__init__(timeout=None)
         self.original_user_id = original_user_id
         self.my_zones = my_zones
@@ -184,6 +185,7 @@ class DefenseValidationView(discord.ui.View):
         self.my_name = my_name
         self.enemy_name = enemy_name
         self.my_roster_index = my_roster_index
+        self.enemy_roster_index = enemy_roster_index or {}
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.original_user_id:
@@ -222,7 +224,7 @@ class DefenseValidationView(discord.ui.View):
             await interaction.followup.send("⏳ **Génération du Plan d'Attaque Global en cours...** (Assignation optimale des contres secteur par secteur)...")
             
             plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt)
-            img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index)
+            img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
             
             file_plan = discord.File(img_buf, filename="attack_plan.png")
             msg = (
@@ -231,7 +233,7 @@ class DefenseValidationView(discord.ui.View):
                 f"⚠️ *Utilise les boutons ci-dessous pour enregistrer tes victoires/défaites ou changer de contre (`[🔄 Autre Option]`).*"
             )
             atk_view = AttackPlanView(
-                interaction.user.id, self.my_zones, self.enemy_zones, self.quotas, self.league, self.fmt, self.my_name, self.enemy_name, self.my_roster_index
+                interaction.user.id, self.my_zones, self.enemy_zones, self.quotas, self.league, self.fmt, self.my_name, self.enemy_name, self.my_roster_index, self.enemy_roster_index
             )
             await interaction.channel.send(content=msg, file=file_plan, view=atk_view)
         except Exception as e:
@@ -378,7 +380,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                             scout_data["format"],
                             scout_data["my_name"],
                             scout_data["enemy_name"],
-                            scout_data.get("my_roster_index", {})
+                            scout_data.get("my_roster_index", {}),
+                            scout_data.get("roster_index", {})
                         )
                         
                     try:

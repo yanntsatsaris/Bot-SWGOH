@@ -648,12 +648,20 @@ async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -
         
     for (z, s_idx), units in slots_map.items():
         if z in zones:
-            # Auto-correction : Si un leader connu est présent dans l'équipe mais pas en position 0, le placer en leader
-            for idx, u in enumerate(units):
-                if u.upper() in KNOWN_LEADERS:
-                    leader_unit = units.pop(idx)
-                    units.insert(0, leader_unit)
-                    break
+            if z == "Fleet":
+                # Auto-correction Flotte : Le Vaisseau Amiral (CAPITAL) doit TOUJOURS être le Leader en position 0 (haut gauche)
+                for idx, u in enumerate(units):
+                    if "CAPITAL" in u.upper():
+                        capital_ship = units.pop(idx)
+                        units.insert(0, capital_ship)
+                        break
+            else:
+                # Auto-correction : Si un leader connu est présent dans l'équipe mais pas en position 0, le placer en leader
+                for idx, u in enumerate(units):
+                    if u.upper() in KNOWN_LEADERS:
+                        leader_unit = units.pop(idx)
+                        units.insert(0, leader_unit)
+                        break
 
             leader = units[0] if units else None
             members = units[1:] if len(units) > 1 else []

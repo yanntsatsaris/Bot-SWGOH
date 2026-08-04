@@ -109,10 +109,10 @@ def filter_counters_by_roster(
             z_count = unit.get("zetas", 0)
 
             # ── Règle absolue 100% Reliques contre défenses Reliques ──────────
-            # Si l'adversaire a des reliques (def_relic_avg >= 1.0), interdire strictement
-            # tout membre d'attaque non-relique (r_tier == 0 / G12) sauf s'il s'agit d'un hard solo (Wampa/Bane)
+            # En Kyber / Aurodium / Chromium, exige des reliques. En Bronzium / Carbonite,
+            # autorise les équipes G12 (elles auront simplement un malus de Relic Delta au score).
             is_hard_counter = unit_id.upper() in HARD_COUNTERS_BYPASS_DELTA or counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
-            if def_relic_avg >= 1.0 and r_tier == 0 and not is_hard_counter:
+            if def_relic_avg >= 1.0 and r_tier == 0 and not is_hard_counter and require_g12_or_relic:
                 missing.append(unit_id)
                 continue
 
@@ -179,13 +179,13 @@ def filter_counters_by_roster(
         if missing_zeta:
             final_score *= 0.5
 
-        # ── Règle absolue anti-perso G12 contre défense Relique ─────────────
+        # ── Règle anti-perso G12 contre défense Relique ─────────────
         # Si une équipe contient encore un membre non-relique (G12) face à une défense relique (def_relic_avg >= 1),
-        # disqualifier la préparation de l'équipe (all_ready = False) pour forcer le bot à piocher une AUTRE équipe 100% Relique.
+        # et que la ligue exige le relique, pénaliser le score.
         has_unsubbed_g12 = any(my_roster_index.get(uid.upper(), {}).get("relic_tier", 0) == 0 for uid in all_ids)
         is_hard_counter = counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
 
-        if has_unsubbed_g12 and def_relic_avg >= 1.0 and not is_hard_counter:
+        if has_unsubbed_g12 and def_relic_avg >= 1.0 and not is_hard_counter and require_g12_or_relic:
             all_ready = False
             final_score *= 0.1
 

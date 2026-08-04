@@ -832,14 +832,19 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 "candidates": counters
             })
 
-    # 2. Ordonner l'assignation globale par niveau de contrainte
-    # Slots avec offset manuel (choix du joueur) -> prioritaires en premier
-    # Slots avec le MOINS d'options candidates -> traités en premier pour ne pas être dépouillés !
+    # 2. Ordonner l'assignation globale par niveau de contrainte RÉELLE du roster
+    # Calculer pour chaque slot le nombre de contres 100% PRÊTS dans le roster du joueur.
+    # Les secteurs qui ont le MOINS d'options réalisables dans le roster (ex: 1 seule équipe possible)
+    # sont traités EN PREMIER pour ne pas se faire "voler" leur seul contre par un secteur qui a plein d'alternatives !
     pending_slots = [s for s in slots_data if s["status"] != "CLEARED"]
-    
+
+    for s in pending_slots:
+        ready_count = len([c for c in s["candidates"] if c.get("all_members_ready") or c.get("roster_availability", 0) >= 0.8])
+        s["ready_candidates_count"] = ready_count if ready_count > 0 else len(s["candidates"])
+
     pending_slots.sort(key=lambda s: (
-        0 if s["counter_offset"] > 0 else 1,      # Choix manuels du joueur en premier
-        len(s["candidates"]),                     # Moins d'options candidates en premier !
+        0 if s["counter_offset"] > 0 else 1,            # Choix manuels du joueur en premier
+        s["ready_candidates_count"],                    # Moins de contres VRAIMENT DISPOS dans le roster en premier !
         -max([c.get("win_pct", 0) for c in s["candidates"]], default=0) # Meilleurs win rate max
     ))
 
@@ -905,6 +910,60 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
         else:
             slot["counter"] = None
             slot["win_pct"] = 0
+
+    # 3.5 Pass d'optimisation / Recomposition pour couvrir les slots restés sans contre
+    for slot in pending_slots:
+        if slot["counter"] is not None:
+            continue
+
+        def_leader = slot["enemy_team"].get("leader_id")
+        def_members = slot["enemy_team"].get("members_ids", [])
+        if not def_leader or def_leader in ["USED", "None", "EMPTY"]:
+            continue
+
+        # Chercher si un autre slot a un contre qui conviendrait à CE slot et qui peut céder sa place
+        for other_slot in pending_slots:
+            if other_slot["counter"] is None or other_slot == slot:
+                continue
+
+            c_assigned = other_slot["counter"]
+            assigned_team = set([c_assigned["atk_leader_id"]] + c_assigned.get("atk_members_ids", []))
+            
+            # Vérifier si d'autres contres valides existent pour other_slot sans c_assigned
+            free_units = assigned_units - assigned_team
+            alt_counters = [
+                c for c in other_slot["candidates"]
+                if not set([c["atk_leader_id"]] + c.get("atk_members_ids", [])).intersection(free_units)
+                and c["atk_leader_id"] != c_assigned["atk_leader_id"]
+            ]
+            
+            if not alt_counters:
+                continue
+
+            # Vérifier si c_assigned est un contre valide pour notre slot non-couvert !
+            slot_counters = await get_best_counter_with_memory(
+                def_leader_id=def_leader,
+                def_members_ids=def_members,
+                format_type=fmt,
+                my_roster_index=my_index,
+                excluded_chars=free_units,
+                league=league,
+                enemy_roster_index=enemy_roster_index
+            )
+            
+            can_swap = any(sc["atk_leader_id"] == c_assigned["atk_leader_id"] for sc in slot_counters)
+            if can_swap:
+                alt_c = alt_counters[0]
+                other_slot["counter"] = alt_c
+                other_slot["win_pct"] = alt_c.get("win_pct", 0)
+                
+                slot["counter"] = c_assigned
+                slot["win_pct"] = c_assigned.get("win_pct", 0)
+                
+                alt_units = set([alt_c["atk_leader_id"]] + alt_c.get("atk_members_ids", []))
+                assigned_units = (free_units | assigned_team | alt_units)
+                log.info(f"[AttackPlanSwap] Échange effectué entre {other_slot['zone']} #{other_slot['slot_index']} et {slot['zone']} #{slot['slot_index']}")
+                break
 
     # 4. Reconstruire l'attack_plan groupé par zone et trié par slot_index d'origine
     attack_plan = {}

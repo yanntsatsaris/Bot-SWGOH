@@ -231,4 +231,14 @@ async def get_best_counter_with_memory(
         ]
         
     filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league=league)
+    
+    # ── Fallback progressif si aucun contre strict n'est trouvé pour le roster ──────
+    if not filtered and league.upper() not in ["BRONZIUM", "CARBONITE"]:
+        log.info(f"Aucun contre strict en {league} pour {def_leader_id}, tentative de fallback Bronzium...")
+        filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league="BRONZIUM")
+        
+    if not filtered and league.upper() != "CARBONITE":
+        log.info(f"Tentative de fallback Carbonite pour {def_leader_id}...")
+        filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league="CARBONITE")
+        
     return filtered

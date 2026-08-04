@@ -432,24 +432,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
-    
-    # --- NOUVEAUTÉ : Réservation des équipes d'attaque ---
-    if enemy_zones:
-        try:
-            from services.gac_attack_planner import get_best_counter_with_memory
-            for zone, teams in enemy_zones.items():
-                if zone == "Fleet": continue
-                for team in teams:
-                    leader = team.get("leader_id")
-                    members = team.get("members_ids", [])
-                    if leader and leader != "USED" and leader != "None":
-                        counters = await get_best_counter_with_memory(leader, members, fmt, my_index, used_base_ids, league=league)
-                        if counters:
-                            best_counter = counters[0]
-                            used_base_ids.add(best_counter["atk_leader_id"])
-                            used_base_ids.update(best_counter.get("atk_members_ids", []))
-        except Exception as e:
-            log.error(f"Erreur lors de la réservation des équipes d'attaque : {e}")
+
 
     
     from services.gac_planner import GacPlanner
@@ -865,8 +848,16 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
 
         target_idx = offset if offset < len(available_candidates) else 0
 
-        # Règle anti-gaspillage : si le candidat sélectionné a 0% win_rate,
-        # mais qu'il existe un autre candidat avec > 0% win_rate disponible pour ce secteur, le privilégier !
+        # ── Règle anti-gaspillage des Légendes Galactiques (GL Overkill) ──
+        # Si l'équipe ennemie n'est PAS une GL, privilégier les contres non-GL à haut win rate
+        GL_UNITS = {"SITHPALPATINE", "SUPREMELEADERKYLOREN", "JEDIMASTERKENOBI", "GLREY", "LORDVADER", "JEDIMASTERLUKE", "JABBATHEHUTT", "AHSOKATANO"}
+        def_leader_id = slot["enemy_team"].get("leader_id", "").upper()
+        if def_leader_id not in GL_UNITS and offset == 0:
+            available_candidates.sort(key=lambda c: (
+                0 if c["atk_leader_id"].upper() not in GL_UNITS else 1,
+                -c.get("win_pct", 0)
+            ))
+
         chosen_c = available_candidates[target_idx]
         if chosen_c.get("win_pct", 0) == 0:
             positive_candidates = [c for c in available_candidates if c.get("win_pct", 0) > 0]

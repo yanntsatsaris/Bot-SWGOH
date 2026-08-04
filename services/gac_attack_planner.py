@@ -50,7 +50,7 @@ ZETA_DEPENDENT_LEADERS = {
     "COMMANDERLUKESKYWALKER", "JEDIKNIGHTREVAN", "VEERS", "BOSSK", "DARTHTRAYA",
     "EMPERORPALPATINE", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "IDENVERSIOEMPIRE",
     "GENERALHUX", "FINN", "PADMEAMIDALA", "MOTHERTALZIN", "GARSAXON", "MANDALORIAN",
-    "GREEFCARGA", "GEONOSIANBROODALPHA", "HEROAMIRAL", "JEDIMASTERKENOBI", "MARAJADE"
+    "GREEFCARGA", "GEONOSIANBROODALPHA", "HEROAMIRAL", "JEDIMASTERKENOBI", "MARAJADE", "JANGOFETT"
 }
 
 def filter_counters_by_roster(
@@ -215,7 +215,16 @@ UNIVERSAL_META_COUNTERS = {
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 92.0, "seen": 800, "avg_banners": 62.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 95.0, "seen": 1200, "avg_banners": 55.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "SITHPALPATINE", "atk_members_ids": [], "win_pct": 98.0, "seen": 800, "avg_banners": 64.0},
+        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 97.0, "seen": 700, "avg_banners": 63.0},
+        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "JEDIKNIGHTREVAN", "atk_members_ids": ["GRANDMASTERYODA", "JOLEEBINDO"], "win_pct": 91.0, "seen": 600, "avg_banners": 54.0},
+        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "STARKILLER", "atk_members_ids": ["MARAJADE", "VISASMARR"], "win_pct": 94.0, "seen": 500, "avg_banners": 58.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "DARTHBANE", "atk_members_ids": [], "win_pct": 99.0, "seen": 600, "avg_banners": 65.0},
+    ],
+    "DARTHNIHILUS": [
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "MARAJADE"], "win_pct": 95.0, "seen": 900, "avg_banners": 57.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "JEDIKNIGHTREVAN", "atk_members_ids": ["GRANDMASTERYODA", "JOLEEBINDO"], "win_pct": 94.0, "seen": 800, "avg_banners": 55.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 96.0, "seen": 1000, "avg_banners": 56.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 90.0, "seen": 400, "avg_banners": 61.0},
     ],
     "NIGHTSISTERMOTHER": [
         {"def_leader_id": "NIGHTSISTERMOTHER", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER"], "win_pct": 96.0, "seen": 1500, "avg_banners": 56.0},
@@ -223,6 +232,9 @@ UNIVERSAL_META_COUNTERS = {
         {"def_leader_id": "NIGHTSISTERMOTHER", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "MARAJADE"], "win_pct": 91.0, "seen": 900, "avg_banners": 55.0},
     ],
     "BOSSK": [
+        {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "GRANDMOFFTARKIN"], "win_pct": 95.0, "seen": 1800, "avg_banners": 57.0},
+        {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "NEST", "atk_members_ids": [], "win_pct": 93.0, "seen": 700, "avg_banners": 62.0},
+        {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "IDENVERSIOEMPIRE", "atk_members_ids": ["DEATHTROOPER", "STORMTROOPER"], "win_pct": 94.0, "seen": 900, "avg_banners": 58.0},
         {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "GREEFCARGA", "atk_members_ids": ["MANDALORIAN", "CARADUNE"], "win_pct": 94.0, "seen": 1500, "avg_banners": 54.0},
         {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 88.0, "seen": 400, "avg_banners": 61.0},
         {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "BADBATCHHUNTER", "atk_members_ids": ["BADBATCHTECH", "BADBATCHECHO"], "win_pct": 96.0, "seen": 900, "avg_banners": 56.0},

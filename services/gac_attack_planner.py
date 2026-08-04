@@ -185,17 +185,13 @@ def filter_counters_by_roster(
             "composite_score":     final_score * (1.5 if all_ready else availability),
         })
 
-    # Priorité aux équipes 100% prêtes selon les seuils de la ligue
-    complete_results = [c for c in result if c["all_members_ready"]]
-    if complete_results:
-        result = complete_results
-
     result.sort(key=lambda c: (
         1 if c["all_members_ready"] else 0,
+        1 if c.get("win_pct", 0) >= 50 else 0,
+        c.get("final_score", 0),
         c.get("is_def_match", 0),
         c["roster_availability"],
         c["roster_power"] + c.get("relic_delta_score", 0),
-        c.get("final_score", 0),
     ), reverse=True)
 
     dedup = []
@@ -220,6 +216,11 @@ UNIVERSAL_META_COUNTERS = {
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 95.0, "seen": 1200, "avg_banners": 55.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "SITHPALPATINE", "atk_members_ids": [], "win_pct": 98.0, "seen": 800, "avg_banners": 64.0},
         {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "DARTHBANE", "atk_members_ids": [], "win_pct": 99.0, "seen": 600, "avg_banners": 65.0},
+    ],
+    "NIGHTSISTERMOTHER": [
+        {"def_leader_id": "NIGHTSISTERMOTHER", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER"], "win_pct": 96.0, "seen": 1500, "avg_banners": 56.0},
+        {"def_leader_id": "NIGHTSISTERMOTHER", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 99.0, "seen": 800, "avg_banners": 64.0},
+        {"def_leader_id": "NIGHTSISTERMOTHER", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "MARAJADE"], "win_pct": 91.0, "seen": 900, "avg_banners": 55.0},
     ],
     "BOSSK": [
         {"def_leader_id": "BOSSK", "def_members_ids": [], "atk_leader_id": "GREEFCARGA", "atk_members_ids": ["MANDALORIAN", "CARADUNE"], "win_pct": 94.0, "seen": 1500, "avg_banners": 54.0},
@@ -267,10 +268,13 @@ async def get_best_counter_with_memory(
     # ── Fusion avec la base de connaissances méta universelles ─────────────
     univ_counters = UNIVERSAL_META_COUNTERS.get(def_leader_id.upper(), [])
     if univ_counters:
-        seen_combos = set((c["atk_leader_id"], tuple(c.get("atk_members_ids", []))) for c in counters)
+        valid_db_combos = set(
+            (c["atk_leader_id"], tuple(c.get("atk_members_ids", []))) 
+            for c in counters if c.get("win_pct", 0) > 0
+        )
         for uc in univ_counters:
             combo_key = (uc["atk_leader_id"], tuple(uc.get("atk_members_ids", [])))
-            if combo_key not in seen_combos:
+            if combo_key not in valid_db_combos:
                 max_m = 2 if format_type == "3v3" else 4
                 counters.append({
                     "season_id": "meta",
@@ -279,8 +283,8 @@ async def get_best_counter_with_memory(
                     "atk_leader_id": uc["atk_leader_id"],
                     "atk_members_ids": uc.get("atk_members_ids", [])[:max_m],
                     "seen": uc.get("seen", 100),
-                    "win_pct": uc.get("win_pct", 90.0),
-                    "avg_banners": uc.get("avg_banners", 55.0)
+                    "win_pct": uc.get("win_pct", 92.0),
+                    "avg_banners": uc.get("avg_banners", 60.0)
                 })
 
     if not counters:

@@ -17,8 +17,7 @@ NEEDS_GAC_OMICRON = {
 
 # Personnages ou leaders capables de battre des défenses même avec un fort déficit de reliques (Relic Delta négatif)
 HARD_COUNTERS_BYPASS_DELTA = {
-    "WAMPA", "SAVAGEOPRESS", "DARTHBANE", "COMMANDERLUKESKYWALKER", 
-    "SITHPALPATINE", "IDENVERSIOEMPIRE", "GENERALHUX", "BOBAFETT", "GLREY"
+    "WAMPA", "SAVAGEOPRESS", "DARTHBANE"
 }
 
 # Relic max accessible selon le nombre d'étoiles du personnage

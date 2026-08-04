@@ -633,12 +633,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
             
         while len(f["members_ids"]) < f.get("target_size", 8) and leftover_ships:
             filler = leftover_ships.pop(0)
-            f["members_ids"].append(filler)
-            used_base_ids.add(filler)
-
-    return zones
-
-async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None, progress_callback=None) -> dict:
+    async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None, progress_callback=None, discord_id: str | None = None) -> dict:
     clean_code = str(enemy_ally_code).replace("-", "").strip()
     profile = await get_player(clean_code)
     
@@ -702,7 +697,6 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                 missing_leaders = []
                 async with get_db() as db:
 
-
                     for l_id, members_str in leaders_to_scrape.items():
                         if not l_id or l_id in ["USED", "None"]: continue
                         cursor = await db.execute("SELECT 1 FROM gac_counters WHERE def_leader_id = ? AND format = ? LIMIT 1", (l_id, fmt))
@@ -739,12 +733,28 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_profile = await get_player(my_clean)
         if my_profile:
             my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
-            my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones, league_name)
+            
+            # ── Recharger la défense modifiée/enregistrée par le joueur depuis SQLite ──
+            from database.db import load_user_defense_zones
+            saved_zones = None
+            if discord_id:
+                saved_zones = await load_user_defense_zones(str(discord_id), "defense")
+            if not saved_zones or not any(len(teams) > 0 for teams in saved_zones.values()):
+                saved_zones = await load_user_defense_zones(my_clean, "defense")
+
+            has_saved_defense = saved_zones and any(len(teams) > 0 for teams in saved_zones.values())
+            
+            if has_saved_defense:
+                my_zones = saved_zones
+            else:
+                my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones, league_name)
+
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
             result["my_roster_index"] = my_index
 
     return result
+
 
 async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER", enemy_roster_index: dict = None) -> dict:
     """

@@ -415,4 +415,35 @@ async def save_user_defense_zones(discord_id: str, zones_dict: dict, used_type: 
                     )
         await db.commit()
 
-
+async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -> dict:
+    """Reconstruit le dictionnaire de zones (North, South, Back, Fleet) depuis active_round_units."""
+    zones = {"North": [], "South": [], "Back": [], "Fleet": []}
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT zone, slot_index, base_id
+            FROM active_round_units
+            WHERE discord_id = ? AND used_type = ?
+            ORDER BY zone, slot_index
+            """,
+            (discord_id, used_type)
+        )
+        rows = await cursor.fetchall()
+        
+    slots_map = {}
+    for r in rows:
+        key = (r["zone"], r["slot_index"])
+        if key not in slots_map:
+            slots_map[key] = []
+        slots_map[key].append(r["base_id"])
+        
+    for (z, s_idx), units in slots_map.items():
+        if z in zones:
+            leader = units[0] if units else None
+            members = units[1:] if len(units) > 1 else []
+            zones[z].append({
+                "leader_id": leader,
+                "members_ids": members,
+                "slot_index": s_idx
+            })
+    return zones

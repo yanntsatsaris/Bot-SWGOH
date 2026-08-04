@@ -170,6 +170,12 @@ def filter_counters_by_roster(
         if missing_zeta:
             final_score *= 0.5
 
+        # Pénalité de fragilité : si l'équipe d'attaque contient des membres non-reliques (G12/G11)
+        # face à une défense forte relique (R5-R7), déclasser l'équipe (sauf s'il s'agit d'un hard solo comme Wampa)
+        has_g12_member = any(my_roster_index.get(uid.upper(), {}).get("relic_tier", 0) == 0 for uid in all_ids)
+        if has_g12_member and def_relic_avg >= 4.0 and not is_hard_counter:
+            final_score *= 0.35
+
         result.append({
             **counter,
             "roster_availability": availability,
@@ -280,13 +286,17 @@ async def get_best_counter_with_memory(
     # ── Fusion avec la base de connaissances méta universelles ─────────────
     univ_counters = UNIVERSAL_META_COUNTERS.get(def_leader_id.upper(), [])
     if univ_counters:
-        valid_db_combos = set(
-            (c["atk_leader_id"], tuple(c.get("atk_members_ids", []))) 
-            for c in counters if c.get("win_pct", 0) > 0
-        )
         for uc in univ_counters:
-            combo_key = (uc["atk_leader_id"], tuple(uc.get("atk_members_ids", [])))
-            if combo_key not in valid_db_combos:
+            found = False
+            for c in counters:
+                if c["atk_leader_id"].upper() == uc["atk_leader_id"].upper():
+                    found = True
+                    if c.get("win_pct", 0) < uc.get("win_pct", 90.0):
+                        c["win_pct"] = uc.get("win_pct", 92.0)
+                        c["seen"] = max(c.get("seen", 0), uc.get("seen", 100))
+                        c["avg_banners"] = max(c.get("avg_banners", 0), uc.get("avg_banners", 60.0))
+                    break
+            if not found:
                 max_m = 2 if format_type == "3v3" else 4
                 counters.append({
                     "season_id": "meta",

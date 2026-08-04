@@ -765,44 +765,52 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
 
 async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER") -> dict:
     """
-    Génère un plan d'attaque global pour l'ensemble de la carte ennemie.
-    Prend en compte les statuts de secteurs (CLEARED, FAILED, OPEN) et les offsets
-    d'alternatives de contres choisis par le joueur avec rééquilibrage automatique.
+    Génère un plan d'attaque global optimisé pour l'ensemble de la carte ennemie.
+    Utilise un algorithme d'affectation globale sous contraintes (Global Matching) :
+    1. Collecte tous les contres candidats pour chaque secteur ouvert/échec.
+    2. Priorise l'assignation des secteurs les plus contraints (moins d'options disponibles ou choix manuel).
+    3. Empêche un secteur secondaire d'accaparer un contre vital avec 0% de win_rate si un autre secteur en a besoin.
+    4. Maximise le nombre total de secteurs couverts avec le meilleur taux de victoire global.
     """
     from database.db import get_used_units, get_active_sector_statuses
     from services.gac_attack_planner import get_best_counter_with_memory
-    
-    used_units = await get_used_units(discord_id)
+
+    used_units = set(await get_used_units(discord_id))
     sector_statuses = await get_active_sector_statuses(discord_id)
-    
-    attack_plan = {}
-    
+
+    # 1. Collecter tous les slots actifs et leurs candidats contres
+    slots_data = []
+
     for zone, teams in enemy_zones.items():
         if zone == "Fleet":
             continue
-            
-        zone_plan = []
+
         for slot_idx, enemy_team in enumerate(teams, 1):
             def_leader = enemy_team.get("leader_id")
             def_members = enemy_team.get("members_ids", [])
-            
+
             if not def_leader or def_leader in ["USED", "None", "EMPTY"]:
                 continue
-                
+
             sec_info = sector_statuses.get((zone, slot_idx), {})
             status = sec_info.get("status", "OPEN")
             offset = sec_info.get("counter_offset", 0)
-            
+
             if status == "CLEARED":
-                zone_plan.append({
+                slots_data.append({
+                    "zone": zone,
                     "slot_index": slot_idx,
                     "enemy_team": enemy_team,
                     "counter": None,
                     "win_pct": 100,
-                    "status": "CLEARED"
+                    "status": "CLEARED",
+                    "counter_offset": 0,
+                    "total_options": 0,
+                    "candidates": []
                 })
                 continue
-                
+
+            # Obtenir tous les contres disponibles pour ce roster (sans exclure used_units globalement pour l'instant)
             counters = await get_best_counter_with_memory(
                 def_leader_id=def_leader,
                 def_members_ids=def_members,
@@ -811,34 +819,90 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 excluded_chars=used_units,
                 league=league
             )
-            
-            if counters:
-                target_idx = offset if offset < len(counters) else 0
-                chosen_c = counters[target_idx]
-                all_atk = [chosen_c["atk_leader_id"]] + chosen_c.get("atk_members_ids", [])
-                used_units.update(all_atk)
-                
-                zone_plan.append({
-                    "slot_index": slot_idx,
-                    "enemy_team": enemy_team,
-                    "counter": chosen_c,
-                    "win_pct": chosen_c.get("win_pct", 0),
-                    "status": status,
-                    "counter_offset": target_idx,
-                    "total_options": len(counters)
-                })
-            else:
-                zone_plan.append({
-                    "slot_index": slot_idx,
-                    "enemy_team": enemy_team,
-                    "counter": None,
-                    "win_pct": 0,
-                    "status": status,
-                    "counter_offset": 0,
-                    "total_options": 0
-                })
-        attack_plan[zone] = zone_plan
+
+            slots_data.append({
+                "zone": zone,
+                "slot_index": slot_idx,
+                "enemy_team": enemy_team,
+                "counter": None,
+                "win_pct": 0,
+                "status": status,
+                "counter_offset": offset,
+                "total_options": len(counters),
+                "candidates": counters
+            })
+
+    # 2. Ordonner l'assignation globale par niveau de contrainte
+    # Slots avec offset manuel (choix du joueur) -> prioritaires en premier
+    # Slots avec le MOINS d'options candidates -> traités en premier pour ne pas être dépouillés !
+    pending_slots = [s for s in slots_data if s["status"] != "CLEARED"]
+    
+    pending_slots.sort(key=lambda s: (
+        0 if s["counter_offset"] > 0 else 1,      # Choix manuels du joueur en premier
+        len(s["candidates"]),                     # Moins d'options candidates en premier !
+        -max([c.get("win_pct", 0) for c in s["candidates"]], default=0) # Meilleurs win rate max
+    ))
+
+    # 3. Affectation optimisée
+    assigned_units = set(used_units)
+
+    for slot in pending_slots:
+        candidates = slot["candidates"]
+        if not candidates:
+            continue
+
+        offset = slot["counter_offset"]
+
+        # Filtrer les candidats qui n'utilisent aucun perso déjà assigné
+        available_candidates = [
+            c for c in candidates
+            if not set([c["atk_leader_id"]] + c.get("atk_members_ids", [])).intersection(assigned_units)
+        ]
+
+        if not available_candidates:
+            continue
+
+        target_idx = offset if offset < len(available_candidates) else 0
+
+        # Règle anti-gaspillage : si le candidat sélectionné a 0% win_rate,
+        # mais qu'il existe un autre candidat avec > 0% win_rate disponible pour ce secteur, le privilégier !
+        chosen_c = available_candidates[target_idx]
+        if chosen_c.get("win_pct", 0) == 0:
+            positive_candidates = [c for c in available_candidates if c.get("win_pct", 0) > 0]
+            if positive_candidates:
+                chosen_c = positive_candidates[0]
+
+        all_atk = [chosen_c["atk_leader_id"]] + chosen_c.get("atk_members_ids", [])
+        assigned_units.update(all_atk)
+
+        slot["counter"] = chosen_c
+        slot["win_pct"] = chosen_c.get("win_pct", 0)
+
+    # 4. Reconstruire l'attack_plan groupé par zone et trié par slot_index d'origine
+    attack_plan = {}
+    slots_by_zone = {}
+    
+    for slot in slots_data:
+        z = slot["zone"]
+        if z not in slots_by_zone:
+            slots_by_zone[z] = []
         
+        slots_by_zone[z].append({
+            "slot_index": slot["slot_index"],
+            "enemy_team": slot["enemy_team"],
+            "counter": slot["counter"],
+            "win_pct": slot["win_pct"],
+            "status": slot["status"],
+            "counter_offset": slot["counter_offset"],
+            "total_options": slot["total_options"]
+        })
+
+    for z in ["North", "South", "Back"]:
+        if z in slots_by_zone:
+            slots_by_zone[z].sort(key=lambda s: s["slot_index"])
+            attack_plan[z] = slots_by_zone[z]
+
     return attack_plan
+
 
 

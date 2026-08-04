@@ -763,7 +763,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
 
     return result
 
-async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER") -> dict:
+async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER", enemy_roster_index: dict = None) -> dict:
     """
     Génère un plan d'attaque global optimisé pour l'ensemble de la carte ennemie.
     Utilise un algorithme d'affectation globale sous contraintes (Global Matching) :
@@ -817,7 +817,8 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 format_type=fmt,
                 my_roster_index=my_index,
                 excluded_chars=used_units,
-                league=league
+                league=league,
+                enemy_roster_index=enemy_roster_index
             )
 
             slots_data.append({

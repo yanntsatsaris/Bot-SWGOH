@@ -137,13 +137,13 @@ class AttackPlanView(discord.ui.View):
 
     async def get_plan(self, discord_id: int):
         from services.scouting import generate_attack_plan
-        return await generate_attack_plan(str(discord_id), self.my_roster_index, self.enemy_zones, self.fmt, self.league)
+        return await generate_attack_plan(str(discord_id), self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
 
     async def refresh_plan_message(self, interaction: discord.Interaction):
         from services.scouting import generate_attack_plan
         from services.scout_image import generate_attack_plan_image
         
-        plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt, self.league)
+        plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
         img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
         file_plan = discord.File(img_buf, filename="attack_plan.png")
         
@@ -223,7 +223,7 @@ class DefenseValidationView(discord.ui.View):
             
             await interaction.followup.send("⏳ **Génération du Plan d'Attaque Global en cours...** (Assignation optimale des contres secteur par secteur)...")
             
-            plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt, self.league)
+            plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
             img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
             
             file_plan = discord.File(img_buf, filename="attack_plan.png")

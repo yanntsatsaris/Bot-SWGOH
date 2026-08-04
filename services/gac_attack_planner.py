@@ -15,6 +15,12 @@ NEEDS_GAC_OMICRON = {
     "CAPTAINREX", "DARTHTRAYA", "ZAMWESELL", "ZORIIBLISS", "DASHRENDAR"
 }
 
+# Personnages ou leaders capables de battre des défenses même avec un fort déficit de reliques (Relic Delta négatif)
+HARD_COUNTERS_BYPASS_DELTA = {
+    "WAMPA", "SAVAGEOPRESS", "DARTHBANE", "COMMANDERLUKESKYWALKER", 
+    "SITHPALPATINE", "IDENVERSIOEMPIRE", "GENERALHUX", "BOBAFETT", "GLREY"
+}
+
 # Relic max accessible selon le nombre d'étoiles du personnage
 # (en dessous de 7★, le relic max est limité mais le perso EST utilisable en GAC)
 MAX_RELIC_BY_RARITY = {
@@ -44,21 +50,14 @@ def filter_counters_by_roster(
     my_roster_index: dict, 
     format_type: str, 
     league: str = "KYBER",
+    enemy_roster_index: dict = None,
 ) -> list[dict]:
     """
     Filtre et enrichit les counters selon le roster du joueur.
 
-    Règle absolue : un contre qui nécessite un personnage NON POSSÉDÉ est
-    immédiatement éliminé — peu importe le win rate ou la disponibilité.
-
-    Niveaux de priorité (du plus élevé au plus bas) :
-      1. Tous les membres sont prêts (seuils league) → priorité absolue
-      2. Tous les membres sont possédés mais certains pas encore au niveau requis
-      3. Fallback (seulement si rien de mieux)
-
-    Particularités :
-    - Un perso 6★ à R5 EST considéré prêt (il est à son relic max).
-    - Les seuils varient selon la ligue (Carbonite très permissif, Kyber strict).
+    Prend en compte le Relic Delta (différence de niveau de relique entre
+    l'attaque du joueur et la défense ennemie) pour privilégier les contres
+    de niveau équivalent, sauf pour les Hard Counters / Solos.
     """
     thresh = LEAGUE_THRESHOLDS.get(league.upper(), LEAGUE_THRESHOLDS["KYBER"])
     min_gear             = thresh["min_gear"]
@@ -90,8 +89,6 @@ def filter_counters_by_roster(
             level  = unit.get("level", 85)
 
             # ── Règle anti-perso "Pas Monté" (Niveau 1 / Gear très bas) ───────
-            # Un personnage non-relique avec un Gear < min_playable_gear ou Level < 60
-            # n'est pas utilisable en combat -> éliminatoire pour l'équipe
             min_playable_gear = max(6, min_gear - 2) if not require_g12_or_relic else 9
             is_unbuilt = (r_tier == 0) and (g_tier < min_playable_gear or level < 60)
 
@@ -100,29 +97,20 @@ def filter_counters_by_roster(
                 continue
 
             # ── Logique de disponibilité adaptée par étoiles + league ─────────
-            # Rarity minimale selon la league
             meets_rarity = rarity >= min_rarity
-
-            # Un perso AVEC RELIC est utilisable même sans 7★,
-            # tant qu'il est à son relic max (ex: 6★ à R5 = cap)
             max_relic_for_rarity = MAX_RELIC_BY_RARITY.get(rarity, 0)
             has_relic = r_tier >= 1
             at_relic_cap = has_relic and (rarity < 7) and (r_tier >= max_relic_for_rarity)
             is_7star = rarity == 7
 
             if require_g12_or_relic:
-                # Ligues élevées : exige G12+ OU Relic
-                # Exception : perso < 7★ mais à son relic max = accepté
                 if has_relic:
-                    # Perso Relic : toujours accepté (même < 7★ si à son cap)
                     unit_ready = meets_rarity or at_relic_cap
                 elif is_7star:
                     unit_ready = g_tier >= min_gear
                 else:
-                    # < 7★ sans relic dans une haute ligue = pas prêt
                     unit_ready = False
             else:
-                # Ligues basses (Carbonite/Bronzium) : gear minimum suffit
                 unit_ready = (rarity >= min_rarity) and (g_tier >= min_gear or has_relic)
 
             if unit_ready:
@@ -143,6 +131,25 @@ def filter_counters_by_roster(
         all_ready    = len(owned_not_ready) == 0
         availability = len(available) / max(len(all_ids), 1)
 
+        # ── Calcul du Relic Delta (Attaque vs Défense) ──────────────────────
+        atk_relics = [my_roster_index.get(uid.upper(), {}).get("relic_tier", 0) for uid in all_ids if my_roster_index.get(uid.upper())]
+        atk_relic_avg = sum(atk_relics) / max(len(atk_relics), 1)
+
+        def_ids = [counter.get("def_leader_id")] + counter.get("def_members_ids", [])
+        def_relics = []
+        if enemy_roster_index:
+            for duid in def_ids:
+                if duid and duid.upper() in enemy_roster_index:
+                    def_relics.append(enemy_roster_index[duid.upper()].get("relic_tier", 0))
+        def_relic_avg = (sum(def_relics) / max(len(def_relics), 1)) if def_relics else 3.0
+
+        relic_delta = atk_relic_avg - def_relic_avg
+        is_hard_counter = counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
+
+        # Si Hard Counter / Solo ou Delta Positif -> Pas de pénalité
+        # Si Delta Négatif -> Pénalité de score pour favoriser les contres à relique équivalente
+        relic_delta_score = 0 if (is_hard_counter or relic_delta >= 0) else (relic_delta * 5)
+
         win_pct     = counter.get("win_pct", 0)
         final_score = counter.get("final_score", win_pct / 100 if win_pct > 1 else win_pct)
 
@@ -152,6 +159,8 @@ def filter_counters_by_roster(
             "all_members_ready":   all_ready,
             "all_members_owned":   True,
             "roster_power":        roster_power,
+            "relic_delta":          relic_delta,
+            "relic_delta_score":    relic_delta_score,
             "missing":             owned_not_ready,
             "missing_omicron":     missing_omicron,
             "needs_omicron":       len(missing_omicron) > 0,
@@ -167,7 +176,7 @@ def filter_counters_by_roster(
         1 if c["all_members_ready"] else 0,
         c.get("is_def_match", 0),
         c["roster_availability"],
-        c["roster_power"],
+        c["roster_power"] + c.get("relic_delta_score", 0),
         c.get("final_score", 0),
     ), reverse=True)
 
@@ -185,6 +194,7 @@ def filter_counters_by_roster(
     return dedup
 
 
+
 async def get_best_counter_with_memory(
     def_leader_id: str, 
     def_members_ids: list[str], 
@@ -192,6 +202,7 @@ async def get_best_counter_with_memory(
     my_roster_index: dict, 
     excluded_chars: set = None,
     league: str = "KYBER",
+    enemy_roster_index: dict = None,
 ) -> list[dict]:
     """
     Sélectionne les meilleurs counters en intégrant l'historique de feedback et le roster du joueur.
@@ -230,15 +241,15 @@ async def get_best_counter_with_memory(
             if not set([c["atk_leader_id"]] + c["atk_members_ids"]).intersection(excluded_chars)
         ]
         
-    filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league=league)
+    filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league=league, enemy_roster_index=enemy_roster_index)
     
     # ── Fallback progressif si aucun contre strict n'est trouvé pour le roster ──────
     if not filtered and league.upper() not in ["BRONZIUM", "CARBONITE"]:
         log.info(f"Aucun contre strict en {league} pour {def_leader_id}, tentative de fallback Bronzium...")
-        filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league="BRONZIUM")
+        filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league="BRONZIUM", enemy_roster_index=enemy_roster_index)
         
     if not filtered and league.upper() != "CARBONITE":
         log.info(f"Tentative de fallback Carbonite pour {def_leader_id}...")
-        filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league="CARBONITE")
+        filtered = filter_counters_by_roster(counters, my_roster_index, format_type, league="CARBONITE", enemy_roster_index=enemy_roster_index)
         
     return filtered

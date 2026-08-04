@@ -166,77 +166,87 @@ def scrape(targets, format_type="5v5", season_id="current"):
                         dprint(f"[WORKER] Page {page} : moins de 50 résultats ({len(page_counters)}), fin.")
                         break
 
-                # ── Passe générale de fallback si d_members donne peu de contres (< 8) ──────
-                if d_members and len(counters_data) < 8:
-                    dprint(f"[WORKER] Seulement {len(counters_data)} contres spécifiques pour {def_leader_slug} (membres: {d_members}). Lancement de la passe générale...")
-                    general_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0&gac_f={format_type}&format={format_type}"
-                    if season_id and season_id != "current":
-                        general_url += f"&season_id={season_id}"
+                # ── Passe générale et historique (saisons paires/impaires) ──────────
+                if len(counters_data) < 12:
+                    dprint(f"[WORKER] Seulement {len(counters_data)} contres trouvés pour {def_leader_slug}. Lancement de la passe étendue (saisons historiques {format_type})...")
+                    
+                    # 3v3 = saisons impaires (81, 79, 77) | 5v5 = saisons paires (80, 78, 76)
+                    past_seasons = ["79", "77"] if format_type == "3v3" else ["78", "76"]
+                    
+                    base_counter_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0&gac_f={format_type}&format={format_type}"
+                    alt_urls = [
+                        base_counter_url,
+                        base_counter_url + "&season_id=all"
+                    ] + [base_counter_url + f"&season_id={s}" for s in past_seasons]
                     
                     seen_combos = set((c["atk_leader_id"], tuple(c.get("atk_members_ids", []))) for c in counters_data)
                     
-                    for page in range(1, 3):
-                        p_url = general_url + f"&page={page}"
-                        dprint(f"[WORKER] Passe générale page {page} : {p_url}...")
-                        try:
-                            sb.uc_open_with_reconnect(p_url, reconnect_time=2)
-                            sb.sleep(1.5)
-                            page_source = sb.get_page_source()
-                            soup = BeautifulSoup(page_source, "html.parser")
-                            counter_panels = soup.select("div.panel.panel--size-sm") or soup.select("div.panel")
-                            if not counter_panels:
-                                break
-                                
-                            added_gen = 0
-                            for panel in counter_panels:
-                                atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
-                                if not atk_container: continue
-                                atk_units = [div.get("data-unit-def-tooltip-app") for div in atk_container.select("[data-unit-def-tooltip-app]")]
-                                if not atk_units: continue
-                                atk_leader = atk_units[0]
-                                atk_members = atk_units[1:]
-                                
-                                def_container = panel.select_one("div.justify-center.lg\\:justify-start")
-                                if not def_container: continue
-                                def_units = [div.get("data-unit-def-tooltip-app") for div in def_container.select("[data-unit-def-tooltip-app]")]
-                                if not def_units: continue
-                                def_leader = def_units[0]
-                                def_members = def_units[1:]
-                                
-                                combo_key = (atk_leader, tuple(atk_members))
-                                if combo_key in seen_combos:
-                                    continue
-                                seen_combos.add(combo_key)
-                                
-                                seen = 100
-                                win_pct = 80.0
-                                avg_banners = 55.0
-                                stat_divs = panel.select("div.text-center")
-                                if len(stat_divs) >= 3:
-                                    try:
-                                        seen = int(stat_divs[0].text.strip().replace(",", ""))
-                                        win_pct = float(stat_divs[1].text.strip().replace("%", ""))
-                                        avg_banners = float(stat_divs[2].text.strip())
-                                    except ValueError:
-                                        pass
-                                        
-                                counters_data.append({
-                                    "atk_leader_id": atk_leader,
-                                    "atk_members_ids": atk_members,
-                                    "def_leader_id": def_leader,
-                                    "def_members_ids": def_members,
-                                    "seen": seen,
-                                    "win_pct": win_pct,
-                                    "avg_banners": avg_banners
-                                })
-                                added_gen += 1
-                                
-                            dprint(f"[WORKER] Passe générale page {page} : {added_gen} nouveaux contres ajoutés.")
-                            if added_gen == 0:
-                                break
-                        except Exception as ex_gen:
-                            dprint(f"[WORKER] Erreur lors de la passe générale: {ex_gen}")
+                    for alt_url in alt_urls:
+                        if len(counters_data) >= 15:
                             break
+                        for page in range(1, 3):
+                            p_url = alt_url + f"&page={page}"
+                            dprint(f"[WORKER] Passe historique page {page} : {p_url}...")
+                            try:
+                                sb.uc_open_with_reconnect(p_url, reconnect_time=2)
+                                sb.sleep(1.5)
+                                page_source = sb.get_page_source()
+                                soup = BeautifulSoup(page_source, "html.parser")
+                                counter_panels = soup.select("div.panel.panel--size-sm") or soup.select("div.panel")
+                                if not counter_panels:
+                                    break
+                                    
+                                added_gen = 0
+                                for panel in counter_panels:
+                                    atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
+                                    if not atk_container: continue
+                                    atk_units = [div.get("data-unit-def-tooltip-app") for div in atk_container.select("[data-unit-def-tooltip-app]")]
+                                    if not atk_units: continue
+                                    atk_leader = atk_units[0]
+                                    atk_members = atk_units[1:]
+                                    
+                                    def_container = panel.select_one("div.justify-center.lg\\:justify-start")
+                                    if not def_container: continue
+                                    def_units = [div.get("data-unit-def-tooltip-app") for div in def_container.select("[data-unit-def-tooltip-app]")]
+                                    if not def_units: continue
+                                    def_leader = def_units[0]
+                                    def_members = def_units[1:]
+                                    
+                                    combo_key = (atk_leader, tuple(atk_members))
+                                    if combo_key in seen_combos:
+                                        continue
+                                    seen_combos.add(combo_key)
+                                    
+                                    seen = 100
+                                    win_pct = 80.0
+                                    avg_banners = 55.0
+                                    stat_divs = panel.select("div.text-center")
+                                    if len(stat_divs) >= 3:
+                                        try:
+                                            seen = int(stat_divs[0].text.strip().replace(",", ""))
+                                            win_pct = float(stat_divs[1].text.strip().replace("%", ""))
+                                            avg_banners = float(stat_divs[2].text.strip())
+                                        except ValueError:
+                                            pass
+                                            
+                                    counters_data.append({
+                                        "atk_leader_id": atk_leader,
+                                        "atk_members_ids": atk_members,
+                                        "def_leader_id": def_leader,
+                                        "def_members_ids": def_members,
+                                        "seen": seen,
+                                        "win_pct": win_pct,
+                                        "avg_banners": avg_banners
+                                    })
+                                    added_gen += 1
+                                    
+                                dprint(f"[WORKER] Passe historique page {page} : {added_gen} nouveaux contres ajoutés.")
+                                if added_gen == 0:
+                                    break
+                            except Exception as ex_gen:
+                                dprint(f"[WORKER] Erreur lors de la passe historique: {ex_gen}")
+                                break
+
                 
                 import json
                 result = {

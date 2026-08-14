@@ -180,22 +180,34 @@ def filter_counters_by_roster(
 
 
         relic_delta = atk_relic_avg - def_relic_avg
-        is_hard_counter = counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
+        # ── Règle absolue de viabilité face aux défenses haut niveau (Relic 4+) ──
+        # Si une défense ennemie a une moyenne de Relique élevée (def_relic_avg >= 4.0),
+        # envoyer une équipe qui a 0 Relique (ex: G8/G12) est voué à l'échec total (sauf hard counters solo comme Wampa/Savage/Bane).
+        if def_relic_avg >= 4.0 and atk_relic_avg < 1.0 and not is_hard_counter:
+            continue
+
+        if relic_delta <= -4.0 and not is_hard_counter:
+            continue
 
         relic_delta_score = 0 if (is_hard_counter or relic_delta >= 0) else (relic_delta * 5)
 
-        win_pct     = counter.get("win_pct", 0)
-        final_score = counter.get("final_score", win_pct / 100 if win_pct > 1 else win_pct)
+        base_win_pct = counter.get("win_pct", 0)
+        
+        # ── Ajustement réaliste du win_pct selon le déficit de reliques ──
+        adjusted_win_pct = base_win_pct
+        if relic_delta < -1.0 and not is_hard_counter:
+            # Pénalité de 12% par palier de relique de retard
+            penalty = min(75.0, abs(relic_delta) * 12.0)
+            adjusted_win_pct = max(10.0, base_win_pct - penalty)
+
+        final_score = counter.get("final_score", adjusted_win_pct / 100 if adjusted_win_pct > 1 else adjusted_win_pct)
         
         # Pénalité si zéta vital manquant (ex: Mando 0 zéta)
         if missing_zeta:
             final_score *= 0.5
 
         # ── Règle anti-perso G12 contre défense Relique ─────────────
-        # Si une équipe contient encore un membre non-relique (G12) face à une défense relique (def_relic_avg >= 1),
-        # et que la ligue exige le relique, pénaliser le score.
         has_unsubbed_g12 = any(my_roster_index.get(uid.upper(), {}).get("relic_tier", 0) == 0 for uid in all_ids)
-        is_hard_counter = counter.get("atk_leader_id", "").upper() in HARD_COUNTERS_BYPASS_DELTA
 
         if has_unsubbed_g12 and def_relic_avg >= 1.0 and not is_hard_counter and require_g12_or_relic:
             all_ready = False
@@ -203,6 +215,7 @@ def filter_counters_by_roster(
 
         result.append({
             **counter,
+            "win_pct":             round(adjusted_win_pct, 1),
             "roster_availability": availability,
             "all_members_ready":   all_ready,
             "all_members_owned":   True,

@@ -986,7 +986,36 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                     chosen_c = positive_candidates[0]
 
             # Vérification stricte anti-doublon avant validation
-            atk_units = set([chosen_c["atk_leader_id"]] + chosen_c.get("atk_members_ids", []))
+            atk_members = list(chosen_c.get("atk_members_ids", []))
+            
+            # ── Compléter les équipes incomplètes à 5 membres en 5v5 (ex: Gungans 4/5) ──
+            from services.gac_attack_planner import RECOGNIZED_SOLO_LEADERS
+            ldr_upper = chosen_c["atk_leader_id"].upper()
+            if fmt == "5v5" and len(atk_members) < 4 and ldr_upper not in RECOGNIZED_SOLO_LEADERS and len(atk_members) >= 2:
+                FACTION_FILLERS = {
+                    "BOSSNASS": ["GUNGANPHALANX", "GUNGANBOOMADIER", "CAPTAINTARPALS", "JARJARBINKSSWGOH"],
+                    "GRIEVOUS": ["DROIDEKA", "B2SUPERBATTLEDROID", "MAGNAGUARD", "B1BATTLEDROIDV2", "STAP"],
+                    "VEERS": ["DARKROOPERSWGOH", "COLONELSTARCK", "ADMIRALPIETT", "RANGETROOPER", "MOFFGIDEONS1"],
+                    "IDENVERSIOEMPIRE": ["MAGMATROOPER", "DEATHTROOPER", "STORMTROOPER", "SCOUTTROOPER", "SNOWTROOPER"],
+                    "COMMANDERLUKESKYWALKER": ["CHEWBACCALEGENDARY", "HANSOLO", "C3POLEGENDARY", "CHIRRUTIMWE", "BAZEMALBUS"],
+                    "HEROAMIRAL": ["KAPEX", "CT7567", "CC2224", "CT210408", "CT5555", "ARCTROOPER501ST"],
+                    "GEONOSIANBROODALPHA": ["GEONOSIANSOLDIER", "GEONOSIANSPY", "POGGLETHELESSER", "SUNFAC"],
+                    "PADMEAMIDALA": ["JEDIKNIGHTANAKIN", "GENERALKENOBI", "AHSOKATANO", "C3POLEGENDARY", "BARRISSOFFEE"],
+                    "FINN": ["REYJEDITRAINING", "POE", "BB8", "RESISTANCETROOPER", "AMILYNHOLDO"],
+                    "DARTHTRAYA": ["DARTHNIHILUS", "DARTHSION", "SAVAGEOPRESS", "TALON", "DARTHBANE"],
+                }
+                candidates_pool = FACTION_FILLERS.get(ldr_upper, [])
+                for f_unit in candidates_pool:
+                    if f_unit in my_index and f_unit not in assigned_units and f_unit not in atk_members and f_unit != ldr_upper:
+                        f_data = my_index[f_unit]
+                        if f_data.get("combat_type", 1) == 1 and (f_data.get("relic_tier", 0) > 0 or f_data.get("gear_tier", 0) >= 8):
+                            atk_members.append(f_unit)
+                            log.info(f"Équipe 5v5 complétée pour {ldr_upper} avec {f_unit}")
+                            if len(atk_members) == 4:
+                                break
+                chosen_c["atk_members_ids"] = atk_members
+
+            atk_units = set([chosen_c["atk_leader_id"]] + atk_members)
             if not atk_units.intersection(assigned_units):
                 assigned_units.update(atk_units)
             else:

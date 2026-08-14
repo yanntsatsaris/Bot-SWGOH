@@ -548,12 +548,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         discord_id = str(interaction.user.id)
         
         from database.db import set_sector_status, add_used_units, load_user_defense_zones, get_db
-        from services.scouting import generate_attack_plan
+        from services.scouting import generate_attack_plan, _build_roster_index, get_omicron_dict, get_zeta_dict, get_ship_base_ids
         from services.scout_image import generate_attack_plan_image
         from services.unit_names import get_name
         from services.comlink import get_player
-        from services.scouting import _build_roster_index
-        from database.db import get_omicron_dict, get_zeta_dict, get_ship_base_ids
         
         # 1. Déterminer les personnages utilisés
         all_atk = []

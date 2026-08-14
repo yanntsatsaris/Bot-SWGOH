@@ -15,11 +15,20 @@ log = logging.getLogger(__name__)
 
 H_ZONE_TITLE = 40
 
+# Taille adaptative selon le format : en 5v5, les portraits sont plus petits pour tenir sur la largeur
+_CELL_5V5 = 72   # cellule portrait en 5v5 (vs 88px en 3v3)
+_GAP_5V5  = 6    # espacement portrait en 5v5 (vs 8px en 3v3)
+
 def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_name: str, source: str, roster_index: dict = None, is_player: bool = False) -> io.BytesIO:
     """
     Génère l'image PNG de la carte GAC scanned.
     """
-    width = 1000 if fmt == "5v5" else 860
+    # Dimensions et tailles adaptatives selon le format
+    is_5v5 = fmt == "5v5"
+    cell = _CELL_5V5 if is_5v5 else PORTRAIT_CELL
+    gap  = _GAP_5V5  if is_5v5 else PORTRAIT_GAP
+    # En 5v5, le canvas est plus large pour accueillir N+S côte à côte
+    width = 1100 if is_5v5 else 900
     
     north_teams = zones.get("North", [])
     south_teams = zones.get("South", [])
@@ -27,20 +36,21 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     fleet_teams = zones.get("Fleet", [])
     
     # Calcul de la largeur fleet (capital + 3 fronts + 4 renforts)
-    _cell_w = PORTRAIT_CELL + PORTRAIT_GAP
+    _cell_w = cell + gap
     _fleet_x_start = PADDING + 20
-    _fleet_row_width = _cell_w + PORTRAIT_GAP * 3 + (3 * _cell_w) + PORTRAIT_GAP * 2 + (4 * _cell_w)
+    _fleet_row_width = _cell_w + gap * 3 + (3 * _cell_w) + gap * 2 + (4 * _cell_w)
     _fleet_wraps = _fleet_row_width > (width - _fleet_x_start - PADDING)
-    fleet_row_h = (PORTRAIT_CELL + 10) * 2 + 10 if _fleet_wraps else PORTRAIT_CELL + 20
+    fleet_row_h = (cell + 10) * 2 + 10 if _fleet_wraps else cell + 20
     
     max_ns = max(len(north_teams), len(south_teams)) if north_teams or south_teams else 0
+    team_row_h = cell + 30  # hauteur d'une ligne d'équipe (portrait + étoiles + marge)
     
     height = 100 + PADDING
     if max_ns > 0:
-        height += H_ZONE_TITLE + (max_ns * (PORTRAIT_CELL + 30)) + PADDING
+        height += H_ZONE_TITLE + (max_ns * team_row_h) + PADDING
     
     if back_teams:
-        height += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 30)) + PADDING
+        height += H_ZONE_TITLE + (len(back_teams) * team_row_h) + PADDING
     if fleet_teams:
         height += H_ZONE_TITLE + (len(fleet_teams) * fleet_row_h) + PADDING
         
@@ -55,8 +65,11 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     draw.text((PADDING, 50), f"Joueur : {player_name}  |  Analyse : {source}", font=sub_font, fill=C_TEXT)
     
     def _draw_zone_team(t, x, y, is_fleet=False):
+        """Dessine une équipe (leader + membres) à la position (x, y). Retourne le x final."""
+        nonlocal cell, gap
         leader_id = t.get("leader_id")
         members = t.get("members_ids", [])
+        cur_x = x
         
         def get_unit_details(uid):
             if not uid or not roster_index or uid not in roster_index:
@@ -64,56 +77,67 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             u = roster_index[uid]
             return u.get("relic_tier"), u.get("gear_tier"), u.get("zetas", 0), u.get("omicrons", 0)
         
+        def _draw_scaled(cvs, px, py, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, zts=0, omis=0, stars_=7):
+            """Dessine un portrait redimensionné à 'cell' px via un canvas temporaire."""
+            if cell == PORTRAIT_CELL:
+                # Taille native : appel direct
+                _draw_portrait_cell(cvs, px, py, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, zetas=zts, omicrons=omis, stars=stars_)
+            else:
+                # Taille réduite : on dessine dans un canvas temporaire PORTRAIT_CELL×PORTRAIT_CELL puis on redimensionne
+                tmp = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL + 16), C_BG)  # +16 pour les étoiles
+                _draw_portrait_cell(tmp, 0, 0, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, zetas=zts, omicrons=omis, stars=stars_)
+                scaled = tmp.resize((cell, cell + int(cell * 16 / PORTRAIT_CELL)), Image.LANCZOS)
+                cvs.paste(scaled, (px, py), scaled)
+        
         if is_fleet:
             slots = 8
-            cell_w = PORTRAIT_CELL + PORTRAIT_GAP
-            fleet_row_width = cell_w + PORTRAIT_GAP * 3 + (3 * cell_w) + PORTRAIT_GAP * 2 + (4 * cell_w)
-            wrap = fleet_row_width > (width - x - PADDING)
+            cell_w = cell + gap
+            fleet_row_width = cell_w + gap * 3 + (3 * cell_w) + gap * 2 + (4 * cell_w)
+            wrap = fleet_row_width > (width - cur_x - PADDING)
 
-            _draw_portrait_cell(canvas, x, y, leader_id, None, None, True, True, not is_player, False, is_ship=True)
-            cx = x + PORTRAIT_CELL + PORTRAIT_GAP * 3
+            _draw_scaled(canvas, cur_x, y, leader_id, None, None, True, True, not is_player, False, True)
+            cx = cur_x + cell + gap * 3
             drawn = 1
-            row2_y = y + PORTRAIT_CELL + 10
-            row2_x = x
+            row2_y = y + cell + 10
+            row2_x = cur_x
 
             for m in members:
                 if m != leader_id and drawn < slots:
                     if wrap and drawn == 4:
                         cx = row2_x
                     cur_y = row2_y if (wrap and drawn >= 4) else y
-                    _draw_portrait_cell(canvas, cx, cur_y, m, None, None, True, True, not is_player, False, is_ship=True)
-                    cx += PORTRAIT_CELL + PORTRAIT_GAP
+                    _draw_scaled(canvas, cx, cur_y, m, None, None, True, True, not is_player, False, True)
+                    cx += cell + gap
                     if drawn == 3 and not wrap:
-                        cx += PORTRAIT_GAP * 2
+                        cx += gap * 2
                     drawn += 1
 
             while drawn < slots:
                 if wrap and drawn == 4:
                     cx = row2_x
                 cur_y = row2_y if (wrap and drawn >= 4) else y
-                _draw_portrait_cell(canvas, cx, cur_y, None, None, None, True, True, not is_player, False, is_ship=True)
-                cx += PORTRAIT_CELL + PORTRAIT_GAP
+                _draw_scaled(canvas, cx, cur_y, None, None, None, True, True, not is_player, False, True)
+                cx += cell + gap
                 if drawn == 3 and not wrap:
-                    cx += PORTRAIT_GAP * 2
+                    cx += gap * 2
                 drawn += 1
 
-            # Adjust x for source label
-            x = cx
+            cur_x = cx
         else:
             slots = 3 if fmt == "3v3" else 5
             rel, gr, zetas, omis = get_unit_details(leader_id)
-            _draw_portrait_cell(canvas, x, y, leader_id, rel, gr, True, True, not is_player, False, is_ship=False, zetas=zetas, omicrons=omis)
-            x += PORTRAIT_CELL + PORTRAIT_GAP
+            _draw_scaled(canvas, cur_x, y, leader_id, rel, gr, True, True, not is_player, False, False, zts=zetas, omis=omis)
+            cur_x += cell + gap
             drawn = 1
             for m in members:
                 if m != leader_id and drawn < slots:
                     rel, gr, zetas, omis = get_unit_details(m)
-                    _draw_portrait_cell(canvas, x, y, m, rel, gr, True, True, not is_player, False, is_ship=False, zetas=zetas, omicrons=omis)
-                    x += PORTRAIT_CELL + PORTRAIT_GAP
+                    _draw_scaled(canvas, cur_x, y, m, rel, gr, True, True, not is_player, False, False, zts=zetas, omis=omis)
+                    cur_x += cell + gap
                     drawn += 1
             while drawn < slots:
-                _draw_portrait_cell(canvas, x, y, None, None, None, True, True, True, False, is_ship=False)
-                x += PORTRAIT_CELL + PORTRAIT_GAP
+                _draw_scaled(canvas, cur_x, y, None, None, None, True, True, True, False, False)
+                cur_x += cell + gap
                 drawn += 1
         
         team_source = t.get("source", "predictive")
@@ -133,7 +157,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             source_label = "Prédiction"
             label_color = C_MUTED
             
-        draw.text((x + 20, y + PORTRAIT_CELL // 2 - 8), source_label, font=_get_font("bold", 13), fill=label_color)
+        draw.text((cur_x + 8, y + cell // 2 - 8), source_label, font=_get_font("bold", 11 if is_5v5 else 13), fill=label_color)
 
     y_current = 100
     
@@ -145,28 +169,28 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             draw.text((width // 2, y_current), f"ZONE SOUTH (Quota: {quotas.get('South', 0)})", font=_get_font("bold", 18), fill=C_ENEMY)
             
         for i in range(max_ns):
-            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 30))
+            y_team = y_current + H_ZONE_TITLE + (i * team_row_h)
             if i < len(north_teams):
-                _draw_zone_team(north_teams[i], PADDING + 20, y_team)
+                _draw_zone_team(north_teams[i], PADDING + 10, y_team)
             if i < len(south_teams):
-                _draw_zone_team(south_teams[i], width // 2 + 20, y_team)
+                _draw_zone_team(south_teams[i], width // 2 + 10, y_team)
                 
-        y_current += H_ZONE_TITLE + (max_ns * (PORTRAIT_CELL + 30)) + PADDING
+        y_current += H_ZONE_TITLE + (max_ns * team_row_h) + PADDING
 
     # BACK
     if back_teams:
         draw.text((PADDING, y_current), f"ZONE BACK (Quota: {quotas.get('Back', 0)})", font=_get_font("bold", 18), fill=C_ENEMY)
         for i, t in enumerate(back_teams):
-            y_team = y_current + H_ZONE_TITLE + (i * (PORTRAIT_CELL + 30))
-            _draw_zone_team(t, PADDING + 20, y_team)
-        y_current += H_ZONE_TITLE + (len(back_teams) * (PORTRAIT_CELL + 30)) + PADDING
+            y_team = y_current + H_ZONE_TITLE + (i * team_row_h)
+            _draw_zone_team(t, PADDING + 10, y_team)
+        y_current += H_ZONE_TITLE + (len(back_teams) * team_row_h) + PADDING
 
     # FLEET
     if fleet_teams:
         draw.text((PADDING, y_current), f"ZONE FLEET (Quota: {quotas.get('Fleet', 0)})", font=_get_font("bold", 18), fill=C_ENEMY)
         for i, t in enumerate(fleet_teams):
             y_team = y_current + H_ZONE_TITLE + (i * fleet_row_h)
-            _draw_zone_team(t, PADDING + 20, y_team, is_fleet=True)
+            _draw_zone_team(t, PADDING + 10, y_team, is_fleet=True)
 
     # Suréchantillonnage 2x LANCZOS pour affichage Retina HD net sur mobile
     canvas_hd = canvas.resize((canvas.width * 2, canvas.height * 2), Image.LANCZOS)
@@ -180,8 +204,14 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
     Génère l'image PNG du Plan d'Attaque Global GAC (Retina HD).
     Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
     """
-    width = 1100
-    row_height = PORTRAIT_CELL + 46
+    is_5v5 = fmt == "5v5"
+    # En 5v5 : portraits réduits (72px) et canvas élargi (1200px) pour tenir 5+5 portraits + séparateur
+    p_cell = _CELL_5V5 if is_5v5 else PORTRAIT_CELL  # 72 ou 88
+    p_gap  = _GAP_5V5  if is_5v5 else PORTRAIT_GAP   # 6 ou 8
+    width  = 1200 if is_5v5 else 1100
+    slots_per_row = 5 if is_5v5 else 3
+    # Hauteur d'une ligne : portrait + labels ("Slot #N Ennemi" + étoiles)
+    row_height = p_cell + 50
     
     height = 100 + PADDING
     for zone, slots in attack_plan.items():
@@ -198,6 +228,16 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
     
     draw.text((PADDING, 20), f"PLAN D'ATTAQUE GLOBAL GAC — {league} ({fmt})", font=title_font, fill=C_GOLD)
     draw.text((PADDING, 50), f"Stratégie : {my_name} ⚔️ {enemy_name}", font=sub_font, fill=C_TEXT)
+
+    def _draw_scaled_cell(cvs, px, py, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_=False, lvl=85, zts=0, omis=0, stars_=7):
+        """Dessine un portrait redimensionné à p_cell px si nécessaire."""
+        if p_cell == PORTRAIT_CELL:
+            _draw_portrait_cell(cvs, px, py, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, lvl, zts, omis, stars_)
+        else:
+            tmp = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL + 16), C_BG)
+            _draw_portrait_cell(tmp, 0, 0, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, lvl, zts, omis, stars_)
+            scaled = tmp.resize((p_cell, p_cell + int(p_cell * 16 / PORTRAIT_CELL)), Image.LANCZOS)
+            cvs.paste(scaled, (px, py), scaled)
     
     current_y = 100
     
@@ -236,7 +276,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             
             x_def = PADDING + 15
             y_portraits = current_y + 24
-            for bid in all_e_ids[: (3 if fmt == "3v3" else 5)]:
+            for bid in all_e_ids[:slots_per_row]:
                 e_data = enemy_roster_index.get(bid.upper()) if enemy_roster_index else None
                 e_rel  = e_data.get("relic_tier") if e_data else None
                 e_gr   = e_data.get("gear_tier")  if e_data else None
@@ -244,29 +284,30 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 e_omis = e_data.get("omicrons", 0) if e_data else 0
                 e_star = e_data.get("rarity", 7)  if e_data else 7
                 e_lvl  = e_data.get("level", 85)   if e_data else 85
-                _draw_portrait_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, False, e_lvl, e_zts, e_omis, e_star)
+                _draw_scaled_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, False, e_lvl, e_zts, e_omis, e_star)
                 if status == "CLEARED":
-                    # Overlay grisant pour secteur tombé
-                    overlay = Image.new("RGBA", (PORTRAIT_CELL, PORTRAIT_CELL), (0, 0, 0, 160))
+                    overlay = Image.new("RGBA", (p_cell, p_cell), (0, 0, 0, 160))
                     canvas.paste(overlay, (x_def, y_portraits), overlay)
-                x_def += PORTRAIT_CELL + PORTRAIT_GAP
+                x_def += p_cell + p_gap
                 
-            x_mid = x_def + 30
+            x_mid = x_def + 20
+            mid_y_icon  = current_y + max(24, row_height // 2 - 18)
+            mid_y_label = mid_y_icon + 28
             if status == "CLEARED":
-                draw.text((x_mid, current_y + 35), "✅", font=title_font, fill=C_READY)
-                draw.text((x_mid - 15, current_y + 65), "Victoire", font=label_font, fill=C_READY)
+                draw.text((x_mid, mid_y_icon),  "✅",     font=title_font, fill=C_READY)
+                draw.text((x_mid - 10, mid_y_label), "Victoire", font=label_font, fill=C_READY)
             else:
-                draw.text((x_mid, current_y + 35), "⚔️", font=title_font, fill=C_GOLD)
+                draw.text((x_mid, mid_y_icon),  "⚔️",    font=title_font, fill=C_GOLD)
                 if c_info:
-                    draw.text((x_mid - 15, current_y + 65), f"{win_pct}% Win", font=label_font, fill=C_READY if win_pct >= 75 else C_TEXT)
+                    draw.text((x_mid - 15, mid_y_label), f"{win_pct}% Win", font=label_font, fill=C_READY if win_pct >= 75 else C_TEXT)
                 else:
-                    draw.text((x_mid - 20, current_y + 65), "Aucun contre", font=label_font, fill=C_ENEMY)
+                    draw.text((x_mid - 20, mid_y_label), "Aucun contre", font=label_font, fill=C_ENEMY)
                 
-            x_counter = x_mid + 90
+            x_counter = x_mid + 80
             opt_str = f" (Option #{offset + 1})" if offset > 0 else ""
             if status == "CLEARED":
                 draw.text((x_counter, current_y + 10), "Secteur Vaincu", font=label_font, fill=C_MUTED)
-                draw.text((x_counter, current_y + 40), "✔ Territoire libéré", font=sub_font, fill=C_READY)
+                draw.text((x_counter, current_y + 30), "✔ Territoire libéré", font=sub_font, fill=C_READY)
             elif status == "FAILED":
                 draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}", font=label_font, fill=C_ENEMY)
             elif c_info and win_pct == 0:
@@ -280,7 +321,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     c_members = c_info.get("atk_members_ids", [])
                     all_c_ids = [c_leader] + [m for m in c_members if m]
                     
-                    for bid in all_c_ids[: (3 if fmt == "3v3" else 5)]:
+                    for bid in all_c_ids[:slots_per_row]:
                         u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
                         rel    = u_data.get("relic_tier") if u_data else None
                         gr     = u_data.get("gear_tier")  if u_data else None
@@ -290,10 +331,10 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                         rarity = u_data.get("rarity", 0)  if u_data else 0
                         lvl    = u_data.get("level", 85)   if u_data else 85
                         is_ready = owned and rarity == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
-                        _draw_portrait_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, False, False, lvl, zts, omis, rarity)
-                        x_counter += PORTRAIT_CELL + PORTRAIT_GAP
+                        _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, False, False, lvl, zts, omis, rarity)
+                        x_counter += p_cell + p_gap
                 else:
-                    draw.text((x_counter, current_y + 40), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
+                    draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
                 
             current_y += row_height
 

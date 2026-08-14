@@ -20,6 +20,12 @@ HARD_COUNTERS_BYPASS_DELTA = {
     "WAMPA", "SAVAGEOPRESS", "DARTHBANE"
 }
 
+# Unités légitimes reconnues capables de mener un contre en Solo
+RECOGNIZED_SOLO_LEADERS = {
+    "WAMPA", "NEST", "SAVAGEOPRESS", "DARTHBANE", "SUPREMELEADERKYLOREN",
+    "SITHPALPATINE", "DARTHMALAK", "AHSOKATANAFULCRUM", "LORDVADER", "JEDIMASTERLUKE"
+}
+
 # Relic max accessible selon le nombre d'étoiles du personnage
 # (en dessous de 7★, le relic max est limité mais le perso EST utilisable en GAC)
 MAX_RELIC_BY_RARITY = {
@@ -77,6 +83,12 @@ def filter_counters_by_roster(
     for counter in counters:
         max_atk_members = 2 if format_type == "3v3" else 4
         all_ids = [counter["atk_leader_id"]] + counter.get("atk_members_ids", [])[:max_atk_members]
+        
+        # ── Anti-Faux Solos : Interdire les solos non-reconnus ──────────────
+        # Un contre composé d'un seul personnage (solo) n'est valide QUE si le leader est un solo reconnu.
+        # Cela élimine les entrées de données incomplètes (ex: Emperor Palpatine Solo).
+        if len(all_ids) == 1 and counter["atk_leader_id"].upper() not in RECOGNIZED_SOLO_LEADERS:
+            continue
         
         # ── Calcul préalable de la puissance relique ennemie ──────────────
         def_ids = [counter.get("def_leader_id")] + counter.get("def_members_ids", [])

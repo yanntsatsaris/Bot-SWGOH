@@ -247,17 +247,16 @@ class GacCog(commands.Cog, name="GAC"):
         from database.db import save_user_defense_slot
         
         is_my = (cote.value == "my")
-        if is_my:
-            await save_user_defense_slot(str(interaction.user.id), zone.value, slot, leader_id, members_list)
-            side_str = "Ta Défense"
-        else:
-            side_str = "Défense Adverse"
+        used_type = "defense" if is_my else "enemy_defense"
+        await save_user_defense_slot(str(interaction.user.id), zone.value, slot, leader_id, members_list, used_type=used_type)
+        side_str = "Ta Défense" if is_my else "Défense Adverse"
             
         m_str = ", ".join(get_name(m) for m in members_list) if members_list else "aucun"
         await interaction.followup.send(
             f"✅ **{side_str} mise à jour !**\n"
             f"📍 **{zone.name} — Slot #{slot}** : Leader **{get_name(leader_id)}** (Membres : {m_str}).\n"
-            f"Toutes tes propositions de contres et ton plan d'attaque tiendront compte de cette modification.",
+            f"Toutes tes propositions de contres et ton plan d'attaque tiendront compte de cette modification.\n"
+            f"💡 *Pour voir la carte mise à jour, réutilise `/gac-scout` ou clique sur `[🔄 Actualiser Carte]` dans le plan.*",
             ephemeral=True
         )
 

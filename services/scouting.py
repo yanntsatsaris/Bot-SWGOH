@@ -697,9 +697,24 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     
     enemy_zones = await _predict_zones(enemy_index, quotas, fmt, ship_base_ids, habits)
     
-    # ---------------------------------------------------------------------
-    # NOUVEAUTÉ : Attente SYCHRONE du scraping des counters manquants
-    # ---------------------------------------------------------------------
+    # ── Intégration des slots de défense adverse modifiés par l'utilisateur ──
+    if discord_id:
+        from database.db import load_user_defense_zones
+        saved_enemy_zones = await load_user_defense_zones(str(discord_id), "enemy_defense")
+        if saved_enemy_zones:
+            for zone_name, saved_teams in saved_enemy_zones.items():
+                if zone_name in enemy_zones:
+                    for s_team in saved_teams:
+                        s_idx = s_team.get("slot_index", 1) - 1
+                        if 0 <= s_idx < len(enemy_zones[zone_name]):
+                            ldr = s_team.get("leader_id")
+                            if ldr and ldr not in ["USED", "None", "EMPTY"]:
+                                enemy_zones[zone_name][s_idx] = {
+                                    "leader_id": ldr,
+                                    "members_ids": s_team.get("members_ids", []),
+                                    "source": "Modifié manuellement",
+                                    "target_size": enemy_zones[zone_name][s_idx].get("target_size", 5)
+                                }
     if my_ally_code:
         try:
             leaders_to_scrape = {}

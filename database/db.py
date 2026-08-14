@@ -562,12 +562,12 @@ async def get_active_sector_statuses(discord_id: str) -> dict:
     return {(row["zone"], row["slot_index"]): {"status": row["status"], "counter_offset": row["counter_offset"]} for row in rows}
 
 
-async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, leader_id: str, members_ids: list[str]):
-    """Remplace l'équipe posée sur un emplacement (zone + slot_index) spécifique."""
+async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, leader_id: str, members_ids: list[str], used_type: str = "defense"):
+    """Remplace l'équipe posée sur un emplacement (zone + slot_index) spécifique (defense ou enemy_defense)."""
     async with get_db() as db:
         await db.execute(
-            "DELETE FROM active_round_units WHERE discord_id = ? AND zone = ? AND slot_index = ? AND used_type = 'defense'",
-            (discord_id, zone, slot_index)
+            "DELETE FROM active_round_units WHERE discord_id = ? AND zone = ? AND slot_index = ? AND used_type = ?",
+            (discord_id, zone, slot_index, used_type)
         )
         all_units = [leader_id] + [m for m in members_ids if m]
         for bid in all_units:
@@ -576,13 +576,13 @@ async def save_user_defense_slot(discord_id: str, zone: str, slot_index: int, le
             await db.execute(
                 """
                 INSERT INTO active_round_units (discord_id, base_id, used_type, zone, slot_index)
-                VALUES (?, ?, 'defense', ?, ?)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(discord_id, base_id, used_type) DO UPDATE SET
-                    used_type = 'defense',
+                    used_type = excluded.used_type,
                     zone = excluded.zone,
                     slot_index = excluded.slot_index
                 """,
-                (discord_id, bid.upper(), zone, slot_index)
+                (discord_id, bid.upper(), used_type, zone, slot_index)
             )
         await db.commit()
 

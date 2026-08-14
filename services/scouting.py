@@ -714,24 +714,33 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
             if leaders_to_scrape:
                 from services.gac_counters_scraper import GacCountersScraper
                 from database.db import get_db
+                import datetime
                 scraper = GacCountersScraper()
-                missing_leaders = []
+                leaders_needing_scrape = []
                 async with get_db() as db:
-
                     for l_id, members_str in leaders_to_scrape.items():
                         if not l_id or l_id in ["USED", "None"]: continue
-                        cursor = await db.execute("SELECT 1 FROM gac_counters WHERE def_leader_id = ? AND format = ? LIMIT 1", (l_id, fmt))
+                        cursor = await db.execute(
+                            "SELECT last_updated FROM gac_counters WHERE def_leader_id = ? AND format = ? ORDER BY last_updated DESC LIMIT 1",
+                            (l_id, fmt)
+                        )
                         row = await cursor.fetchone()
                         if not row:
-                            missing_leaders.append(l_id)
+                            leaders_needing_scrape.append(l_id)
+                        else:
+                            try:
+                                last_updated = datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")
+                                if (datetime.datetime.utcnow() - last_updated).days > 7:
+                                    leaders_needing_scrape.append(l_id)
+                            except Exception:
+                                leaders_needing_scrape.append(l_id)
                 
-                if missing_leaders and progress_callback:
-                    total_sec = len(missing_leaders) * 35
+                if leaders_needing_scrape and progress_callback:
+                    total_sec = len(leaders_needing_scrape) * 30
                     mins, secs = divmod(total_sec, 60)
                     time_str = f"{mins} min {secs}s" if mins > 0 else f"{secs}s"
-                    await progress_callback(f"⏳ **[■■■■■■■□□□] 70%** : Extraction swgoh.gg pour {len(missing_leaders)} nouveaux leaders absents de la BDD (≈ {time_str})...")
+                    await progress_callback(f"⏳ **[■■■■■■■□□□] 70%** : Extraction swgoh.gg pour {len(leaders_needing_scrape)} leaders absents/expirés (≈ {time_str})...")
 
-                
                 await scraper.ensure_counters_available(leaders_to_scrape, fmt, progress_callback=progress_callback)
 
         except Exception as e:

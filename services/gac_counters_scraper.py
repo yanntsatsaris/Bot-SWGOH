@@ -200,15 +200,13 @@ class GacCountersScraper:
     async def ensure_counters_available(self, leaders_dict: dict, format_type: str, progress_callback=None) -> None:
         """
         Vérifie la présence des contres en BDD.
-        - Si un leader n'a AUCUN contre en BDD : effectue une extraction synchrone.
-        - Si un leader a des contres datant de > 7 jours : répond immédiatement au joueur et lance un rafraîchissement en arrière-plan.
+        - Si un leader n'a AUCUN contre en BDD OU des contres datant de > 7 jours :
+          effectue une extraction bloquante complète pour garantir des données 100% à jour.
         """
         from database.db import get_db
         import datetime
-        import asyncio
         
-        missing_leaders = {}
-        stale_leaders = {}
+        leaders_to_scrape = {}
         
         async with get_db() as db:
             for l_id, members in leaders_dict.items():
@@ -226,17 +224,18 @@ class GacCountersScraper:
                         last_updated = datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")
                         age = (datetime.datetime.utcnow() - last_updated).days
                         if age > 7:
-                            stale_leaders[l_id] = members
+                            leaders_to_scrape[l_id] = members
                     except Exception as e:
                         log.error(f"Erreur date: {e}")
+                        leaders_to_scrape[l_id] = members
                 else:
-                    missing_leaders[l_id] = members
+                    leaders_to_scrape[l_id] = members
         
-        # 1. Extraction bloquante uniquement pour les leaders 100% absents
-        if missing_leaders:
-            log.info(f"Extraction bloquante nécessaire pour {len(missing_leaders)} leaders absents de la BDD : {list(missing_leaders.keys())}")
+        # Extraction bloquante pour tous les leaders absents ou expirés (> 7 jours)
+        if leaders_to_scrape:
+            log.info(f"Extraction bloquante (Précision Max) pour {len(leaders_to_scrape)} leaders absents/expirés : {list(leaders_to_scrape.keys())}")
             batch_data = []
-            for leader_id, members in missing_leaders.items():
+            for leader_id, members in leaders_to_scrape.items():
                 members_list = members.split(",") if members else []
                 max_members = 2 if format_type == "3v3" else 4
                 if len(members_list) > max_members:
@@ -244,17 +243,4 @@ class GacCountersScraper:
                 batch_data.append({"leader_id": leader_id, "members": members})
                 
             await self.refresh_counters_for_leaders_batch(batch_data, format_type, "current", progress_callback)
-
-        # 2. Extraction en arrière-plan pour les leaders dont les données ont > 7 jours (recherche instantanée pour l'utilisateur)
-        if stale_leaders:
-            log.info(f"Lancement du rafraîchissement arrière-plan pour {len(stale_leaders)} leaders (> 7 jours) : {list(stale_leaders.keys())}")
-            batch_stale = []
-            for leader_id, members in stale_leaders.items():
-                members_list = members.split(",") if members else []
-                max_members = 2 if format_type == "3v3" else 4
-                if len(members_list) > max_members:
-                    members = ",".join(members_list[:max_members])
-                batch_stale.append({"leader_id": leader_id, "members": members})
-                
-            asyncio.create_task(self.refresh_counters_for_leaders_batch(batch_stale, format_type, "current", None))
 

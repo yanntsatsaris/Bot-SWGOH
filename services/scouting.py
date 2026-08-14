@@ -766,7 +766,56 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
             has_saved_defense = saved_zones and any(len(teams) > 0 for teams in saved_zones.values())
             
             if has_saved_defense:
-                my_zones = saved_zones
+                # Vérifier si toutes les unités de la défense sauvegardée sont toujours viables dans le roster
+                from services.gac_attack_planner import LEAGUE_THRESHOLDS
+                thresh = LEAGUE_THRESHOLDS.get(league_name.upper(), LEAGUE_THRESHOLDS["BRONZIUM"])
+                min_g = thresh["min_gear"]
+                min_r = thresh["min_rarity"]
+                require_relic = thresh.get("require_g12_or_relic", False)
+
+                def _is_viable_unit(uid):
+                    if not uid or uid.upper() not in my_index:
+                        return False
+                    data = my_index[uid.upper()]
+                    if data.get("combat_type", 1) == 2:
+                        return True  # Flotte
+                    if data.get("relic_tier", 0) > 0:
+                        return True
+                    gear = data.get("gear_tier", 0)
+                    rarity = data.get("rarity", 0)
+                    if gear < min_g or rarity < min_r:
+                        return False
+                    if require_relic and gear < 12:
+                        return False
+                    return True
+
+                cleaned_zones = {}
+                has_invalid_unit = False
+                for z, teams in saved_zones.items():
+                    cleaned_zones[z] = []
+                    for t in teams:
+                        ldr = t.get("leader_id")
+                        if ldr and not _is_viable_unit(ldr):
+                            has_invalid_unit = True
+                            continue
+                        valid_m = []
+                        for m in t.get("members_ids", []):
+                            if _is_viable_unit(m):
+                                valid_m.append(m)
+                            else:
+                                has_invalid_unit = True
+                        cleaned_zones[z].append({
+                            "leader_id": ldr,
+                            "members_ids": valid_m,
+                            "slot_index": t.get("slot_index", 0),
+                            "source": t.get("source", "saved")
+                        })
+
+                if has_invalid_unit:
+                    log.info(f"Défense sauvegardée contenait des unités non viables. Recalcul propre de la défense pour {my_clean}...")
+                    my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones, league_name)
+                else:
+                    my_zones = cleaned_zones
             else:
                 my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones, league_name)
 

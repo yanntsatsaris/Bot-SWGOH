@@ -309,6 +309,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         m for m, data in enemy_index.items()
         if m not in used_base_ids
         and data.get("combat_type", 1) == 1
+        and (data.get("relic_tier", 0) > 0 or data.get("gear_tier", 0) >= 8)
     ]
     leftovers.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
 
@@ -515,13 +516,32 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                         leader_synergy_map[ldr].append(m)
 
     # 1.5 BOUCHAGE DE TROUS (Hole-Filling) AVEC SYNERGIE — 3 niveaux
-    # Niveau 1 : Personnage avec synergie méta parmi les leftovers libres
-    # Niveau 2 : Personnage avec synergie méta réservé pour l'attaque → libération
-    # Niveau 3 : Fallback sur le personnage le plus puissant disponible
+    # Niveau 1 : Personnage avec synergie méta parmi les leftovers libres et viables
+    # Niveau 2 : Personnage avec synergie méta réservé pour l'attaque (viable) → libération
+    # Niveau 3 : Fallback désactivé (pas de personnage poubelle)
+    from services.gac_attack_planner import LEAGUE_THRESHOLDS
+    thresh = LEAGUE_THRESHOLDS.get(league.upper(), LEAGUE_THRESHOLDS["BRONZIUM"])
+    min_g = thresh["min_gear"]
+    min_r = thresh["min_rarity"]
+    require_relic = thresh.get("require_g12_or_relic", False)
+
+    def _is_viable(data: dict) -> bool:
+        if not data or data.get("combat_type", 1) != 1:
+            return False
+        if data.get("relic_tier", 0) > 0:
+            return True
+        gear = data.get("gear_tier", 0)
+        rarity = data.get("rarity", 0)
+        if gear < min_g or rarity < min_r:
+            return False
+        if require_relic and gear < 12:
+            return False
+        return True
+
     leftovers_t1 = [
         m for m, data in my_index.items()
         if m not in used_base_ids
-        and data.get("combat_type", 1) == 1
+        and _is_viable(data)
     ]
 
     # Trier par puissance de base (fallback niveau 3)
@@ -543,7 +563,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                     filler = None
                     synergy_candidates = leader_synergy_map.get(leader_id, [])
 
-                    # Niveau 1 : synergie méta parmi les leftovers libres
+                    # Niveau 1 : synergie méta parmi les leftovers libres (et viables)
                     for candidate in synergy_candidates:
                         if candidate in leftovers and candidate not in t["members_ids"]:
                             if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
@@ -552,14 +572,14 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                             leftovers.remove(candidate)
                             break
 
-                    # Niveau 2 : libérer un perso réservé pour l'attaque (synergie confirmée)
+                    # Niveau 2 : libérer un perso réservé pour l'attaque (synergie confirmée et viable)
                     if filler is None:
                         for candidate in synergy_candidates:
                             if (
                                 candidate in my_index
                                 and candidate in used_base_ids
                                 and candidate not in t["members_ids"]
-                                and my_index[candidate].get("combat_type", 1) == 1
+                                and _is_viable(my_index[candidate])
                             ):
                                 if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
                                     continue
@@ -568,12 +588,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                                 log.debug(f"[HoleFill] {candidate} libéré de l'attaque → synergie {leader_id}")
                                 break
 
-                    # Niveau 3 : fallback — le plus puissant dispo dans les leftovers
-                    # DÉSACTIVÉ pour le joueur : on ne veut pas polluer une équipe Meta avec des personnages aléatoires.
-                    # Si aucun perso synergique n'est trouvé, on laisse le trou vide.
-                    if filler is None:
-                        pass
-
+                    # Niveau 3 : fallback — désactivé pour le joueur
                     if filler is None:
                         break  # Rien à placer pour cette équipe
 

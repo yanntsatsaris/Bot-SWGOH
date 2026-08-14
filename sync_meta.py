@@ -31,10 +31,52 @@ DATABASE_PATH: str = os.getenv("DATABASE_PATH", "database/swgoh.db")
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 BASE_URL = "https://swgoh.gg"
-SQUAD_URLS = {
-    "5v5": f"{BASE_URL}/gac/squads/",
-    "3v3": f"{BASE_URL}/gac/3v3-squads/",
+
+# swgoh.gg utilise une URL unique pour toutes les saisons :
+# - Saison courante (sans season_id) : https://swgoh.gg/gac/squads/?cutoff=0
+# - Saison passée : https://swgoh.gg/gac/squads/?cutoff=0&season_id=CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_{N}
+# Les saisons paires (80, 82...) sont du 5v5, les saisons impaires (81, 83...) sont du 3v3.
+_SEASON_PREFIX = "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_"
+
+# Fallback par défaut si la page d'accueil est inaccessible
+_FALLBACK_SEASON: dict[str, str] = {
+    "5v5": _SEASON_PREFIX + "82",
+    "3v3": _SEASON_PREFIX + "81",
 }
+
+def _squad_url(fmt: str) -> str:
+    """
+    Retourne l'URL de la page squads pour le format demandé.
+    Tente une détection dynamique depuis le dropdown swgoh.gg, avec fallback sécurisé.
+    """
+    base_url = f"{BASE_URL}/gac/squads/?cutoff=0"
+    try:
+        soup = fetch_page(base_url)
+        if soup:
+            summary = soup.select_one("details.dropdown summary")
+            if summary and f"- {fmt}" in summary.get_text():
+                log.info("Format %s correspond à la saison en cours.", fmt)
+                return base_url
+                
+            dropdown = soup.select_one("details.dropdown ul.dropdown-content")
+            links = dropdown.find_all('a') if dropdown else soup.find_all('a')
+            for a in links:
+                if f"- {fmt}" in a.get_text(strip=True):
+                    href = a.get('href', '')
+                    if href:
+                        if not href.startswith("http"):
+                            href = f"{BASE_URL}{href}"
+                        if "cutoff=" not in href:
+                            href += ("&" if "?" in href else "?") + "cutoff=0"
+                        log.info("Saison %s détectée dynamiquement : %s", fmt, href)
+                        return href
+    except Exception as e:
+        log.warning("Échec détection automatique saison pour %s: %s", fmt, e)
+        
+    fallback_sid = _FALLBACK_SEASON.get(fmt)
+    if fallback_sid:
+        return f"{BASE_URL}/gac/squads/?cutoff=0&season_id={fallback_sid}"
+    return base_url
 
 HEADERS = {
     "User-Agent": (
@@ -280,7 +322,7 @@ def _ensure_unique_index(con: sqlite3.Connection) -> None:
 # ---------------------------------------------------------------------------
 def sync_format(fmt: str) -> int:
     """Synchronise les équipes méta pour un format donné. Retourne le nb de lignes."""
-    url = SQUAD_URLS[fmt]
+    url = _squad_url(fmt)
     log.info("━━ Synchronisation %s depuis %s", fmt, url)
 
     soup = fetch_page(url)

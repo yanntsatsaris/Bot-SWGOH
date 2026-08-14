@@ -9,6 +9,7 @@ import logging
 
 log = logging.getLogger(__name__)
 
+
 class GacCountersScraper:
     def __init__(self):
         # On autorise 2 navigateurs en simultané max pour exploiter la grosse RAM sans exploser
@@ -124,11 +125,12 @@ class GacCountersScraper:
         # On prépare le payload pour le worker
         batch_payload = []
         for b in batch_data:
+            leader_id = b["leader_id"]
             batch_payload.append({
-                "def_leader_slug": b["leader_id"],
-                "real_leader_id": b["leader_id"],
+                "def_leader_slug": leader_id,
+                "real_leader_id": leader_id,
                 "d_members": b["members"],
-                "out_file": os.path.join(temp_dir, f"counters_{b['leader_id']}.json")
+                "out_file": os.path.join(temp_dir, f"counters_{leader_id}.json")
             })
             
         batch_config_path = os.path.join(temp_dir, "batch_counters_config.json")

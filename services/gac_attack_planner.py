@@ -258,25 +258,8 @@ UNIVERSAL_META_COUNTERS = {
         {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER"], "win_pct": 97.0, "seen": 900, "avg_banners": 58.0},
         {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "CAPTAINREX", "atk_members_ids": ["CT7567", "CT210408"], "win_pct": 95.0, "seen": 700, "avg_banners": 57.0},
         {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "JEDIKNIGHTREVAN", "atk_members_ids": ["GRANDMASTERYODA", "JOLEEBINDO"], "win_pct": 94.0, "seen": 850, "avg_banners": 54.0},
-        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": [], "win_pct": 95.0, "seen": 600, "avg_banners": 62.0},
-        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 99.0, "seen": 800, "avg_banners": 63.0},
-    ],
-    "NIHILUS": [
-        {"def_leader_id": "NIHILUS", "def_members_ids": [], "atk_leader_id": "BOSSK", "atk_members_ids": ["BOBAFETT", "MANDALORIAN"], "win_pct": 95.0, "seen": 800, "avg_banners": 56.0},
-    ],
-    "DARTHTRAYA": [
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 92.0, "seen": 800, "avg_banners": 62.0},
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 95.0, "seen": 1200, "avg_banners": 55.0},
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "SITHPALPATINE", "atk_members_ids": [], "win_pct": 98.0, "seen": 800, "avg_banners": 64.0},
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 97.0, "seen": 700, "avg_banners": 63.0},
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "JEDIKNIGHTREVAN", "atk_members_ids": ["GRANDMASTERYODA", "JOLEEBINDO"], "win_pct": 91.0, "seen": 600, "avg_banners": 54.0},
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "STARKILLER", "atk_members_ids": ["MARAJADE", "VISASMARR"], "win_pct": 94.0, "seen": 500, "avg_banners": 58.0},
-        {"def_leader_id": "DARTHTRAYA", "def_members_ids": [], "atk_leader_id": "DARTHBANE", "atk_members_ids": [], "win_pct": 99.0, "seen": 600, "avg_banners": 65.0},
-    ],
-    "DARTHNIHILUS": [
         {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "MARAJADE"], "win_pct": 95.0, "seen": 900, "avg_banners": 57.0},
-        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "JEDIKNIGHTREVAN", "atk_members_ids": ["GRANDMASTERYODA", "JOLEEBINDO"], "win_pct": 94.0, "seen": 800, "avg_banners": 55.0},
-        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 96.0, "seen": 1000, "avg_banners": 56.0},
+        {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "SUPREMELEADERKYLOREN", "atk_members_ids": [], "win_pct": 99.0, "seen": 800, "avg_banners": 63.0},
         {"def_leader_id": "DARTHNIHILUS", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 90.0, "seen": 400, "avg_banners": 61.0},
     ],
     "NIGHTSISTERMOTHER": [
@@ -298,15 +281,39 @@ UNIVERSAL_META_COUNTERS = {
     ],
     "GRIEVOUS": [
         {"def_leader_id": "GRIEVOUS", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 91.0, "seen": 1000, "avg_banners": 61.0},
-        {"def_leader_id": "GRIEVOUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA"], "win_pct": 94.0, "seen": 1800, "avg_banners": 54.0},
+        {"def_leader_id": "GRIEVOUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA", "R2D2", "C3POLEGENDARY"], "win_pct": 94.0, "seen": 1800, "avg_banners": 54.0},
+        {"def_leader_id": "GRIEVOUS", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "GRANDMOFFTARKIN", "ROYALGUARD", "STORMTROOPER"], "win_pct": 93.0, "seen": 1200, "avg_banners": 55.0},
+        {"def_leader_id": "GRIEVOUS", "def_members_ids": [], "atk_leader_id": "IDENVERSIOEMPIRE", "atk_members_ids": ["DEATHTROOPER", "STORMTROOPER", "SHORETROOPER", "SHORETROOPER"], "win_pct": 92.0, "seen": 900, "avg_banners": 54.0},
     ],
     "GEONOSIANBROODALPHA": [
-        {"def_leader_id": "GEONOSIANBROODALPHA", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["GRANDMOFFTARKIN", "EMPERORPALPATINE"], "win_pct": 98.0, "seen": 3500, "avg_banners": 57.0},
+        {"def_leader_id": "GEONOSIANBROODALPHA", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["GRANDMOFFTARKIN", "EMPERORPALPATINE", "ROYALGUARD", "TARFFUL"], "win_pct": 98.0, "seen": 3500, "avg_banners": 57.0},
         {"def_leader_id": "GEONOSIANBROODALPHA", "def_members_ids": [], "atk_leader_id": "NEST", "atk_members_ids": [], "win_pct": 93.0, "seen": 900, "avg_banners": 62.0},
+        {"def_leader_id": "GEONOSIANBROODALPHA", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA", "R2D2", "HANLEIA"], "win_pct": 90.0, "seen": 800, "avg_banners": 53.0},
     ],
     "MONMOTHMA": [
         {"def_leader_id": "MONMOTHMA", "def_members_ids": [], "atk_leader_id": "NEST", "atk_members_ids": [], "win_pct": 94.0, "seen": 800, "avg_banners": 62.0},
         {"def_leader_id": "MONMOTHMA", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 90.0, "seen": 400, "avg_banners": 60.0},
+        {"def_leader_id": "MONMOTHMA", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER", "DEATHTROOPER", "STORMTROOPER"], "win_pct": 95.0, "seen": 1100, "avg_banners": 55.0},
+    ],
+    "JABBATHEHUTT": [
+        {"def_leader_id": "JABBATHEHUTT", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA", "R2D2", "HANLEIA"], "win_pct": 93.0, "seen": 1200, "avg_banners": 54.0},
+        {"def_leader_id": "JABBATHEHUTT", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "GRANDMOFFTARKIN", "ROYALGUARD", "STORMTROOPER"], "win_pct": 92.0, "seen": 900, "avg_banners": 55.0},
+        {"def_leader_id": "JABBATHEHUTT", "def_members_ids": [], "atk_leader_id": "GREEFCARGA", "atk_members_ids": ["MANDALORIAN", "CARADUNE", "IGELEVENB", "BOBAFETT"], "win_pct": 91.0, "seen": 700, "avg_banners": 53.0},
+    ],
+    "QUEENAMIDALA": [
+        {"def_leader_id": "QUEENAMIDALA", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "GRANDMOFFTARKIN", "ROYALGUARD", "STORMTROOPER"], "win_pct": 94.0, "seen": 900, "avg_banners": 56.0},
+        {"def_leader_id": "QUEENAMIDALA", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER", "DEATHTROOPER", "STORMTROOPER"], "win_pct": 93.0, "seen": 700, "avg_banners": 54.0},
+        {"def_leader_id": "QUEENAMIDALA", "def_members_ids": [], "atk_leader_id": "NEST", "atk_members_ids": [], "win_pct": 91.0, "seen": 500, "avg_banners": 60.0},
+    ],
+    "DARTHMALGUS": [
+        {"def_leader_id": "DARTHMALGUS", "def_members_ids": [], "atk_leader_id": "COMMANDERLUKESKYWALKER", "atk_members_ids": ["HANSOLO", "CHEWBACCA", "R2D2", "HANLEIA"], "win_pct": 93.0, "seen": 800, "avg_banners": 54.0},
+        {"def_leader_id": "DARTHMALGUS", "def_members_ids": [], "atk_leader_id": "DARTHVADER", "atk_members_ids": ["EMPERORPALPATINE", "GRANDMOFFTARKIN", "ROYALGUARD", "STORMTROOPER"], "win_pct": 91.0, "seen": 700, "avg_banners": 54.0},
+        {"def_leader_id": "DARTHMALGUS", "def_members_ids": [], "atk_leader_id": "SITHPALPATINE", "atk_members_ids": [], "win_pct": 97.0, "seen": 600, "avg_banners": 64.0},
+    ],
+    "CASSIANUNDERCOVER": [
+        {"def_leader_id": "CASSIANUNDERCOVER", "def_members_ids": [], "atk_leader_id": "VEERS", "atk_members_ids": ["ADMIRALPIETT", "DARKTROOPER", "DEATHTROOPER", "STORMTROOPER"], "win_pct": 94.0, "seen": 800, "avg_banners": 56.0},
+        {"def_leader_id": "CASSIANUNDERCOVER", "def_members_ids": [], "atk_leader_id": "IDENVERSIOEMPIRE", "atk_members_ids": ["DEATHTROOPER", "STORMTROOPER", "SHORETROOPER", "ROYALGUARD"], "win_pct": 92.0, "seen": 600, "avg_banners": 54.0},
+        {"def_leader_id": "CASSIANUNDERCOVER", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 89.0, "seen": 400, "avg_banners": 60.0},
     ],
     "QIRA": [
         {"def_leader_id": "QIRA", "def_members_ids": [], "atk_leader_id": "WAMPA", "atk_members_ids": [], "win_pct": 96.0, "seen": 500, "avg_banners": 63.0},

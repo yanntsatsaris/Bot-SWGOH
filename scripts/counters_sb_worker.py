@@ -12,6 +12,38 @@ if __name__ == "__main__":
 from pyvirtualdisplay import Display
 from seleniumbase import SB
 
+def extract_seasons_from_dropdown(soup, format_type):
+    """
+    Extrait automatiquement la liste ordonnée des season_id pour le format demandé (5v5 ou 3v3)
+    à partir du dropdown swgoh.gg.
+    """
+    import urllib.parse
+    discovered = []
+    
+    # 1. Vérifier si le format affiché par défaut correspond
+    summary = soup.select_one("details.dropdown summary")
+    default_is_target_format = False
+    if summary and f"- {format_type}" in summary.get_text():
+        default_is_target_format = True
+        
+    # 2. Scanner tous les liens dans le dropdown
+    dropdown_menu = soup.select_one("details.dropdown ul.dropdown-content")
+    elements_to_scan = dropdown_menu.find_all('a') if dropdown_menu else soup.find_all('a')
+    
+    for a in elements_to_scan:
+        text = a.get_text(strip=True)
+        if f"- {format_type}" in text:
+            href = a.get('href', '')
+            parsed = urllib.parse.urlparse(href)
+            params = urllib.parse.parse_qs(parsed.query)
+            if 'season_id' in params:
+                sid = params['season_id'][0]
+                if sid not in discovered:
+                    discovered.append(sid)
+                    
+    return discovered, default_is_target_format
+
+
 def scrape(targets, format_type="5v5", season_id="current"):
     project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     if not os.path.exists(project_dir):
@@ -24,6 +56,8 @@ def scrape(targets, format_type="5v5", season_id="current"):
     
     display = None
     exit_code = 1
+    detected_seasons = []
+    
     try:
         if not is_windows:
             display = Display(visible=0, size=(1920, 1080))
@@ -31,7 +65,7 @@ def scrape(targets, format_type="5v5", season_id="current"):
         
         profile_dir = os.path.join(project_dir, "chrome_profile")
         
-        print(f"[WORKER] Lancement de SeleniumBase pour {len(targets)} cibles...", flush=True)
+        print(f"[WORKER] Lancement de SeleniumBase pour {len(targets)} cibles ({format_type})...", flush=True)
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             for target in targets:
                 def_leader_slug = target.get("def_leader_slug")
@@ -46,13 +80,25 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     
                 dprint(f"[WORKER] Démarrage du scraping pour le leader {def_leader_slug} (membres: {d_members})...")
                 
-                # URL cible avec format explicite (3v3 ou 5v5)
-                url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0&gac_f={format_type}&format={format_type}"
+                # Détection automatique de la saison si 'current'
+                target_season = None
                 if season_id and season_id != "current":
-                    url += f"&season_id={season_id}"
+                    if season_id.startswith("CHAMPIONSHIPS_"):
+                        target_season = season_id
+                    else:
+                        target_season = f"CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_{season_id}"
+                elif detected_seasons:
+                    target_season = detected_seasons[0]
+                    dprint(f"[WORKER] Saison {format_type} auto-détectée : {target_season}")
+                    
+                base_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0"
+                if target_season:
+                    base_url += f"&season_id={target_season}"
                 if d_members:
                     import urllib.parse
-                    url += f"&d_member={urllib.parse.quote(d_members)}"
+                    base_url += f"&d_member={urllib.parse.quote(d_members)}"
+                
+                url = base_url
                 dprint(f"[WORKER] URL de base : {url}")
 
                 
@@ -109,13 +155,19 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(page_source, "html.parser")
                     
+                    # Auto-découverte des saisons pour le format depuis le dropdown
+                    if not detected_seasons:
+                        discovered, default_is_target = extract_seasons_from_dropdown(soup, format_type)
+                        if discovered:
+                            detected_seasons.extend(discovered)
+                            dprint(f"[WORKER] Saisons {format_type} détectées dynamiquement : {detected_seasons}")
+                    
                     page_counters = []
                     counter_panels = soup.select("div.panel.panel--size-sm")
                     if not counter_panels:
                         counter_panels = soup.select("div.panel")
                     dprint(f"[WORKER] Page {page} : {len(counter_panels)} panneaux trouvés.")
 
-                    
                     for panel in counter_panels:
                         atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
                         if not atk_container: continue
@@ -166,18 +218,26 @@ def scrape(targets, format_type="5v5", season_id="current"):
                         dprint(f"[WORKER] Page {page} : moins de 50 résultats ({len(page_counters)}), fin.")
                         break
 
-                # ── Passe générale et historique (saisons paires/impaires) ──────────
+                # ── Passe générale et historique (saisons auto-détectées) ──────────
                 if len(counters_data) < 12:
                     dprint(f"[WORKER] Seulement {len(counters_data)} contres trouvés pour {def_leader_slug}. Lancement de la passe étendue (saisons historiques {format_type})...")
                     
-                    # 3v3 = saisons impaires (81, 79, 77) | 5v5 = saisons paires (80, 78, 76)
-                    past_seasons = ["79", "77"] if format_type == "3v3" else ["78", "76"]
+                    # Utiliser les saisons passées trouvées dynamiquement dans le dropdown
+                    if len(detected_seasons) > 1:
+                        past_season_ids = detected_seasons[1:4]
+                    else:
+                        # Fallback statique si la détection dynamique n'a rien donné
+                        _HIST_5V5 = ["80", "78", "76"]
+                        _HIST_3V3 = ["81", "79", "77"]
+                        past_season_nums = _HIST_3V3 if format_type == "3v3" else _HIST_5V5
+                        past_season_ids = [
+                            f"CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_{n}" for n in past_season_nums
+                        ]
                     
-                    base_counter_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0&gac_f={format_type}&format={format_type}"
+                    base_counter_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0"
                     alt_urls = [
-                        base_counter_url,
-                        base_counter_url + "&season_id=all"
-                    ] + [base_counter_url + f"&season_id={s}" for s in past_seasons]
+                        base_counter_url,  # saison courante sans filtre
+                    ] + [base_counter_url + f"&season_id={s}" for s in past_season_ids]
                     
                     seen_combos = set((c["atk_leader_id"], tuple(c.get("atk_members_ids", []))) for c in counters_data)
                     

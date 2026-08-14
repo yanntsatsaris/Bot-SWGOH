@@ -16,10 +16,19 @@ class GacMetaSquadsScraper:
         Génère l'URL, demande à sb_worker.py de récupérer le HTML (via le VPS),
         et parse les résultats.
         """
-        # On passe directement à swgoh.gg/gac/squads/
-        target_url = "https://swgoh.gg/gac/squads/"
+        # swgoh.gg utilise season_id pour différencier 5v5 et 3v3.
+        # Saisons paires = 5v5, saisons impaires = 3v3.
+        _CURRENT_SEASONS = {
+            "5v5": "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_82",  # Saison 82 (pair) = 5v5 — ACTUELLE
+            "3v3": "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_81",  # Saison 81 (impair) = 3v3 — dernière terminée
+        }
+        season_id = _CURRENT_SEASONS.get(format_type)
+        if season_id:
+            target_url = f"https://swgoh.gg/gac/squads/?cutoff=0&season_id={season_id}"
+        else:
+            target_url = "https://swgoh.gg/gac/squads/?cutoff=0"
         
-        logger.info(f"Début du scraping global meta ({format_type} {mode}) via SPA worker...")
+        logger.info(f"Début du scraping global meta ({format_type} {mode}) via SPA worker : {target_url}")
 
         output_file = "gac_meta_squads.html"
         

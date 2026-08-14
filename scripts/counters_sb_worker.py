@@ -9,7 +9,6 @@ if __name__ == "__main__":
     if len(sys.argv) >= 3:
         print(f"[WORKER] Lancement du script counters pour {sys.argv[1]}...", flush=True)
 
-from pyvirtualdisplay import Display
 from seleniumbase import SB
 
 def extract_seasons_from_dropdown(soup, format_type):
@@ -60,6 +59,7 @@ def scrape(targets, format_type="5v5", season_id="current"):
     
     try:
         if not is_windows:
+            from pyvirtualdisplay import Display
             display = Display(visible=0, size=(1920, 1080))
             display.start()
         
@@ -67,6 +67,34 @@ def scrape(targets, format_type="5v5", season_id="current"):
         
         print(f"[WORKER] Lancement de SeleniumBase pour {len(targets)} cibles ({format_type})...", flush=True)
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
+            # 1. Détection automatique initiale de la saison si 'current'
+            if season_id == "current" and not detected_seasons and targets:
+                init_slug = targets[0].get("def_leader_slug")
+                init_url = f"https://swgoh.gg/gac/counters/{init_slug}/?cutoff=0"
+                print(f"[WORKER] Détection automatique des saisons {format_type} via {init_url}...", flush=True)
+                sb.uc_open_with_reconnect(init_url, reconnect_time=3)
+                
+                quick_check = sb.get_page_source()
+                if any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
+                    try:
+                        sb.uc_gui_click_captcha()
+                    except:
+                        pass
+                    sb.sleep(8)
+                else:
+                    sb.sleep(3)
+                    
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(sb.get_page_source(), "html.parser")
+                discovered, default_is_target = extract_seasons_from_dropdown(soup, format_type)
+                if discovered:
+                    detected_seasons = discovered
+                    print(f"[WORKER] Saisons {format_type} détectées dynamiquement : {detected_seasons}", flush=True)
+                else:
+                    # Fallback sécurisé (saisons récentes)
+                    detected_seasons = ["CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_80", "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_78"] if format_type == "5v5" else ["CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_81", "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_79"]
+                    print(f"[WORKER] Fallback saisons {format_type} : {detected_seasons}", flush=True)
+
             for target in targets:
                 def_leader_slug = target.get("def_leader_slug")
                 output_file = target.get("out_file")
@@ -78,9 +106,9 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     debug_log.write(msg + "\n")
                     debug_log.flush()
                     
-                dprint(f"[WORKER] Démarrage du scraping pour le leader {def_leader_slug} (membres: {d_members})...")
+                dprint(f"[WORKER] Démarrage du scraping pour le leader {def_leader_slug}...")
                 
-                # Détection automatique de la saison si 'current'
+                # Détermination du season_id
                 target_season = None
                 if season_id and season_id != "current":
                     if season_id.startswith("CHAMPIONSHIPS_"):
@@ -89,7 +117,7 @@ def scrape(targets, format_type="5v5", season_id="current"):
                         target_season = f"CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_{season_id}"
                 elif detected_seasons:
                     target_season = detected_seasons[0]
-                    dprint(f"[WORKER] Saison {format_type} auto-détectée : {target_season}")
+                    dprint(f"[WORKER] Utilisation de la saison {format_type} : {target_season}")
                     
                 base_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0"
                 if target_season:
@@ -99,9 +127,8 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     base_url += f"&d_member={urllib.parse.quote(d_members)}"
                 
                 url = base_url
-                dprint(f"[WORKER] URL de base : {url}")
+                dprint(f"[WORKER] URL cible : {url}")
 
-                
                 counters_data = []
                 max_pages = int(target.get("max_pages", 6))
                 dprint(f"[WORKER] Scraping optimisé jusqu'à {max_pages} pages des contres récents...")
@@ -151,7 +178,6 @@ def scrape(targets, format_type="5v5", season_id="current"):
                     sb.sleep(0.5)
                     page_source = sb.get_page_source()
 
-                    
                     from bs4 import BeautifulSoup
                     soup = BeautifulSoup(page_source, "html.parser")
                     
@@ -235,9 +261,16 @@ def scrape(targets, format_type="5v5", season_id="current"):
                         ]
                     
                     base_counter_url = f"https://swgoh.gg/gac/counters/{def_leader_slug}/?cutoff=0"
-                    alt_urls = [
-                        base_counter_url,  # saison courante sans filtre
-                    ] + [base_counter_url + f"&season_id={s}" for s in past_season_ids]
+                    alt_urls = []
+                    # 1. Si un filtre d_members était présent et a donné peu de résultats, tenter le leader seul sur la même saison
+                    if d_members:
+                        if target_season:
+                            alt_urls.append(f"{base_counter_url}&season_id={target_season}")
+                        else:
+                            alt_urls.append(base_counter_url)
+                    # 2. Saisons passées
+                    for s in past_season_ids:
+                        alt_urls.append(f"{base_counter_url}&season_id={s}")
                     
                     seen_combos = set((c["atk_leader_id"], tuple(c.get("atk_members_ids", []))) for c in counters_data)
                     

@@ -10,7 +10,6 @@ if __name__ == "__main__":
     if len(sys.argv) >= 5:
         print(f"[WORKER] Lancement du script meta pour {sys.argv[1]} ({sys.argv[3]} - {sys.argv[4]})...", flush=True)
 
-from pyvirtualdisplay import Display
 from seleniumbase import SB
 
 def scrape(target_url, output_file, format_type, mode):
@@ -29,6 +28,7 @@ def scrape(target_url, output_file, format_type, mode):
     exit_code = 1
     try:
         if not is_windows:
+            from pyvirtualdisplay import Display
             display = Display(visible=0, size=(1920, 1080))
             display.start()
         

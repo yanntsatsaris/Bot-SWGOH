@@ -144,6 +144,16 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
             )
             rows = await cursor.fetchall()
         
+        # Récupération des secteurs déjà tombés (CLEARED)
+        cleared_slots = set()
+        if "record-battle" in cmd_name:
+            c_cursor = await db.execute(
+                "SELECT slot_index FROM active_sector_status WHERE discord_id = ? AND zone = ? AND status = 'CLEARED'",
+                (discord_id, zone)
+            )
+            c_rows = await c_cursor.fetchall()
+            cleared_slots = {r["slot_index"] for r in c_rows}
+        
     slots_dict = {}
     if rows:
         for r in rows:
@@ -155,12 +165,17 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
     
     choices = []
     for s_idx in range(1, max_slots + 1):
+        if s_idx in cleared_slots:
+            continue  # Exclure les secteurs déjà tombés
         ldr_id = slots_dict.get(s_idx)
         if ldr_id and ldr_id not in ["USED", "None", "EMPTY"]:
             label = f"Slot #{s_idx} : {get_name(ldr_id)}"
         else:
             label = f"Slot #{s_idx} (Vide / À modifier)"
         choices.append(app_commands.Choice(name=label[:100], value=s_idx))
+        
+    if not choices and "record-battle" in cmd_name:
+        choices.append(app_commands.Choice(name=f"🎉 Tous les secteurs de la zone {zone} sont tombés !", value=1))
         
     return choices[:25]
 

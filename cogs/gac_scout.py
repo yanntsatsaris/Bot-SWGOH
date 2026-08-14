@@ -63,24 +63,29 @@ class SectorOutcomeSelectView(discord.ui.View):
 
 
 class SectorSlotSelectView(discord.ui.View):
-    def __init__(self, parent_view, zone: str, action: str):
+    def __init__(self, parent_view, zone: str, action: str, cleared_slots: set = None):
         super().__init__(timeout=60)
         self.parent_view = parent_view
         self.zone = zone
         self.action = action
+        cleared_slots = cleared_slots or set()
 
         teams = parent_view.enemy_zones.get(zone, [])
         options = []
         for idx in range(1, len(teams) + 1):
+            if idx in cleared_slots:
+                continue  # Exclure les secteurs déjà tombés (CLEARED)
             curr_leader = teams[idx-1].get("leader_id", "Inconnu")
             options.append(discord.SelectOption(
                 label=f"Équipe #{idx} : {get_name(curr_leader)}",
                 value=str(idx)
             ))
             
-        select = discord.ui.Select(placeholder=f"Choisis l'emplacement de la zone {zone}...", options=options)
-        select.callback = self.on_select_slot
-        self.add_item(select)
+        self.has_options = len(options) > 0
+        if options:
+            select = discord.ui.Select(placeholder=f"Choisis l'emplacement de la zone {zone}...", options=options)
+            select.callback = self.on_select_slot
+            self.add_item(select)
 
     async def on_select_slot(self, interaction: discord.Interaction):
         slot_idx = int(interaction.data["values"][0])
@@ -113,7 +118,14 @@ class SectorZoneSelectView(discord.ui.View):
 
     async def on_select_zone(self, interaction: discord.Interaction):
         zone = interaction.data["values"][0]
-        slot_view = SectorSlotSelectView(self.parent_view, zone, self.action)
+        from database.db import get_active_sector_statuses
+        statuses = await get_active_sector_statuses(str(interaction.user.id))
+        cleared_slots = {s_idx for (z, s_idx), data in statuses.items() if z == zone and data.get("status") == "CLEARED"}
+        
+        slot_view = SectorSlotSelectView(self.parent_view, zone, self.action, cleared_slots=cleared_slots)
+        if not slot_view.has_options:
+            await interaction.response.send_message(f"🎉 **Tous les secteurs de la zone {zone} sont déjà tombés !**", ephemeral=True)
+            return
         await interaction.response.send_message(f"📍 **Zone {zone} sélectionnée.** Choisis l'emplacement :", view=slot_view, ephemeral=True)
 
 

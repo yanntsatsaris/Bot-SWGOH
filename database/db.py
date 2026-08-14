@@ -641,3 +641,53 @@ async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -
                 "slot_index": s_idx
             })
     return zones
+
+
+async def save_active_gac_session(discord_id: str, enemy_code: str, enemy_name: str, my_name: str, league: str, fmt: str, enemy_roster_index: dict = None):
+    """Enregistre en mémoire active le profil et les reliques de l'adversaire pour les conserver lors des réactualisations d'image."""
+    if not discord_id:
+        return
+    roster_json = json.dumps(enemy_roster_index) if enemy_roster_index else "{}"
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO active_gac_session (discord_id, enemy_code, enemy_name, my_name, league, format, enemy_roster_json, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(discord_id) DO UPDATE SET
+                enemy_code = excluded.enemy_code,
+                enemy_name = excluded.enemy_name,
+                my_name = excluded.my_name,
+                league = excluded.league,
+                format = excluded.format,
+                enemy_roster_json = excluded.enemy_roster_json,
+                updated_at = datetime('now')
+            """,
+            (discord_id, enemy_code, enemy_name, my_name, league, fmt, roster_json)
+        )
+        await db.commit()
+
+
+async def load_active_gac_session(discord_id: str) -> dict:
+    """Charge la session GAC active (nom, code, ligue, format et roster reliques de l'adversaire)."""
+    if not discord_id:
+        return {}
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT enemy_code, enemy_name, my_name, league, format, enemy_roster_json FROM active_gac_session WHERE discord_id = ?",
+            (discord_id,)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return {}
+        try:
+            enemy_roster = json.loads(row["enemy_roster_json"]) if row["enemy_roster_json"] else {}
+        except Exception:
+            enemy_roster = {}
+        return {
+            "enemy_code": row["enemy_code"],
+            "enemy_name": row["enemy_name"],
+            "my_name": row["my_name"],
+            "league": row["league"],
+            "format": row["format"],
+            "enemy_roster_index": enemy_roster,
+        }

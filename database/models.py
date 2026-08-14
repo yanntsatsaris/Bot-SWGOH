@@ -193,6 +193,18 @@ CREATE_TABLES_SQL: list[str] = [
         UNIQUE(discord_id, zone, slot_index)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS active_gac_session (
+        discord_id        TEXT PRIMARY KEY,
+        enemy_code        TEXT,
+        enemy_name        TEXT,
+        my_name           TEXT,
+        league            TEXT,
+        format            TEXT,
+        enemy_roster_json TEXT,
+        updated_at        TEXT DEFAULT (datetime('now'))
+    )
+    """,
 ]
 
 

@@ -156,8 +156,23 @@ class AttackPlanView(discord.ui.View):
     async def refresh_plan_message(self, interaction: discord.Interaction):
         from services.scouting import generate_attack_plan
         from services.scout_image import generate_attack_plan_image
+        from database.db import load_active_gac_session
         
-        plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
+        discord_id = str(interaction.user.id)
+        session = await load_active_gac_session(discord_id)
+        if session:
+            if not self.enemy_roster_index and session.get("enemy_roster_index"):
+                self.enemy_roster_index = session["enemy_roster_index"]
+            if not self.enemy_name or self.enemy_name == "Ennemi":
+                self.enemy_name = session.get("enemy_name", self.enemy_name)
+            if not self.my_name:
+                self.my_name = session.get("my_name", self.my_name)
+            if session.get("league"):
+                self.league = session["league"]
+            if session.get("format"):
+                self.fmt = session["format"]
+        
+        plan = await generate_attack_plan(discord_id, self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
         img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
         file_plan = discord.File(img_buf, filename="attack_plan.png")
         
@@ -408,11 +423,21 @@ class GACScoutCog(commands.Cog, name="GACScout"):
 
                     scout_data = await get_scout_data(ally_code, format_gac.value, my_ally_code, progress_callback=cb, discord_id=str(inter.user.id))
                     
-                    from database.db import save_user_defense_zones
+                    from database.db import save_user_defense_zones, save_active_gac_session
                     if "my_zones" in scout_data:
                         await save_user_defense_zones(str(inter.user.id), scout_data["my_zones"], "defense")
                     if "zones" in scout_data:
                         await save_user_defense_zones(str(inter.user.id), scout_data["zones"], "enemy_defense")
+
+                    await save_active_gac_session(
+                        str(inter.user.id),
+                        clean_code,
+                        scout_data["enemy_name"],
+                        scout_data["my_name"],
+                        scout_data["league"],
+                        scout_data["format"],
+                        scout_data.get("roster_index")
+                    )
 
                     
                     def _build_files(sd):
@@ -559,33 +584,25 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5] if m]
             all_atk = [leader.strip().upper()] + [m.strip().upper() for m in raw_members]
             
-        # 2. Récupérer les infos du round actif pour le joueur
+        # 2. Récupérer les infos de la session active (ou historique DB)
+        from database.db import load_active_gac_session
+        session = await load_active_gac_session(discord_id)
+        
         ally_code = None
-        enemy_code = None
-        league = "BRONZIUM"
-        fmt = "5v5"
-        enemy_name = "Ennemi"
-        my_name = interaction.user.display_name
+        enemy_code = session.get("enemy_code") if session else None
+        league = session.get("league") if session else "BRONZIUM"
+        fmt = session.get("format") if session else "5v5"
+        enemy_name = session.get("enemy_name") if session else "Ennemi"
+        my_name = session.get("my_name") if session else interaction.user.display_name
+        enemy_roster_index = session.get("enemy_roster_index") if session else {}
         
         async with get_db() as db:
             c = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (discord_id,))
             r = await c.fetchone()
             if r: ally_code = r["ally_code"]
-            
-            c = await db.execute(
-                "SELECT player_code, opponent_code, league, format, opponent_name FROM gac_rounds WHERE (player_code = ? OR player_code = ?) AND league IS NOT NULL ORDER BY id DESC LIMIT 1",
-                (ally_code, discord_id) if ally_code else (discord_id, discord_id)
-            )
-            gr = await c.fetchone()
-            if gr:
-                if gr["opponent_code"]: enemy_code = gr["opponent_code"]
-                if gr["league"]: league = gr["league"].upper()
-                if gr["format"]: fmt = gr["format"]
-                if gr["opponent_name"]: enemy_name = gr["opponent_name"]
                 
-        # 3. Charger le roster du joueur et de l'ennemi
+        # 3. Charger le roster du joueur (et de l'ennemi si pas dans la session)
         my_roster_index = {}
-        enemy_roster_index = {}
         omicron_dict = await get_omicron_dict()
         zeta_dict = await get_zeta_dict()
         ship_base_ids = await get_ship_base_ids()
@@ -596,7 +613,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 my_roster_index = _build_roster_index(p_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
                 my_name = p_profile.get("name", my_name)
                 
-        if enemy_code:
+        if not enemy_roster_index and enemy_code:
             e_profile = await get_player(enemy_code)
             if e_profile:
                 enemy_roster_index = _build_roster_index(e_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)

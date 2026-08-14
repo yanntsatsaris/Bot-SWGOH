@@ -58,8 +58,21 @@ async def unit_autocomplete(interaction: discord.Interaction, current: str) -> l
 
 
 async def slot_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
-    zone = getattr(interaction.namespace, "zone", "North") or "North"
-    cote = getattr(interaction.namespace, "cote", "my") or "my"
+    # Normalisation robuste de la zone
+    zone_raw = str(getattr(interaction.namespace, "zone", "") or "")
+    zone = "North"
+    for z_candidate in ["North", "South", "Back", "Fleet"]:
+        if z_candidate.lower() in zone_raw.lower():
+            zone = z_candidate
+            break
+
+    # Normalisation robuste du côté (Ma Défense vs Défense Adverse)
+    cote_raw = str(getattr(interaction.namespace, "cote", "") or "").lower()
+    if "enemy" in cote_raw or "adverse" in cote_raw:
+        used_type_target = "enemy_defense"
+    else:
+        used_type_target = "defense"
+
     discord_id = str(interaction.user.id)
     
     from database.db import get_db
@@ -67,11 +80,9 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
     from utils.gac_config import get_gac_quotas
     from services.comlink import get_player
     
-    used_type_target = "defense" if cote == "my" else "enemy_defense"
-    
     ally_code = None
     league = "BRONZIUM"
-    format_type = "3v3"
+    format_type = "5v5"
     
     async with get_db() as db:
         cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (discord_id,))
@@ -101,18 +112,32 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
                 pass
 
         quotas = get_gac_quotas(league, format_type)
-        max_slots = quotas.get(zone, 3)
+        max_slots = quotas.get(zone, 2)
 
+        # Récupération ordonnée par id ASC (le leader a toujours été inséré en premier)
         cursor = await db.execute(
             """
             SELECT slot_index, base_id 
             FROM active_round_units 
             WHERE discord_id = ? AND zone = ? AND used_type = ?
-            ORDER BY slot_index ASC
+            ORDER BY slot_index ASC, id ASC
             """,
             (discord_id, zone, used_type_target)
         )
         rows = await cursor.fetchall()
+        
+        # Si aucun résultat sous discord_id, tenter avec ally_code
+        if not rows and ally_code:
+            cursor = await db.execute(
+                """
+                SELECT slot_index, base_id 
+                FROM active_round_units 
+                WHERE discord_id = ? AND zone = ? AND used_type = ?
+                ORDER BY slot_index ASC, id ASC
+                """,
+                (str(ally_code), zone, used_type_target)
+            )
+            rows = await cursor.fetchall()
         
     slots_dict = {}
     if rows:
@@ -121,10 +146,12 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
             if s_idx not in slots_dict:
                 slots_dict[s_idx] = r["base_id"]
                 
+    max_slots = max(max_slots, max(slots_dict.keys(), default=1))
+    
     choices = []
     for s_idx in range(1, max_slots + 1):
         ldr_id = slots_dict.get(s_idx)
-        if ldr_id:
+        if ldr_id and ldr_id not in ["USED", "None", "EMPTY"]:
             label = f"Slot #{s_idx} : {get_name(ldr_id)}"
         else:
             label = f"Slot #{s_idx} (Vide / À modifier)"

@@ -573,15 +573,15 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             if r: ally_code = r["ally_code"]
             
             c = await db.execute(
-                "SELECT player_code, enemy_code, league, format, enemy_name FROM gac_rounds WHERE (player_code = ? OR player_code = ?) AND league IS NOT NULL ORDER BY id DESC LIMIT 1",
+                "SELECT player_code, opponent_code, league, format, opponent_name FROM gac_rounds WHERE (player_code = ? OR player_code = ?) AND league IS NOT NULL ORDER BY id DESC LIMIT 1",
                 (ally_code, discord_id) if ally_code else (discord_id, discord_id)
             )
             gr = await c.fetchone()
             if gr:
-                if gr["enemy_code"]: enemy_code = gr["enemy_code"]
+                if gr["opponent_code"]: enemy_code = gr["opponent_code"]
                 if gr["league"]: league = gr["league"].upper()
                 if gr["format"]: fmt = gr["format"]
-                if gr["enemy_name"]: enemy_name = gr["enemy_name"]
+                if gr["opponent_name"]: enemy_name = gr["opponent_name"]
                 
         # 3. Charger le roster du joueur et de l'ennemi
         my_roster_index = {}

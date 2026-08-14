@@ -476,29 +476,6 @@ async def add_used_units(discord_id: str, base_ids: list[str], used_type: str = 
             )
         await db.commit()
 
-async def get_used_units(discord_id: str) -> set[str]:
-    """Retourne l'ensemble des base_ids des personnages brûlés/utilisés par le joueur dans le round actif."""
-    if not discord_id:
-        return set()
-    async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT base_id FROM active_round_units WHERE discord_id = ?",
-            (discord_id,)
-        )
-        rows = await cursor.fetchall()
-    return {row["base_id"].upper() for row in rows}
-
-async def clear_used_units(discord_id: str | None = None):
-    """Réinitialise les unités brûlées et les états de secteurs pour un joueur ou pour tous les joueurs."""
-    async with get_db() as db:
-        if discord_id:
-            await db.execute("DELETE FROM active_round_units WHERE discord_id = ?", (discord_id,))
-            await db.execute("DELETE FROM active_sector_status WHERE discord_id = ?", (discord_id,))
-        else:
-            await db.execute("DELETE FROM active_round_units")
-            await db.execute("DELETE FROM active_sector_status")
-        await db.commit()
-    log.info(f"Unités brûlées et secteurs réinitialisés ({'joueur ' + discord_id if discord_id else 'tous les joueurs'}).")
 
 async def set_sector_status(discord_id: str, zone: str, slot_index: int, status: str, counter_offset: int | None = None):
     """Met à jour le statut d'un secteur (OPEN, CLEARED, FAILED) et optionnellement son offset de contre."""

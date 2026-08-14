@@ -291,13 +291,18 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 x_def += p_cell + p_gap
                 
             x_mid = x_def + 20
-            mid_y_icon  = current_y + max(24, row_height // 2 - 18)
-            mid_y_label = mid_y_icon + 28
             if status == "CLEARED":
-                draw.text((x_mid, mid_y_icon),  "✅",     font=title_font, fill=C_READY)
-                draw.text((x_mid - 10, mid_y_label), "Victoire", font=label_font, fill=C_READY)
+                # Badge circulaire vert avec coche '✔' (100% compatible toute police / OS)
+                badge_radius = 12
+                bx = x_mid + 10
+                by = mid_y_icon + 10
+                draw.ellipse([bx - badge_radius, by - badge_radius, bx + badge_radius, by + badge_radius], fill=(34, 197, 94))
+                check_font = _get_font("bold", 15)
+                draw.text((bx - 5, by - 10), "✔", font=check_font, fill=(255, 255, 255))
+                draw.text((x_mid - 8, mid_y_label), "Victoire", font=label_font, fill=C_READY)
             else:
-                draw.text((x_mid, mid_y_icon),  "⚔️",    font=title_font, fill=C_GOLD)
+                swords_font = _get_font("bold", 20)
+                draw.text((x_mid + 2, mid_y_icon - 2), "⚔", font=swords_font, fill=C_GOLD)
                 if c_info:
                     w_col = C_READY if win_pct >= 70 else (C_WARN if win_pct >= 40 else C_ENEMY)
                     draw.text((x_mid - 15, mid_y_label), f"{win_pct}% Win", font=label_font, fill=w_col)

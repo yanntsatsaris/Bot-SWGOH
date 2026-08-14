@@ -196,9 +196,11 @@ def filter_counters_by_roster(
         # ── Ajustement réaliste du win_pct selon le déficit de reliques ──
         adjusted_win_pct = base_win_pct
         if relic_delta < -1.0 and not is_hard_counter:
-            # Pénalité de 12% par palier de relique de retard
-            penalty = min(75.0, abs(relic_delta) * 12.0)
-            adjusted_win_pct = max(10.0, base_win_pct - penalty)
+            # Si l'équipe d'attaque est déjà R5+, le delta est mineur (3% par palier).
+            # Si l'équipe est sous R3 / G12, la pénalité est plus sévère (8% par palier).
+            tier_rate = 3.0 if atk_relic_avg >= 5.0 else (5.0 if atk_relic_avg >= 3.0 else 10.0)
+            penalty = min(50.0, abs(relic_delta) * tier_rate)
+            adjusted_win_pct = max(15.0, base_win_pct - penalty)
 
         final_score = counter.get("final_score", adjusted_win_pct / 100 if adjusted_win_pct > 1 else adjusted_win_pct)
         

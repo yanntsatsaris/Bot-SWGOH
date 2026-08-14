@@ -299,7 +299,8 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             else:
                 draw.text((x_mid, mid_y_icon),  "⚔️",    font=title_font, fill=C_GOLD)
                 if c_info:
-                    draw.text((x_mid - 15, mid_y_label), f"{win_pct}% Win", font=label_font, fill=C_READY if win_pct >= 75 else C_TEXT)
+                    w_col = C_READY if win_pct >= 70 else (C_WARN if win_pct >= 40 else C_ENEMY)
+                    draw.text((x_mid - 15, mid_y_label), f"{win_pct}% Win", font=label_font, fill=w_col)
                 else:
                     draw.text((x_mid - 20, mid_y_label), "Aucun contre", font=label_font, fill=C_ENEMY)
                 
@@ -310,10 +311,14 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 draw.text((x_counter, current_y + 30), "✔ Territoire libéré", font=sub_font, fill=C_READY)
             elif status == "FAILED":
                 draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}", font=label_font, fill=C_ENEMY)
-            elif c_info and win_pct == 0:
-                draw.text((x_counter, current_y + 10), f"Contre Incertain{opt_str}", font=label_font, fill=C_WARN)
+            elif not c_info:
+                draw.text((x_counter, current_y + 10), "Aucun Contre Dispo", font=label_font, fill=C_ENEMY)
+            elif win_pct < 40:
+                draw.text((x_counter, current_y + 10), f"⚠️ Contre Risqué{opt_str}", font=label_font, fill=C_WARN)
+            elif win_pct < 70:
+                draw.text((x_counter, current_y + 10), f"Contre Possible{opt_str}", font=label_font, fill=C_TEXT)
             else:
-                draw.text((x_counter, current_y + 10), f"Contre Réalisable{opt_str}", font=label_font, fill=C_READY)
+                draw.text((x_counter, current_y + 10), f"Contre Recommandé{opt_str}", font=label_font, fill=C_READY)
             
             if status != "CLEARED":
                 if c_info:

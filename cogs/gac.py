@@ -33,6 +33,9 @@ Voici les commandes principales que tu peux utiliser :
 ⚔️ **Planificateur d'Attaque Global (`[⚔️ Plan d'Attaque Global]`)**
 > Génère une carte visuelle complète attribuant le meilleur contre 100% prêt de ton roster à chaque secteur ennemi.
 
+⚔️ **`/gac-record-battle <zone> <slot> <resultat> [leader] [membres...]`**
+> Enregistre le résultat d'un combat d'attaque avec l'équipe de ton choix (ou l'équipe suggérée), brûle les unités utilisées et réactualise instantanément la carte du plan d'attaque.
+
 🧹 **`/gac-reset-round`**
 > Réinitialise manuellement tes unités brûlées pour le round actif. (Le bot effectue également un reset automatique chaque soir de fin de combat à 23h00 Paris).
 

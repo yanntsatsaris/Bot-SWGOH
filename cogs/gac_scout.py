@@ -7,6 +7,7 @@ from discord.ext import commands, tasks
 
 from database.db import get_db, save_user_defense_slot, clear_used_units
 from services.unit_names import get_name
+from cogs.gac import unit_autocomplete, slot_autocomplete
 
 log = logging.getLogger(__name__)
 
@@ -493,6 +494,157 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         except Exception as e:
             log.exception("Erreur lors du scouting : %s", e)
             await self._send_response(interaction, content=f"❌ Impossible d'initier le scouting : {e}")
+
+    # ------------------------------------------------------------------
+    # /gac-record-battle — Enregistrement du résultat d'un combat d'attaque
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="gac-record-battle",
+        description="Enregistre un combat d'attaque (avec ton équipe ou celle proposée) et actualise la carte."
+    )
+    @app_commands.describe(
+        zone="La zone du secteur attaqué",
+        slot="Numéro de l'emplacement (Slot #1, Slot #2...)",
+        resultat="Résultat du combat (Victoire ou Échec)",
+        leader="Leader que tu as réellement utilisé (optionnel si tu as pris le contre proposé)",
+        membre_2="2ème membre utilisé (optionnel)",
+        membre_3="3ème membre utilisé (optionnel)",
+        membre_4="4ème membre utilisé (optionnel)",
+        membre_5="5ème membre utilisé (optionnel)",
+    )
+    @app_commands.choices(
+        zone=[
+            app_commands.Choice(name="Zone Nord (North)", value="North"),
+            app_commands.Choice(name="Zone Sud (South)", value="South"),
+            app_commands.Choice(name="Zone Arrière (Back)", value="Back"),
+            app_commands.Choice(name="Flotte (Fleet)", value="Fleet"),
+        ],
+        resultat=[
+            app_commands.Choice(name="✅ Victoire (Secteur Tombé)", value="CLEARED"),
+            app_commands.Choice(name="❌ Échec (Défaite / Fail)", value="FAILED"),
+        ]
+    )
+    @app_commands.autocomplete(
+        slot=slot_autocomplete,
+        leader=unit_autocomplete,
+        membre_2=unit_autocomplete,
+        membre_3=unit_autocomplete,
+        membre_4=unit_autocomplete,
+        membre_5=unit_autocomplete,
+    )
+    async def gac_record_battle(
+        self,
+        interaction: discord.Interaction,
+        zone: app_commands.Choice[str],
+        slot: int,
+        resultat: app_commands.Choice[str],
+        leader: str | None = None,
+        membre_2: str | None = None,
+        membre_3: str | None = None,
+        membre_4: str | None = None,
+        membre_5: str | None = None,
+    ) -> None:
+        await interaction.response.defer(ephemeral=False)
+        discord_id = str(interaction.user.id)
+        
+        from database.db import set_sector_status, add_used_units, load_user_defense_zones, get_db
+        from services.scouting import generate_attack_plan
+        from services.scout_image import generate_attack_plan_image
+        from services.unit_names import get_name
+        from services.comlink import get_player
+        from services.scouting import _build_roster_index
+        from database.db import get_omicron_dict, get_zeta_dict, get_ship_base_ids
+        
+        # 1. Déterminer les personnages utilisés
+        all_atk = []
+        if leader:
+            raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5] if m]
+            all_atk = [leader.strip().upper()] + [m.strip().upper() for m in raw_members]
+            
+        # 2. Récupérer les infos du round actif pour le joueur
+        ally_code = None
+        enemy_code = None
+        league = "BRONZIUM"
+        fmt = "5v5"
+        enemy_name = "Ennemi"
+        my_name = interaction.user.display_name
+        
+        async with get_db() as db:
+            c = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (discord_id,))
+            r = await c.fetchone()
+            if r: ally_code = r["ally_code"]
+            
+            c = await db.execute(
+                "SELECT player_code, enemy_code, league, format, enemy_name FROM gac_rounds WHERE (player_code = ? OR player_code = ?) AND league IS NOT NULL ORDER BY id DESC LIMIT 1",
+                (ally_code, discord_id) if ally_code else (discord_id, discord_id)
+            )
+            gr = await c.fetchone()
+            if gr:
+                if gr["enemy_code"]: enemy_code = gr["enemy_code"]
+                if gr["league"]: league = gr["league"].upper()
+                if gr["format"]: fmt = gr["format"]
+                if gr["enemy_name"]: enemy_name = gr["enemy_name"]
+                
+        # 3. Charger le roster du joueur et de l'ennemi
+        my_roster_index = {}
+        enemy_roster_index = {}
+        omicron_dict = await get_omicron_dict()
+        zeta_dict = await get_zeta_dict()
+        ship_base_ids = await get_ship_base_ids()
+        
+        if ally_code:
+            p_profile = await get_player(ally_code)
+            if p_profile:
+                my_roster_index = _build_roster_index(p_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
+                my_name = p_profile.get("name", my_name)
+                
+        if enemy_code:
+            e_profile = await get_player(enemy_code)
+            if e_profile:
+                enemy_roster_index = _build_roster_index(e_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
+                enemy_name = e_profile.get("name", enemy_name)
+
+        enemy_zones = await load_user_defense_zones(discord_id, "enemy_defense")
+        my_zones = await load_user_defense_zones(discord_id, "defense")
+        
+        # Si aucun leader personnalisé n'a été spécifié, récupérer le contre actuellement proposé pour ce slot
+        if not all_atk:
+            current_plan = await generate_attack_plan(discord_id, my_roster_index, enemy_zones, fmt, league, enemy_roster_index)
+            for s in current_plan.get(zone.value, []):
+                if s["slot_index"] == slot and s.get("counter"):
+                    c_info = s["counter"]
+                    all_atk = [c_info["atk_leader_id"]] + c_info.get("atk_members_ids", [])
+                    break
+
+        # 4. Enregistrer le résultat et brûler les persos
+        await set_sector_status(discord_id, zone.value, slot, resultat.value)
+        if all_atk:
+            await add_used_units(discord_id, all_atk, used_type="attack", zone=zone.value, slot_index=slot)
+
+        # 5. Régénérer le plan complet rééquilibré
+        new_plan = await generate_attack_plan(discord_id, my_roster_index, enemy_zones, fmt, league, enemy_roster_index)
+        img_buf = generate_attack_plan_image(new_plan, league, fmt, enemy_name, my_name, my_roster_index, enemy_roster_index)
+        file_plan = discord.File(img_buf, filename="attack_plan.png")
+        
+        units_str = ", ".join(get_name(u) for u in all_atk) if all_atk else "Équipe inconnue"
+        if resultat.value == "CLEARED":
+            header_msg = (
+                f"✅ **Secteur {zone.name} #{slot} enregistré comme VICTOIRE (TOMBÉ) !**\n"
+                f"🔥 **Unités utilisées & verrouillées** : {units_str}.\n"
+                f"Le secteur est désormais grisé (`✔ TOMBÉ`) et tous les autres contres ont été rééquilibrés avec tes troupes restantes."
+            )
+        else:
+            header_msg = (
+                f"⚠ **Secteur {zone.name} #{slot} enregistré comme ÉCHEC (DÉFAITE) !**\n"
+                f"🔥 **Unités brûlées** : {units_str}.\n"
+                f"Un nouveau contre de rattrapage (2-shot) a été calculé avec tes unités restantes disponibles."
+            )
+            
+        atk_view = AttackPlanView(
+            interaction.user.id, my_zones, enemy_zones, {}, league, fmt, my_name, enemy_name, my_roster_index, enemy_roster_index
+        )
+        await self._send_response(interaction, content=header_msg, attachments=[file_plan], view=atk_view)
+
 
 async def setup(bot: commands.Bot) -> None:
     bot.add_view(DefenseValidationView())

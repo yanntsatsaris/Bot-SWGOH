@@ -291,6 +291,8 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 x_def += p_cell + p_gap
                 
             x_mid = x_def + 20
+            mid_y_icon  = current_y + max(24, row_height // 2 - 18)
+            mid_y_label = mid_y_icon + 28
             if status == "CLEARED":
                 # Badge circulaire vert avec coche '✔' (100% compatible toute police / OS)
                 badge_radius = 12

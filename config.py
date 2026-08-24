@@ -18,3 +18,4 @@ COMLINK_URL: str = os.getenv("COMLINK_URL", "http://localhost:3200").rstrip("/")
 
 # --- Base de données ---
 DATABASE_PATH: str = os.getenv("DATABASE_PATH", "database/swgoh.db")
+DATABASE_URL: str | None = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or None

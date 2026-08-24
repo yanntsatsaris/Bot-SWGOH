@@ -1,77 +1,205 @@
 """
-database/db.py — Gestion de la connexion SQLite asynchrone
+database/db.py — Gestion des connexions Base de Données (PostgreSQL & SQLite asynchrones)
 """
 import json
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
+from typing import AsyncIterator, Any
 
 import aiosqlite
 
-from config import DATABASE_PATH
+from config import DATABASE_PATH, DATABASE_URL
 
 log = logging.getLogger(__name__)
 
+# Pool de connexions PostgreSQL
+_pg_pool = None
+
+
+def is_postgres() -> bool:
+    """Retourne True si DATABASE_URL est configuré pour PostgreSQL."""
+    return bool(DATABASE_URL and (DATABASE_URL.startswith("postgresql://") or DATABASE_URL.startswith("postgres://")))
+
+
+async def get_pg_pool():
+    """Initialise ou retourne le pool de connexions PostgreSQL (asyncpg)."""
+    global _pg_pool
+    if _pg_pool is None:
+        import asyncpg
+        # Correction pour les URLs commençant par postgres:// (recommandé postgresql://)
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        _pg_pool = await asyncpg.create_pool(
+            url,
+            min_size=2,
+            max_size=20,
+            command_timeout=60
+        )
+        log.info("🐘 Pool PostgreSQL initialisé avec succès (%s).", url.split("@")[-1] if "@" in url else "local")
+    return _pg_pool
+
+
+def _translate_sql_to_pg(query: str) -> str:
+    """Traduit une requête SQL SQLite avec placeholders '?' vers PostgreSQL '$1, $2, ...'."""
+    count = 0
+    def _repl(match):
+        nonlocal count
+        count += 1
+        return f"${count}"
+    
+    pg_sql = re.sub(r"\?", _repl, query)
+    pg_sql = re.sub(r"datetime\('now'\)", "CURRENT_TIMESTAMP", pg_sql, flags=re.IGNORECASE)
+    
+    # Traduction INSERT OR IGNORE INTO -> INSERT INTO ... ON CONFLICT DO NOTHING
+    if "INSERT OR IGNORE INTO" in pg_sql.upper():
+        pg_sql = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", pg_sql, flags=re.IGNORECASE)
+        if "ON CONFLICT" not in pg_sql.upper():
+            pg_sql = pg_sql.rstrip().rstrip(";") + " ON CONFLICT DO NOTHING"
+            
+    return pg_sql
+
+
+class PGRowWrapper:
+    """Enveloppe pour les enregistrements asyncpg afin d'offrir un accès dict et insensible à la casse."""
+    def __init__(self, record):
+        self._record = record
+        self._dict = dict(record) if record else {}
+
+    def __getitem__(self, key):
+        if isinstance(key, int):
+            return self._record[key]
+        if key in self._dict:
+            return self._dict[key]
+        key_lower = key.lower()
+        if key_lower in self._dict:
+            return self._dict[key_lower]
+        raise KeyError(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        if key in self._dict:
+            val = self._dict[key]
+            return val if val is not None else default
+        key_lower = key.lower()
+        if key_lower in self._dict:
+            val = self._dict[key_lower]
+            return val if val is not None else default
+        return default
+
+    def keys(self):
+        return self._dict.keys()
+
+    def values(self):
+        return self._dict.values()
+
+    def items(self):
+        return self._dict.items()
+
+    def __contains__(self, key):
+        return key in self._dict or (isinstance(key, str) and key.lower() in self._dict)
+
+    def __repr__(self):
+        return repr(self._dict)
+
+
+class PGCursorWrapper:
+    """Enveloppe de curseur pour standardiser fetchall / fetchone sur asyncpg."""
+    def __init__(self, records: list, status: str = ""):
+        self._records = [PGRowWrapper(r) for r in records] if records else []
+        self._status = status
+        self._idx = 0
+
+    async def fetchall(self) -> list[PGRowWrapper]:
+        return self._records
+
+    async def fetchone(self) -> PGRowWrapper | None:
+        if self._records and self._idx < len(self._records):
+            row = self._records[self._idx]
+            self._idx += 1
+            return row
+        return None
+
+
+class PGConnectionWrapper:
+    """Enveloppe de connexion pour exécuter des requêtes via asyncpg avec la syntaxe standard."""
+    def __init__(self, conn):
+        self._conn = conn
+
+    async def execute(self, query: str, parameters: tuple | list = ()):
+        pg_sql = _translate_sql_to_pg(query)
+        params = list(parameters) if parameters else []
+        
+        # Détection si c'est une requête SELECT ou RETURNING
+        q_strip = pg_sql.strip().upper()
+        is_query = q_strip.startswith("SELECT") or q_strip.startswith("WITH") or "RETURNING" in q_strip
+        
+        if is_query:
+            records = await self._conn.fetch(pg_sql, *params)
+            return PGCursorWrapper(records)
+        else:
+            status = await self._conn.execute(pg_sql, *params)
+            return PGCursorWrapper([], status=status)
+
+    async def executemany(self, query: str, seq_of_parameters: list):
+        pg_sql = _translate_sql_to_pg(query)
+        await self._conn.executemany(pg_sql, seq_of_parameters)
+
+    async def commit(self):
+        pass
+
+    async def rollback(self):
+        pass
+
 
 async def init_db() -> None:
-    """Crée le dossier si nécessaire puis initialise toutes les tables."""
-    from database.models import CREATE_TABLES_SQL
-
-    os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
-
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        await db.execute("PRAGMA journal_mode=WAL")   # Meilleures perf. en concurrence
-        await db.execute("PRAGMA foreign_keys = ON")
-        for sql in CREATE_TABLES_SQL:
-            await db.execute(sql)
-            
-        # Migration : Mise à jour de la contrainte UNIQUE pour dissocier defense, enemy_defense et attack
-        try:
-            await db.execute("""
-                CREATE TABLE IF NOT EXISTS active_round_units_v3 (
-                    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                    discord_id  TEXT    NOT NULL,
-                    base_id     TEXT    NOT NULL,
-                    used_type   TEXT    NOT NULL DEFAULT 'defense',
-                    zone        TEXT,
-                    slot_index  INTEGER,
-                    created_at  TEXT    DEFAULT (datetime('now')),
-                    UNIQUE(discord_id, base_id, used_type)
-                )
-            """)
-            await db.execute("INSERT OR IGNORE INTO active_round_units_v3 SELECT * FROM active_round_units")
-            await db.execute("DROP TABLE active_round_units")
-            await db.execute("ALTER TABLE active_round_units_v3 RENAME TO active_round_units")
-        except Exception:
-            pass
-
-        await db.commit()
-
-
-    log.info("Base de données initialisée : %s", DATABASE_PATH)
-
+    """Initialise toutes les tables (PostgreSQL si configuré, sinon SQLite)."""
+    if is_postgres():
+        from database.models import CREATE_TABLES_PG_SQL
+        pool = await get_pg_pool()
+        async with pool.acquire() as conn:
+            async with conn.transaction():
+                for sql in CREATE_TABLES_PG_SQL:
+                    await conn.execute(sql)
+        log.info("🐘 Base de données PostgreSQL initialisée avec succès.")
+    else:
+        from database.models import CREATE_TABLES_SQL
+        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("PRAGMA foreign_keys = ON")
+            for sql in CREATE_TABLES_SQL:
+                await db.execute(sql)
+            await db.commit()
+        log.info("📁 Base de données SQLite initialisée : %s", DATABASE_PATH)
 
 
 @asynccontextmanager
-async def get_db() -> AsyncIterator[aiosqlite.Connection]:
+async def get_db() -> AsyncIterator[Any]:
     """
-    Gestionnaire de contexte asynchrone pour obtenir une connexion.
+    Gestionnaire de contexte asynchrone universel pour obtenir une connexion (PostgreSQL ou SQLite).
 
     Usage :
         async with get_db() as db:
-            await db.execute(...)
+            cursor = await db.execute("SELECT * FROM players WHERE discord_id = ?", (discord_id,))
+            rows = await cursor.fetchall()
     """
-    async with aiosqlite.connect(DATABASE_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        await db.execute("PRAGMA foreign_keys = ON")
-        try:
-            yield db
-            await db.commit()
-        except Exception:
-            await db.rollback()
-            raise
+    if is_postgres():
+        pool = await get_pg_pool()
+        async with pool.acquire() as conn:
+            yield PGConnectionWrapper(conn)
+    else:
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            db.row_factory = aiosqlite.Row
+            await db.execute("PRAGMA foreign_keys = ON")
+            try:
+                yield db
+                await db.commit()
+            except Exception:
+                await db.rollback()
+                raise
 
 
 async def save_gac_history_to_db(parsed_data: dict, ally_code: str):

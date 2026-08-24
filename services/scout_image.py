@@ -315,19 +315,22 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 
             x_counter = x_mid + 80
             opt_str = f" (Option #{offset + 1})" if offset > 0 else ""
+            c_missing = [m.upper() for m in c_info.get("missing_omicron", [])] if c_info else []
+            omi_warn_str = " (⚠️ Sans Omi)" if c_missing else ""
+
             if status == "CLEARED":
                 draw.text((x_counter, current_y + 10), "Secteur Vaincu", font=label_font, fill=C_MUTED)
                 draw.text((x_counter, current_y + 30), "✔ Territoire libéré", font=sub_font, fill=C_READY)
             elif status == "FAILED":
-                draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}", font=label_font, fill=C_ENEMY)
+                draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}{omi_warn_str}", font=label_font, fill=C_ENEMY)
             elif not c_info:
                 draw.text((x_counter, current_y + 10), "Aucun Contre Dispo", font=label_font, fill=C_ENEMY)
             elif win_pct < 40:
-                draw.text((x_counter, current_y + 10), f"⚠️ Contre Risqué{opt_str}", font=label_font, fill=C_WARN)
+                draw.text((x_counter, current_y + 10), f"⚠️ Contre Risqué{opt_str}{omi_warn_str}", font=label_font, fill=C_WARN)
             elif win_pct < 70:
-                draw.text((x_counter, current_y + 10), f"Contre Possible{opt_str}", font=label_font, fill=C_TEXT)
+                draw.text((x_counter, current_y + 10), f"Contre Possible{opt_str}{omi_warn_str}", font=label_font, fill=C_TEXT)
             else:
-                draw.text((x_counter, current_y + 10), f"Contre Recommandé{opt_str}", font=label_font, fill=C_READY)
+                draw.text((x_counter, current_y + 10), f"Contre Recommandé{opt_str}{omi_warn_str}", font=label_font, fill=C_READY)
             
             if status != "CLEARED":
                 if c_info:
@@ -345,7 +348,8 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                         rarity = u_data.get("rarity", 0)  if u_data else 0
                         lvl    = u_data.get("level", 85)   if u_data else 85
                         is_ready = owned and rarity == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
-                        _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, False, False, lvl, zts, omis, rarity)
+                        is_miss_omi = bid.upper() in c_missing
+                        _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, is_miss_omi, False, lvl, zts, omis, rarity)
                         x_counter += p_cell + p_gap
                 else:
                     draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)

@@ -8,11 +8,15 @@ from database.db import get_counters_from_db, get_counter_feedback_stats
 log = logging.getLogger(__name__)
 
 
-# Personnages dont l'Omicron GAC est indispensable pour leur efficacité.
-# Si le joueur n'a pas activé leur omicron, un badge ⚠️ s'affiche sur le counter.
+# Personnages dont l'Omicron GAC est particulièrement décisif pour leur efficacité en contre.
+# Si le joueur n'a pas activé leur omicron, un badge ⚠️ / ! s'affiche et le score est ajusté.
 NEEDS_GAC_OMICRON = {
     "WAMPA", "SAVAGEOPRESS", "QUIGONJINN", "IDENVERSIOEMPIRE", 
-    "CAPTAINREX", "DARTHTRAYA", "ZAMWESELL", "ZORIIBLISS", "DASHRENDAR"
+    "CAPTAINREX", "DARTHTRAYA", "ZAMWESELL", "ZORIIBLISS", "DASHRENDAR",
+    "CHIEFCHIRPA", "TARONMALICOS", "DARTHBANE", "STARKILLER", "QUEENAMIDALA",
+    "BAYLANSKOLL", "BENSOLO", "ADMIRALRADDUS", "CEREJUNDA", "DARTHMALGUS",
+    "DARKREY", "ASAJVENTRESS", "FIRSTORDERTIEPILOT", "BOBAFETTSCION",
+    "HEROAMIRAL", "PRINCESSKNEESAA", "CAPTAINDROGAN", "KRRSANTAN"
 }
 
 # Personnages ou leaders capables de battre des défenses même avec un fort déficit de reliques (Relic Delta négatif)
@@ -207,6 +211,16 @@ def filter_counters_by_roster(
         # Pénalité si zéta vital manquant (ex: Mando 0 zéta)
         if missing_zeta:
             final_score *= 0.5
+
+        # Pénalité si omicron manquant sur des personnages clés du contre
+        if missing_omicron:
+            critical_solos = {"WAMPA", "SAVAGEOPRESS", "DARTHBANE", "QUIGONJINN", "CHIEFCHIRPA", "IDENVERSIOEMPIRE"}
+            if any(uid.upper() in critical_solos for uid in missing_omicron):
+                final_score *= 0.35
+                adjusted_win_pct = min(adjusted_win_pct, 45.0)
+            else:
+                final_score *= 0.75
+                adjusted_win_pct = max(15.0, adjusted_win_pct - 15.0)
 
         # ── Règle anti-perso G12 contre défense Relique ─────────────
         has_unsubbed_g12 = any(my_roster_index.get(uid.upper(), {}).get("relic_tier", 0) == 0 for uid in all_ids)

@@ -67,6 +67,8 @@ async def get_ship_base_ids() -> set:
                     ships.add(row["base_id"])
     except Exception as e:
         log.warning(f"Erreur chargement des vaisseaux: {e}")
+    return ships
+
 def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict]) -> None:
     """
     Associe intelligemment les Datacrons de l'inventaire du joueur aux escouades défensives.
@@ -146,6 +148,7 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
 
 def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set, gac_omicron_units: set = None) -> dict:
     roster = {}
+    ship_base_ids = ship_base_ids or set()
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
         base_id = def_id.split(":")[0] if ":" in def_id else def_id

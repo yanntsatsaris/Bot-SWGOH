@@ -212,6 +212,10 @@ def scrape_datacrons(output_json_path: str) -> bool:
                         m_lvl = re.search(r"Level\s+(\d+)", lvl_text, re.IGNORECASE)
                         tier_level = int(m_lvl.group(1)) if m_lvl else 1
 
+                        # Prérequis exact de Relique (ex: 6, 3, 1...)
+                        relic_elem = tp.find(class_="datacron-template-tier-collapsable__relic")
+                        required_relic = int(relic_elem.get_text(strip=True)) if (relic_elem and relic_elem.get_text(strip=True).isdigit()) else None
+
                         # Scope / Affixes disponibles
                         affix_sets = tp.find_all(class_=re.compile(r"datacron-affix-template-set"))
                         
@@ -250,6 +254,8 @@ def scrape_datacrons(output_json_path: str) -> bool:
                                 m_ab = re.search(r"/ability/([^/]+)/", ab_link.get("href", ""))
                                 if m_ab:
                                     ability_id = m_ab.group(1)
+
+                            target_align, target_fac, target_role = parse_target_scopes(desc_text, scope_name, target_unit_id)
 
                             # Stats numériques éventuelles (Scope 1)
                             stat_type = ""
@@ -306,7 +312,8 @@ def scrape_datacrons(output_json_path: str) -> bool:
                                 "description": desc_text,
                                 "icon_url": aff_icon_url,
                                 "stat_type": stat_type,
-                                "stat_value": stat_val
+                                "stat_value": stat_val,
+                                "required_relic": required_relic
                             })
 
                     # Mettre à jour le max tiers si on a vu des tiers supérieurs

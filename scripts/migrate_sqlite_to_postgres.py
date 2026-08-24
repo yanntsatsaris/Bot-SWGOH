@@ -113,6 +113,8 @@ async def migrate(sqlite_path: str, pg_url: str):
 
         insert_sql = f"INSERT INTO {table} ({col_names}) VALUES ({placeholders}) ON CONFLICT DO NOTHING"
 
+        TIMESTAMP_COLS = ["created_at", "updated_at", "recorded_at", "last_updated"]
+
         migrated_count = 0
         batch_size = 500
         for i in range(0, len(rows), batch_size):
@@ -121,9 +123,18 @@ async def migrate(sqlite_path: str, pg_url: str):
             for r in batch:
                 row_vals = []
                 for idx, val in enumerate(r):
-                    # Conversion booléenne si nécessaire
-                    if isinstance(val, int) and columns[idx] in ["is_attack", "is_image_valid", "success"]:
+                    col_name = columns[idx]
+                    # Conversion booléenne
+                    if isinstance(val, int) and col_name in ["is_attack", "is_image_valid", "success"]:
                         row_vals.append(bool(val))
+                    # Conversion timestamp / date
+                    elif isinstance(val, str) and (col_name in TIMESTAMP_COLS or ("_at" in col_name or "_updated" in col_name)):
+                        try:
+                            # Parse '2026-06-15 12:22:13' ou '2026-06-15T12:22:13'
+                            dt_val = datetime.fromisoformat(val.replace("T", " "))
+                            row_vals.append(dt_val)
+                        except Exception:
+                            row_vals.append(val)
                     else:
                         row_vals.append(val)
                 batch_data.append(row_vals)

@@ -128,18 +128,29 @@ class PGConnectionWrapper:
         self._conn = conn
 
     async def execute(self, query: str, parameters: tuple | list = ()):
+        from datetime import datetime
         pg_sql = _translate_sql_to_pg(query)
         params = list(parameters) if parameters else []
+        
+        normalized_params = []
+        for p in params:
+            if isinstance(p, str) and len(p) >= 19 and p[4] == '-' and p[7] == '-' and (' ' in p or 'T' in p):
+                try:
+                    normalized_params.append(datetime.fromisoformat(p.replace("T", " ")))
+                    continue
+                except Exception:
+                    pass
+            normalized_params.append(p)
         
         # Détection si c'est une requête SELECT ou RETURNING
         q_strip = pg_sql.strip().upper()
         is_query = q_strip.startswith("SELECT") or q_strip.startswith("WITH") or "RETURNING" in q_strip
         
         if is_query:
-            records = await self._conn.fetch(pg_sql, *params)
+            records = await self._conn.fetch(pg_sql, *normalized_params)
             return PGCursorWrapper(records)
         else:
-            status = await self._conn.execute(pg_sql, *params)
+            status = await self._conn.execute(pg_sql, *normalized_params)
             return PGCursorWrapper([], status=status)
 
     async def executemany(self, query: str, seq_of_parameters: list):

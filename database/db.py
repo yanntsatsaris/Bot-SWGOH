@@ -276,12 +276,12 @@ async def add_used_units(discord_id: str, base_ids: list[str], used_type: str = 
         await db.commit()
 
 async def get_used_units(discord_id: str) -> set[str]:
-    """Retourne l'ensemble des base_ids des personnages brûlés/utilisés par le joueur dans le round actif."""
+    """Retourne l'ensemble des base_ids des personnages brûlés/utilisés par le joueur (défense et attaques) dans le round actif."""
     if not discord_id:
         return set()
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT base_id FROM active_round_units WHERE discord_id = ?",
+            "SELECT base_id FROM active_round_units WHERE discord_id = ? AND used_type IN ('defense', 'attack')",
             (discord_id,)
         )
         rows = await cursor.fetchall()

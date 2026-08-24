@@ -543,11 +543,14 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         zone="La zone du secteur attaqué",
         slot="Numéro de l'emplacement (Slot #1, Slot #2...)",
         resultat="Résultat du combat (Victoire ou Échec)",
-        leader="Leader que tu as réellement utilisé (optionnel si tu as pris le contre proposé)",
-        membre_2="2ème membre utilisé (optionnel)",
-        membre_3="3ème membre utilisé (optionnel)",
-        membre_4="4ème membre utilisé (optionnel)",
-        membre_5="5ème membre utilisé (optionnel)",
+        leader="Leader / Vaisseau Amiral réellement utilisé (optionnel si équipe proposée)",
+        membre_2="2ème membre / 1er Vaisseau Principal (optionnel)",
+        membre_3="3ème membre / 2ème Vaisseau Principal (optionnel)",
+        membre_4="4ème membre / 3ème Vaisseau Principal (optionnel)",
+        membre_5="5ème membre / 1er Renfort Flotte (optionnel)",
+        renfort_2="2ème Renfort Flotte (Flotte uniquement)",
+        renfort_3="3ème Renfort Flotte (Flotte uniquement)",
+        renfort_4="4ème Renfort Flotte (Flotte uniquement)",
     )
     @app_commands.choices(
         zone=[
@@ -568,6 +571,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         membre_3=unit_autocomplete,
         membre_4=unit_autocomplete,
         membre_5=unit_autocomplete,
+        renfort_2=unit_autocomplete,
+        renfort_3=unit_autocomplete,
+        renfort_4=unit_autocomplete,
     )
     async def gac_record_battle(
         self,
@@ -580,6 +586,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         membre_3: str | None = None,
         membre_4: str | None = None,
         membre_5: str | None = None,
+        renfort_2: str | None = None,
+        renfort_3: str | None = None,
+        renfort_4: str | None = None,
     ) -> None:
         await interaction.response.defer(ephemeral=False)
         discord_id = str(interaction.user.id)
@@ -593,7 +602,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         # 1. Déterminer les personnages utilisés
         all_atk = []
         if leader:
-            raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5] if m]
+            raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5, renfort_2, renfort_3, renfort_4] if m]
             all_atk = [leader.strip().upper()] + [m.strip().upper() for m in raw_members]
             
         # 2. Récupérer les infos de la session active (ou historique DB)

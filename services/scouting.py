@@ -1050,7 +1050,7 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             free_units = assigned_units - assigned_team
             alt_counters = [
                 c for c in other_slot["candidates"]
-                if not set([c["atk_leader_id"]] + c.get("atk_members_ids", [])).intersection(free_units)
+                if not set([c["atk_leader_id"]] + c.get("atk_members_ids", [])).intersection(free_units | used_units)
                 and c["atk_leader_id"] != c_assigned["atk_leader_id"]
             ]
             
@@ -1063,7 +1063,7 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 def_members_ids=def_members,
                 format_type=fmt,
                 my_roster_index=my_index,
-                excluded_chars=free_units,
+                excluded_chars=free_units | used_units,
                 league=league,
                 enemy_roster_index=enemy_roster_index
             )
@@ -1078,7 +1078,8 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 slot["win_pct"] = c_assigned.get("win_pct", 0)
                 
                 alt_units = set([alt_c["atk_leader_id"]] + alt_c.get("atk_members_ids", []))
-                assigned_units = (free_units | assigned_team | alt_units)
+                c_assigned_units = set([c_assigned["atk_leader_id"]] + c_assigned.get("atk_members_ids", []))
+                assigned_units = (free_units | alt_units | c_assigned_units)
                 log.info(f"[AttackPlanSwap] Échange effectué entre {other_slot['zone']} #{other_slot['slot_index']} et {slot['zone']} #{slot['slot_index']}")
                 break
 

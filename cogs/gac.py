@@ -45,19 +45,56 @@ Voici les commandes principales que tu peux utiliser :
 
 
 async def unit_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    if not current:
-        return []
-    current_lower = current.lower()
+    zone_raw = str(getattr(interaction.namespace, "zone", "") or "")
+    is_fleet = ("fleet" in zone_raw.lower() or "flotte" in zone_raw.lower())
+
+    # Récupérer les unités déjà renseignées dans les autres champs de la même commande
+    already_selected = set()
+    for field_name in [
+        "leader", "membre_2", "membre_3", "membre_4", "membre_5",
+        "renfort_1", "renfort_2", "renfort_3", "renfort_4"
+    ]:
+        val = getattr(interaction.namespace, field_name, None)
+        if val and isinstance(val, str) and val.strip():
+            already_selected.add(val.strip().upper())
+
+    target_type = "ship" if is_fleet else "character"
+    current_lower = current.strip().lower() if current else ""
+    
     async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT base_id, name FROM game_characters WHERE LOWER(name) LIKE ? OR LOWER(base_id) LIKE ? LIMIT 25",
-            (f"%{current_lower}%", f"%{current_lower}%")
-        )
+        if current_lower:
+            cursor = await db.execute(
+                """
+                SELECT base_id, name 
+                FROM game_characters 
+                WHERE type = ? AND (LOWER(name) LIKE ? OR LOWER(base_id) LIKE ?)
+                ORDER BY name ASC
+                LIMIT 35
+                """,
+                (target_type, f"%{current_lower}%", f"%{current_lower}%")
+            )
+        else:
+            cursor = await db.execute(
+                """
+                SELECT base_id, name 
+                FROM game_characters 
+                WHERE type = ?
+                ORDER BY name ASC
+                LIMIT 35
+                """,
+                (target_type,)
+            )
         rows = await cursor.fetchall()
-    return [
-        app_commands.Choice(name=f"{row['name']} ({row['base_id']})", value=row["base_id"])
-        for row in rows
-    ]
+        
+    choices = []
+    for row in rows:
+        bid = row["base_id"].upper()
+        if bid not in already_selected:
+            choices.append(app_commands.Choice(name=f"{row['name']} ({row['base_id']})", value=row["base_id"]))
+            if len(choices) >= 25:
+                break
+                
+    return choices
 
 
 async def slot_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:
@@ -193,9 +230,11 @@ class GacCog(commands.Cog, name="GAC"):
     # ------------------------------------------------------------------
     @app_commands.command(
         name="register",
-        description="Associe ton compte Discord à ton compte SWGOH.",
+        description="Lie ton compte Discord à ton compte SWGOH via ton code allié (ex: 123-456-789)."
     )
-    @app_commands.describe(ally_code="Ton code allié SWGOH (ex : 123-456-789)")
+    @app_commands.describe(
+        ally_code="Ton code allié SWGOH avec ou sans tirets (ex: 123-456-789 ou 123456789)"
+    )
     async def register(self, interaction: discord.Interaction, ally_code: str) -> None:
         await interaction.response.defer(ephemeral=True)
 
@@ -245,11 +284,14 @@ class GacCog(commands.Cog, name="GAC"):
         cote="Choisir si c'est ta défense ou la défense adverse",
         zone="La zone de la carte à modifier",
         slot="Numéro de l'emplacement (autocomplétion avec le nom de l'équipe actuelle)",
-        leader="Leader de l'équipe (autocomplétion disponible)",
-        membre_2="2ème membre de l'équipe (optionnel)",
-        membre_3="3ème membre de l'équipe (optionnel)",
-        membre_4="4ème membre de l'équipe (5v5 uniquement)",
-        membre_5="5ème membre de l'équipe (5v5 uniquement)",
+        leader="Leader / Vaisseau Amiral (autocomplétion)",
+        membre_2="2ème membre / 1er Vaisseau Principal (optionnel)",
+        membre_3="3ème membre / 2ème Vaisseau Principal (optionnel)",
+        membre_4="4ème membre / 3ème Vaisseau Principal (optionnel)",
+        membre_5="5ème membre / 1er Renfort Flotte (optionnel)",
+        renfort_2="2ème Renfort Flotte (Flotte uniquement)",
+        renfort_3="3ème Renfort Flotte (Flotte uniquement)",
+        renfort_4="4ème Renfort Flotte (Flotte uniquement)",
     )
     @app_commands.choices(
         cote=[
@@ -270,6 +312,9 @@ class GacCog(commands.Cog, name="GAC"):
         membre_3=unit_autocomplete,
         membre_4=unit_autocomplete,
         membre_5=unit_autocomplete,
+        renfort_2=unit_autocomplete,
+        renfort_3=unit_autocomplete,
+        renfort_4=unit_autocomplete,
     )
 
     async def edit_slot(
@@ -283,11 +328,14 @@ class GacCog(commands.Cog, name="GAC"):
         membre_3: str | None = None,
         membre_4: str | None = None,
         membre_5: str | None = None,
+        renfort_2: str | None = None,
+        renfort_3: str | None = None,
+        renfort_4: str | None = None,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         
         leader_id = leader.strip().upper()
-        raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5] if m]
+        raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5, renfort_2, renfort_3, renfort_4] if m]
         members_list = [m.strip().upper() for m in raw_members]
         
         from services.unit_names import get_name
@@ -301,7 +349,7 @@ class GacCog(commands.Cog, name="GAC"):
         m_str = ", ".join(get_name(m) for m in members_list) if members_list else "aucun"
         await interaction.followup.send(
             f"✅ **{side_str} mise à jour !**\n"
-            f"📍 **{zone.name} — Slot #{slot}** : Leader **{get_name(leader_id)}** (Membres : {m_str}).\n"
+            f"📍 **{zone.name} — Slot #{slot}** : Leader/Amiral **{get_name(leader_id)}** ({len(members_list)} membres/renforts : {m_str}).\n"
             f"Toutes tes propositions de contres et ton plan d'attaque tiendront compte de cette modification.\n"
             f"💡 *Pour voir la carte mise à jour, réutilise `/gac-scout` ou clique sur `[🔄 Actualiser Carte]` dans le plan.*",
             ephemeral=True

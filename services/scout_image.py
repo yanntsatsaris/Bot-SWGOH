@@ -72,10 +72,10 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
         cur_x = x
         
         def get_unit_details(uid):
-            if not uid or not roster_index or uid not in roster_index:
-                return None, None, 0, 0
-            u = roster_index[uid]
-            return u.get("relic_tier"), u.get("gear_tier"), u.get("zetas", 0), u.get("omicrons", 0)
+            if not uid or not roster_index or uid.upper() not in roster_index:
+                return None, None, 0, 0, 7
+            u = roster_index[uid.upper()]
+            return u.get("relic_tier"), u.get("gear_tier"), u.get("zetas", 0), u.get("omicrons", 0), u.get("rarity", 7)
         
         def _draw_scaled(cvs, px, py, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, zts=0, omis=0, stars_=7):
             """Dessine un portrait redimensionné à 'cell' px via un canvas temporaire."""
@@ -95,7 +95,8 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             fleet_row_width = cell_w + gap * 3 + (3 * cell_w) + gap * 2 + (4 * cell_w)
             wrap = fleet_row_width > (width - cur_x - PADDING)
 
-            _draw_scaled(canvas, cur_x, y, leader_id, None, None, True, True, not is_player, False, True)
+            f_rel, f_gr, f_zts, f_omis, f_star = get_unit_details(leader_id)
+            _draw_scaled(canvas, cur_x, y, leader_id, f_rel, f_gr, True, True, not is_player, False, True, zts=f_zts, omis=f_omis, stars_=f_star)
             cx = cur_x + cell + gap * 3
             drawn = 1
             row2_y = y + cell + 10
@@ -106,7 +107,8 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                     if wrap and drawn == 4:
                         cx = row2_x
                     cur_y = row2_y if (wrap and drawn >= 4) else y
-                    _draw_scaled(canvas, cx, cur_y, m, None, None, True, True, not is_player, False, True)
+                    m_rel, m_gr, m_zts, m_omis, m_star = get_unit_details(m)
+                    _draw_scaled(canvas, cx, cur_y, m, m_rel, m_gr, True, True, not is_player, False, True, zts=m_zts, omis=m_omis, stars_=m_star)
                     cx += cell + gap
                     if drawn == 3 and not wrap:
                         cx += gap * 2
@@ -125,14 +127,14 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
             cur_x = cx
         else:
             slots = 3 if fmt == "3v3" else 5
-            rel, gr, zetas, omis = get_unit_details(leader_id)
-            _draw_scaled(canvas, cur_x, y, leader_id, rel, gr, True, True, not is_player, False, False, zts=zetas, omis=omis)
+            rel, gr, zetas, omis, stars = get_unit_details(leader_id)
+            _draw_scaled(canvas, cur_x, y, leader_id, rel, gr, True, True, not is_player, False, False, zts=zetas, omis=omis, stars_=stars)
             cur_x += cell + gap
             drawn = 1
             for m in members:
                 if m != leader_id and drawn < slots:
-                    rel, gr, zetas, omis = get_unit_details(m)
-                    _draw_scaled(canvas, cur_x, y, m, rel, gr, True, True, not is_player, False, False, zts=zetas, omis=omis)
+                    rel, gr, zetas, omis, stars = get_unit_details(m)
+                    _draw_scaled(canvas, cur_x, y, m, rel, gr, True, True, not is_player, False, False, zts=zetas, omis=omis, stars_=stars)
                     cur_x += cell + gap
                     drawn += 1
             while drawn < slots:

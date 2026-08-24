@@ -744,7 +744,17 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                             leaders_needing_scrape.append(l_id)
                         else:
                             try:
-                                last_updated = datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")
+                                raw_date = row["last_updated"]
+                                if isinstance(raw_date, datetime.datetime):
+                                    last_updated = raw_date.replace(tzinfo=None) if raw_date.tzinfo else raw_date
+                                elif isinstance(raw_date, str):
+                                    try:
+                                        last_updated = datetime.datetime.fromisoformat(raw_date.replace("Z", "+00:00").replace("T", " "))
+                                    except Exception:
+                                        last_updated = datetime.datetime.strptime(raw_date, "%Y-%m-%d %H:%M:%S")
+                                else:
+                                    last_updated = datetime.datetime.utcnow()
+
                                 if (datetime.datetime.utcnow() - last_updated).days > 7:
                                     leaders_needing_scrape.append(l_id)
                             except Exception:

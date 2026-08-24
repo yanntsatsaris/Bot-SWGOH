@@ -221,7 +221,17 @@ class GacCountersScraper:
                 
                 if row:
                     try:
-                        last_updated = datetime.datetime.strptime(row["last_updated"], "%Y-%m-%d %H:%M:%S")
+                        raw_date = row["last_updated"]
+                        if isinstance(raw_date, datetime.datetime):
+                            last_updated = raw_date.replace(tzinfo=None) if raw_date.tzinfo else raw_date
+                        elif isinstance(raw_date, str):
+                            try:
+                                last_updated = datetime.datetime.fromisoformat(raw_date.replace("Z", "+00:00").replace("T", " "))
+                            except Exception:
+                                last_updated = datetime.datetime.strptime(raw_date, "%Y-%m-%d %H:%M:%S")
+                        else:
+                            last_updated = datetime.datetime.utcnow()
+
                         age = (datetime.datetime.utcnow() - last_updated).days
                         if age > 7:
                             leaders_to_scrape[l_id] = members

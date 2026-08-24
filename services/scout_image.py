@@ -141,6 +141,30 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                 _draw_scaled(canvas, cur_x, y, None, None, None, True, True, True, False, False)
                 cur_x += cell + gap
                 drawn += 1
+
+        # Affichage du Datacron associé si présent
+        dtc = t.get("datacron")
+        if dtc and not is_fleet:
+            try:
+                from services.datacron_renderer import render_datacron_badge
+                lvl = dtc.get("level") or (len(dtc.get("affix", [])) if "affix" in dtc else 3)
+                is_foc = dtc.get("is_focused", False)
+                char_id = dtc.get("character_base_id") or dtc.get("target_unit_id")
+                cube_tex = dtc.get("cube_texture_url") or dtc.get("icon_url")
+                
+                badge_img = render_datacron_badge(
+                    level=lvl,
+                    max_tiers=dtc.get("max_tiers"),
+                    is_focused=is_foc,
+                    character_base_id=char_id,
+                    character_icon_url=dtc.get("character_icon_url"),
+                    cube_texture_url=cube_tex,
+                    size=(cell, cell)
+                )
+                canvas.paste(badge_img, (cur_x + 4, y), badge_img)
+                cur_x += cell + gap + 4
+            except Exception as e:
+                log.warning("Erreur rendu badge Datacron sur scout map: %s", e)
         
         team_source = t.get("source", "predictive")
         if "Historique" in team_source:

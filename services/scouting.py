@@ -67,7 +67,82 @@ async def get_ship_base_ids() -> set:
                     ships.add(row["base_id"])
     except Exception as e:
         log.warning(f"Erreur chargement des vaisseaux: {e}")
-    return ships
+def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict]) -> None:
+    """
+    Associe intelligemment les Datacrons de l'inventaire du joueur aux escouades défensives.
+    Priorité :
+    1. Datacron ciblant spécifiquement un personnage de l'escouade (ex: GL Rey, Colonel Ward, Bishop...).
+    2. Datacron ciblant la faction de l'escouade (ex: Resistance, Rebel, Empire...).
+    """
+    if not player_datacrons:
+        return
+
+    valid_dtcs = [d for d in player_datacrons if len(d.get("affix", [])) >= 3 or d.get("templateId", "").startswith("datacron_set_")]
+    if not valid_dtcs:
+        return
+
+    used_dtc_ids = set()
+
+    for zone_name in ["North", "South", "Back"]:
+        for team in zones.get(zone_name, []):
+            ldr = team.get("leader_id")
+            if not ldr or ldr in ["USED", "None", "EMPTY", "Vide"]:
+                continue
+            members = [ldr] + team.get("members_ids", [])
+            members_upper = [m.upper() for m in members if m]
+
+            best_dtc = None
+            best_match_level = 0
+
+            for dtc in valid_dtcs:
+                dtc_id = dtc.get("id")
+                if dtc_id in used_dtc_ids:
+                    continue
+
+                affixes = dtc.get("affix", [])
+                template_id = dtc.get("templateId", "")
+                
+                dtc_char_target = None
+                dtc_faction_target = None
+
+                for aff in affixes:
+                    rule = (aff.get("targetRule") or "").lower()
+                    ab_id = (aff.get("abilityId") or "").lower()
+                    combined_target = f"{rule} {ab_id}"
+                    
+                    for m_id in members_upper:
+                        clean_m = m_id.replace("_", "").lower()
+                        if clean_m in combined_target or (m_id == "GLREY" and "glrey" in combined_target):
+                            dtc_char_target = m_id
+                            break
+                    
+                    for fac in ["resistance", "rebel", "empire", "sith", "jedi", "firstorder", "first_order", "bountyhunter", "mandalorian"]:
+                        if fac in combined_target:
+                            dtc_faction_target = fac.upper()
+                            break
+
+                if dtc_char_target:
+                    best_dtc = {
+                        "template_id": template_id,
+                        "level": 3 if len(affixes) >= 9 else (2 if len(affixes) >= 6 else 1),
+                        "is_focused": "focused" in template_id,
+                        "character_base_id": dtc_char_target,
+                        "id": dtc_id
+                    }
+                    best_match_level = 3
+                    break
+                elif dtc_faction_target and best_match_level < 2:
+                    best_dtc = {
+                        "template_id": template_id,
+                        "level": 2 if len(affixes) >= 6 else 1,
+                        "is_focused": False,
+                        "id": dtc_id
+                    }
+                    best_match_level = 2
+
+            if best_dtc:
+                team["datacron"] = best_dtc
+                used_dtc_ids.add(best_dtc["id"])
 
 def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set, gac_omicron_units: set = None) -> dict:
     roster = {}
@@ -713,6 +788,12 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     
     enemy_zones = await _predict_zones(enemy_index, quotas, fmt, ship_base_ids, habits)
     
+    # ── Association intelligente des Datacrons adverses aux escouades défensives ──
+    try:
+        attach_datacrons_to_scouted_zones(enemy_zones, profile.get("datacron", []))
+    except Exception as e:
+        log.warning(f"Erreur association Datacrons ennemis: {e}")
+
     # ── Intégration des slots de défense adverse modifiés par l'utilisateur ──
     if discord_id:
         from database.db import load_user_defense_zones

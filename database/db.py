@@ -121,16 +121,24 @@ class PGCursorWrapper:
             return row
         return None
 
+    def __iter__(self):
+        return iter(self._records)
 
-class PGConnectionWrapper:
-    """Enveloppe de connexion pour exécuter des requêtes via asyncpg avec la syntaxe standard."""
-    def __init__(self, conn):
+
+class PGExecuteContext:
+    """Permet à db.execute() d'être soit attendu (await db.execute()), soit utilisé en contexte (async with db.execute() as cur:)."""
+    def __init__(self, conn, query: str, parameters: tuple | list = ()):
         self._conn = conn
+        self._query = query
+        self._parameters = parameters
+        self._cursor = None
 
-    async def execute(self, query: str, parameters: tuple | list = ()):
+    async def _run(self) -> PGCursorWrapper:
+        if self._cursor is not None:
+            return self._cursor
         from datetime import datetime
-        pg_sql = _translate_sql_to_pg(query)
-        params = list(parameters) if parameters else []
+        pg_sql = _translate_sql_to_pg(self._query)
+        params = list(self._parameters) if self._parameters else []
         
         normalized_params = []
         for p in params:
@@ -142,16 +150,34 @@ class PGConnectionWrapper:
                     pass
             normalized_params.append(p)
         
-        # Détection si c'est une requête SELECT ou RETURNING
         q_strip = pg_sql.strip().upper()
         is_query = q_strip.startswith("SELECT") or q_strip.startswith("WITH") or "RETURNING" in q_strip
         
         if is_query:
             records = await self._conn.fetch(pg_sql, *normalized_params)
-            return PGCursorWrapper(records)
+            self._cursor = PGCursorWrapper(records)
         else:
             status = await self._conn.execute(pg_sql, *normalized_params)
-            return PGCursorWrapper([], status=status)
+            self._cursor = PGCursorWrapper([], status=status)
+        return self._cursor
+
+    def __await__(self):
+        return self._run().__await__()
+
+    async def __aenter__(self) -> PGCursorWrapper:
+        return await self._run()
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class PGConnectionWrapper:
+    """Enveloppe de connexion pour exécuter des requêtes via asyncpg avec la syntaxe standard."""
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, query: str, parameters: tuple | list = ()):
+        return PGExecuteContext(self._conn, query, parameters)
 
     async def executemany(self, query: str, seq_of_parameters: list):
         pg_sql = _translate_sql_to_pg(query)

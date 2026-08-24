@@ -101,7 +101,12 @@ async def migrate(sqlite_path: str, pg_url: str):
             print(f"  ⏭️  Table '{table}' absente de SQLite, ignorée.")
             continue
 
-        sqlite_cursor.execute(f"SELECT * FROM {table}")
+        if table == "gac_matches":
+            sqlite_cursor.execute("SELECT * FROM gac_matches WHERE round_id IN (SELECT id FROM gac_rounds)")
+        elif table == "gac_round_teams":
+            sqlite_cursor.execute("SELECT * FROM gac_round_teams WHERE round_id IN (SELECT id FROM gac_rounds)")
+        else:
+            sqlite_cursor.execute(f"SELECT * FROM {table}")
         rows = sqlite_cursor.fetchall()
         if not rows:
             print(f"  ⚪ Table '{table}' : 0 ligne.")

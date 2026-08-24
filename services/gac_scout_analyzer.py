@@ -21,7 +21,7 @@ class GacScoutAnalyzer:
                     SELECT season_id, round_number FROM gac_rounds 
                     WHERE (player_code = ? OR opponent_code = ?) AND format = ?
                     ORDER BY season_id DESC, round_number DESC LIMIT 3
-                )
+                ) AS sub
             """
             async with db.execute(threshold_query, (ally_code, ally_code, format_type)) as cur:
                 t_row = await cur.fetchone()

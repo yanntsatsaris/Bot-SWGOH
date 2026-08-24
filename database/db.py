@@ -124,9 +124,20 @@ class PGCursorWrapper:
     def __iter__(self):
         return iter(self._records)
 
+    def __aiter__(self):
+        self._idx = 0
+        return self
+
+    async def __anext__(self) -> PGRowWrapper:
+        if self._idx < len(self._records):
+            row = self._records[self._idx]
+            self._idx += 1
+            return row
+        raise StopAsyncIteration
+
 
 class PGExecuteContext:
-    """Permet à db.execute() d'être soit attendu (await db.execute()), soit utilisé en contexte (async with db.execute() as cur:)."""
+    """Permet à db.execute() d'être soit attendu (await db.execute()), soit utilisé en contexte (async with db.execute() as cur:), soit itéré (async for row in db.execute():)."""
     def __init__(self, conn, query: str, parameters: tuple | list = ()):
         self._conn = conn
         self._query = query
@@ -169,6 +180,13 @@ class PGExecuteContext:
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         pass
+
+    def __aiter__(self):
+        async def _generator():
+            cursor = await self._run()
+            for r in cursor._records:
+                yield r
+        return _generator()
 
 
 class PGConnectionWrapper:

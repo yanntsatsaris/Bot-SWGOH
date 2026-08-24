@@ -117,6 +117,12 @@ class PGCursorWrapper:
         self._status = status
         self._idx = 0
 
+    @property
+    def lastrowid(self):
+        if self._records and len(self._records) > 0 and "id" in self._records[0]:
+            return self._records[0]["id"]
+        return None
+
     async def fetchall(self) -> list[PGRowWrapper]:
         return self._records
 
@@ -359,7 +365,16 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
             """,
             (season_id, round_number, real_ally_code, opponent_name, detected_format, detected_league)
         )
-        round_id = cursor.lastrowid
+        
+        round_id = getattr(cursor, "lastrowid", None)
+        if not round_id:
+            # Fallback PostgreSQL : récupération directe de l'id inséré
+            cursor_sel = await db.execute(
+                "SELECT id FROM gac_rounds WHERE player_code = ? AND season_id = ? AND round_number = ? ORDER BY id DESC LIMIT 1",
+                (real_ally_code, season_id, round_number)
+            )
+            row = await cursor_sel.fetchone()
+            round_id = row["id"] if row else None
         
         # 3. Insertion des matchs associés
         for match in parsed_data["matches"]:

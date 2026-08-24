@@ -90,12 +90,20 @@ def render_datacron_badge(
         main_radius = int(ring_dim * (43.5 / 118))
     else:
         bg_name = "datacron-icon-bg--level9.webp"
-        ring_dim = int(CANVAS_SIZE * 0.96)
-        ring_x = (CANVAS_SIZE - ring_dim) // 2
-        ring_y = int(CANVAS_SIZE * 0.02)
-        center_x = CANVAS_SIZE // 2
-        center_y = ring_y + ring_dim // 2
-        main_radius = int(ring_dim * 0.44)
+        if has_char_portrait:
+            ring_dim = int(CANVAS_SIZE * 0.86)
+            ring_x = (CANVAS_SIZE - ring_dim) // 2
+            ring_y = int(CANVAS_SIZE * 0.10)
+            center_x = CANVAS_SIZE // 2
+            center_y = ring_y + ring_dim // 2
+            main_radius = int(ring_dim * 0.44)
+        else:
+            ring_dim = int(CANVAS_SIZE * 0.96)
+            ring_x = (CANVAS_SIZE - ring_dim) // 2
+            ring_y = int(CANVAS_SIZE * 0.02)
+            center_x = CANVAS_SIZE // 2
+            center_y = ring_y + ring_dim // 2
+            main_radius = int(ring_dim * 0.44)
 
     bg_url = OFFICIAL_ASSETS_URLS.get(bg_name, f"https://assets.swgoh.gg/frontend/assets/{bg_name}")
     bg_path = _download_asset_if_missing(bg_name, bg_url)

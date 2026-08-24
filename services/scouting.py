@@ -69,18 +69,17 @@ async def get_ship_base_ids() -> set:
         log.warning(f"Erreur chargement des vaisseaux: {e}")
     return ships
 
-def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict]) -> None:
+def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict], roster_index: dict = None) -> None:
     """
     Associe intelligemment les Datacrons de l'inventaire du joueur aux escouades défensives.
-    Priorité :
-    1. Datacron ciblant spécifiquement un personnage de l'escouade (ex: GL Rey, Colonel Ward, Bishop...).
-    2. Datacron ciblant la faction de l'escouade (ex: Resistance, Rebel, Empire...).
-    3. Datacron ciblant l'alignement de l'escouade (Dark Side / Light Side).
+    Prend en compte les prérequis officiels de Reliques pour l'activation réelle des paliers :
+    - Tier 1 (Palier 3) : Tous les membres doivent être au moins Relic 3 (R3+).
+    - Tier 2 (Palier 6) : Tous les membres doivent être au moins Relic 5 (R5+).
+    - Tier 3 (Palier 9) : Tous les membres doivent être au moins Relic 7 (R7+).
     """
     if not player_datacrons:
         return
 
-    # Un Datacron doit avoir au moins 3 affixes (Level 3+) pour avoir un palier actif
     valid_dtcs = [d for d in player_datacrons if len(d.get("affix", [])) >= 3]
     if not valid_dtcs:
         return
@@ -137,7 +136,6 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
                     # 2. Vérification cible faction
                     for fac_name, keywords in FACTION_KEYWORDS.items():
                         if fac_name in combined_target:
-                            # L'escouade doit RÉELLEMENT posséder des membres de cette faction
                             if any(kw in squad_str for kw in keywords):
                                 dtc_faction_target = fac_name
                                 break
@@ -148,21 +146,21 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
                     elif "lightside" in combined_target:
                         dtc_align_target = "LIGHT_SIDE"
 
-                # Calcul du niveau d'étoiles/pastilles (Level 9 = 3 pastilles, Level 6 = 2 pastilles, Level 3 = 1 pastille)
+                # Calcul du niveau d'étoiles/pastilles maximales selon les affixes
                 if len(affixes) >= 9:
-                    dtc_level = 3
+                    dtc_max_tier = 3
                 elif len(affixes) >= 6:
-                    dtc_level = 2
+                    dtc_max_tier = 2
                 elif len(affixes) >= 3:
-                    dtc_level = 1
+                    dtc_max_tier = 1
                 else:
-                    dtc_level = 0
+                    dtc_max_tier = 0
 
                 # Score et sélection
                 if dtc_char_target:
                     best_dtc = {
                         "template_id": template_id,
-                        "level": dtc_level,
+                        "level": dtc_max_tier,
                         "is_focused": "focused" in template_id,
                         "character_base_id": dtc_char_target,
                         "id": dtc_id
@@ -172,13 +170,52 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
                 elif dtc_faction_target and best_match_level < 2:
                     best_dtc = {
                         "template_id": template_id,
-                        "level": dtc_level,
+                        "level": dtc_max_tier,
                         "is_focused": False,
                         "id": dtc_id
                     }
                     best_match_level = 2
 
             if best_dtc:
+                # ── CONTRÔLE DES RELIQUES DU JOUEUR/ENNEMI POUR L'ACTIVATION RÉELLE ──
+                # Les prérequis dépendent du type de Datacron (Focused vs Standard) et du set :
+                if roster_index and members_upper:
+                    squad_relics = [roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index]
+                    squad_gears = [roster_index.get(m, {}).get("gear_tier", 0) for m in members_upper if m in roster_index]
+                    min_relic = min(squad_relics) if squad_relics else 0
+                    min_gear = min(squad_gears) if squad_gears else 0
+                    
+                    is_foc = best_dtc.get("is_focused", False)
+                    if is_foc:
+                        # Datacrons Spécialisés (Focused) : seuils allégés
+                        if min_relic >= 7:
+                            active_tier = 5
+                        elif min_relic >= 5:
+                            active_tier = 4
+                        elif min_relic >= 3:
+                            active_tier = 3
+                        elif min_relic >= 1 or min_gear >= 12:
+                            active_tier = 2
+                        elif min_gear >= 10:
+                            active_tier = 1
+                        else:
+                            active_tier = 0
+                    else:
+                        # Datacrons Standards (Alignement / Faction / Perso)
+                        if min_relic >= 7:
+                            active_tier = 3
+                        elif min_relic >= 5:
+                            active_tier = 2
+                        elif min_relic >= 3:
+                            active_tier = 1
+                        elif min_relic >= 1 or min_gear >= 12:
+                            # Tolérance pour certains sets de relance à R1/G12
+                            active_tier = 1
+                        else:
+                            active_tier = 0
+                    
+                    best_dtc["level"] = min(best_dtc["level"], active_tier)
+
                 team["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])
 
@@ -690,7 +727,17 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                     break
                 else:
                     filler = None
-                    synergy_candidates = leader_synergy_map.get(leader_id, [])
+                    raw_synergy = leader_synergy_map.get(leader_id, [])
+                    # Prioriser les candidats avec les reliques les plus hautes (R7+ puis R5+) pour maximiser les Datacrons
+                    synergy_candidates = sorted(
+                        raw_synergy,
+                        key=lambda c: (
+                            my_index.get(c, {}).get("relic_tier", 0) >= 7,
+                            my_index.get(c, {}).get("relic_tier", 0) >= 5,
+                            my_index.get(c, {}).get("relic_tier", 0) * 10 + my_index.get(c, {}).get("gear_tier", 0)
+                        ),
+                        reverse=True
+                    )
 
                     # Niveau 1 : synergie méta parmi les leftovers libres (et viables)
                     for candidate in synergy_candidates:
@@ -829,7 +876,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     
     # ── Association intelligente des Datacrons adverses aux escouades défensives ──
     try:
-        attach_datacrons_to_scouted_zones(enemy_zones, profile.get("datacron", []))
+        attach_datacrons_to_scouted_zones(enemy_zones, profile.get("datacron", []), enemy_index)
     except Exception as e:
         log.warning(f"Erreur association Datacrons ennemis: {e}")
 
@@ -991,7 +1038,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
 
             # ── Association intelligente des Datacrons du joueur à sa défense suggérée ──
             try:
-                attach_datacrons_to_scouted_zones(my_zones, my_profile.get("datacron", []))
+                attach_datacrons_to_scouted_zones(my_zones, my_profile.get("datacron", []), my_index)
             except Exception as e:
                 log.warning(f"Erreur association Datacrons joueur: {e}")
 

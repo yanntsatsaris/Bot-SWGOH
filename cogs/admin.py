@@ -173,6 +173,39 @@ class AdminCog(commands.Cog, name="Admin"):
             log.exception("Erreur lors de la synchronisation manuelle des unités : %s", e)
             await interaction.followup.send(f"❌ Erreur lors de la synchronisation : {e}", ephemeral=True)
 
+    # ------------------------------------------------------------------
+    # /sync-gac-omicrons — Synchronisation des Omicrons spécifiques GAC
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="sync-gac-omicrons",
+        description="[Admin] Récupère et met à jour la liste des Omicrons spécifiques GAC depuis swgoh.gg."
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def sync_gac_omicrons(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        try:
+            from services.gac_omicron_scraper import GacOmicronScraper
+            scraper = GacOmicronScraper()
+            
+            async def progress(msg: str):
+                try:
+                    await interaction.followup.send(msg, ephemeral=True)
+                except Exception:
+                    pass
+
+            count = await scraper.scrape_and_sync(progress_callback=progress)
+            if count > 0:
+                await interaction.followup.send(
+                    f"🎉 **{count} Omicrons GAC** synchronisés avec succès depuis swgoh.gg !\n"
+                    f"Seuls ces Omicrons seront désormais pris en compte et affichés sur les plans d'attaque GAC.",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send("⚠️ Aucun nouvel Omicron GAC n'a pu être extrait. Vérifiez les logs.", ephemeral=True)
+        except Exception as e:
+            log.exception("Erreur lors de la synchronisation des Omicrons GAC : %s", e)
+            await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(AdminCog(bot))

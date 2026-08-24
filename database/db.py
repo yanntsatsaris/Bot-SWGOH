@@ -880,3 +880,57 @@ async def load_active_gac_session(discord_id: str) -> dict:
             "format": row["format"],
             "enemy_roster_index": enemy_roster,
         }
+
+
+async def save_gac_valid_omicrons(omicrons_list: list[dict]) -> int:
+    """Sauvegarde ou met à jour la liste des Omicrons spécifiques à la GAC."""
+    if not omicrons_list:
+        return 0
+    saved = 0
+    async with get_db() as db:
+        for item in omicrons_list:
+            base_id = item.get("base_id", "").strip().upper()
+            ability_name = item.get("ability_name", "").strip()
+            skill_id = item.get("skill_id", "")
+            icon_url = item.get("icon_url", "")
+            if not base_id or not ability_name:
+                continue
+
+            await db.execute(
+                """
+                INSERT INTO gac_valid_omicrons (base_id, ability_name, skill_id, icon_url, updated_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(base_id, ability_name) DO UPDATE SET
+                    skill_id = COALESCE(excluded.skill_id, gac_valid_omicrons.skill_id),
+                    icon_url = COALESCE(excluded.icon_url, gac_valid_omicrons.icon_url),
+                    updated_at = datetime('now')
+                """,
+                (base_id, ability_name, skill_id, icon_url)
+            )
+            saved += 1
+        await db.commit()
+    return saved
+
+
+async def get_gac_valid_omicrons() -> dict[str, list[dict]]:
+    """
+    Retourne la liste des Omicrons valides pour la GAC sous forme de dictionnaire :
+    {
+        "WAMPA": [{"ability_name": "Cornered Beast", "skill_id": "...", "icon_url": "..."}],
+        ...
+    }
+    """
+    result: dict[str, list[dict]] = {}
+    async with get_db() as db:
+        cursor = await db.execute("SELECT base_id, ability_name, skill_id, icon_url FROM gac_valid_omicrons")
+        rows = await cursor.fetchall()
+        for row in rows:
+            bid = row["base_id"].upper()
+            if bid not in result:
+                result[bid] = []
+            result[bid].append({
+                "ability_name": row["ability_name"],
+                "skill_id": row["skill_id"],
+                "icon_url": row["icon_url"],
+            })
+    return result

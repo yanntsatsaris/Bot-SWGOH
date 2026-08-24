@@ -26,6 +26,7 @@ TABLES_ORDER = [
     "meta_teams",
     "game_characters",
     "game_omicrons",
+    "gac_valid_omicrons",
     "game_zetas",
     "gac_meta_squads",
     "gac_rounds",

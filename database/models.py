@@ -45,6 +45,16 @@ CREATE_TABLES_SQL: list[str] = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS gac_valid_omicrons (
+        base_id       TEXT NOT NULL,
+        ability_name  TEXT NOT NULL,
+        skill_id      TEXT,
+        icon_url      TEXT,
+        updated_at    TEXT DEFAULT (datetime('now')),
+        PRIMARY KEY (base_id, ability_name)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS game_zetas (
         skill_id      TEXT    PRIMARY KEY,
         zeta_tier     INTEGER NOT NULL
@@ -247,6 +257,16 @@ CREATE_TABLES_PG_SQL: list[str] = [
     CREATE TABLE IF NOT EXISTS game_omicrons (
         skill_id      TEXT    PRIMARY KEY,
         omicron_tier  INTEGER NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_valid_omicrons (
+        base_id       TEXT NOT NULL,
+        ability_name  TEXT NOT NULL,
+        skill_id      TEXT,
+        icon_url      TEXT,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (base_id, ability_name)
     )
     """,
     """

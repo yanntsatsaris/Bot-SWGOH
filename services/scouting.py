@@ -22,6 +22,17 @@ UNIT_RESTRICTIONS = {
     "EZRABRIDGEREXILE": ["GLAHSOKATANO"],
 }
 
+async def get_gac_valid_omicron_units() -> set[str]:
+    valid_units = set()
+    try:
+        async with get_db() as db:
+            async with db.execute("SELECT DISTINCT base_id FROM gac_valid_omicrons") as cursor:
+                async for row in cursor:
+                    valid_units.add(row["base_id"].upper())
+    except Exception as e:
+        log.warning(f"Erreur chargement gac_valid_omicrons: {e}")
+    return valid_units
+
 async def get_omicron_dict() -> dict:
     omicrons = {}
     try:
@@ -58,7 +69,7 @@ async def get_ship_base_ids() -> set:
         log.warning(f"Erreur chargement des vaisseaux: {e}")
     return ships
 
-def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set) -> dict:
+def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set, gac_omicron_units: set = None) -> dict:
     roster = {}
     for unit in raw_roster:
         def_id = unit.get("definitionId", "")
@@ -70,6 +81,9 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
         omicrons_count = 0
         zetas_count = 0
         
+        # Filtrage strict GAC : si la table gac_valid_omicrons est renseignée, l'unité DOIT avoir un omicron GAC
+        is_gac_omi_candidate = (not gac_omicron_units) or (base_id.upper() in gac_omicron_units)
+        
         unit_skills = (unit.get("skill") or [])
         for skill in unit_skills:
             skill_id = str(skill.get("id", ""))
@@ -78,8 +92,9 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             actual_skill_tier = skill_tier_upgrades + 1
             
             if omicron_dict and skill_id in omicron_dict and actual_skill_tier >= int(omicron_dict[skill_id]):
-                has_omicron = True
-                omicrons_count += 1
+                if is_gac_omi_candidate:
+                    has_omicron = True
+                    omicrons_count += 1
             if zeta_dict and skill_id in zeta_dict and actual_skill_tier >= int(zeta_dict[skill_id]):
                 zetas_count += 1
                 
@@ -688,9 +703,10 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         
     quotas = get_gac_quotas(league_name, fmt)
     omicron_dict = await get_omicron_dict()
+    gac_omicron_units = await get_gac_valid_omicron_units()
     zeta_dict = await get_zeta_dict()
     ship_base_ids = await get_ship_base_ids()
-    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
+    enemy_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids, gac_omicron_units)
     
     from services.gac_scout_analyzer import GacScoutAnalyzer
     habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
@@ -787,7 +803,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
         my_clean = str(my_ally_code).replace("-", "").strip()
         my_profile = await get_player(my_clean)
         if my_profile:
-            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
+            my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids, gac_omicron_units)
             
             # ── Recharger la défense modifiée/enregistrée par le joueur depuis SQLite ──
             from database.db import load_user_defense_zones

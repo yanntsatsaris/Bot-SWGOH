@@ -65,9 +65,11 @@ class SwgohBot(commands.Bot):
         from database.db import get_db
         from services.gac_history_scraper import GACHistoryScraper
         from services.unit_names import build_name_cache
+        from services.portrait_cache import build_portrait_cache
         
-        # Charger les noms complets en mémoire pour l'affichage (images, etc)
+        # Charger les noms complets et les portraits en mémoire pour l'affichage (images, etc)
         await build_name_cache()
+        await build_portrait_cache()
 
         # 1.5 Initialisation du Scraper en arrière-plan
         self.gac_scraper = GACHistoryScraper(get_db)

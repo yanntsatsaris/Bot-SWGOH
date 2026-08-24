@@ -19,21 +19,22 @@ _db_image_paths: dict[str, str] = {}
 _validated_image_paths: set[str] = set()
 
 async def build_portrait_cache() -> None:
-    """Charge le cache des chemins d'images validés depuis la BDD."""
-    global _db_image_paths, _validated_image_paths
+    """Charge le cache des données d'unités et des chemins d'images validés depuis la BDD."""
+    global _unit_data, _db_image_paths, _validated_image_paths
     try:
         from database.db import get_db
         async with get_db() as db:
-            cursor = await db.execute("SELECT base_id, image_path, is_image_valid FROM game_characters WHERE image_path IS NOT NULL")
+            cursor = await db.execute("SELECT base_id, name, type, thumbnail_name, image_path, is_image_valid FROM game_characters")
             rows = await cursor.fetchall()
             if rows:
+                _unit_data = {row["base_id"].upper(): dict(row) for row in rows}
                 _db_image_paths = {
-                    row["base_id"].upper(): row["image_path"] 
-                    for row in rows if row["is_image_valid"] == 1
+                    row["base_id"].upper(): row["image_path"].replace("\\", "/") 
+                    for row in rows if bool(row.get("is_image_valid")) and row.get("image_path")
                 }
                 _validated_image_paths = {
-                    Path(row["image_path"]).as_posix()
-                    for row in rows if row["is_image_valid"] == 1
+                    Path(row["image_path"].replace("\\", "/")).as_posix()
+                    for row in rows if bool(row.get("is_image_valid")) and row.get("image_path")
                 }
     except Exception as e:
         log.error("Erreur chargement cache portraits depuis DB: %s", e)

@@ -35,17 +35,25 @@ class DatacronScraper:
                 worker_path,
                 out_file_path,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
                 cwd=project_dir
             )
 
-            stdout, stderr = await process.communicate()
+            # Lecture et transmission des logs du worker en direct
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                line_str = line.decode('utf-8', errors='ignore').strip()
+                if line_str:
+                    log.info("[Datacrons Worker] %s", line_str)
+
+            await process.wait()
 
             if process.returncode != 0:
-                err_msg = stderr.decode('utf-8', errors='ignore')
-                log.error("Erreur worker Datacrons : %s", err_msg)
+                log.error("Worker Datacrons terminé avec code d'erreur : %d", process.returncode)
                 if progress_callback:
-                    await progress_callback(f"❌ Erreur lors du scraping des Datacrons : {err_msg[:100]}")
+                    await progress_callback(f"❌ Erreur lors du scraping des Datacrons (code {process.returncode}).")
                 return 0
 
             if not os.path.exists(out_file_path):

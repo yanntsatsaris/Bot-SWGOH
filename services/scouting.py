@@ -953,6 +953,12 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
             else:
                 my_zones = await _plan_user_defense(my_clean, my_index, quotas, fmt, ship_base_ids, enemy_zones, league_name)
 
+            # ── Association intelligente des Datacrons du joueur à sa défense suggérée ──
+            try:
+                attach_datacrons_to_scouted_zones(my_zones, my_profile.get("datacron", []))
+            except Exception as e:
+                log.warning(f"Erreur association Datacrons joueur: {e}")
+
             result["my_zones"] = my_zones
             result["my_name"] = my_profile.get("name", my_clean)
             result["my_roster_index"] = my_index

@@ -223,6 +223,23 @@ async def init_db() -> None:
             async with conn.transaction():
                 for sql in CREATE_TABLES_PG_SQL:
                     await conn.execute(sql)
+                
+                # Migrations des colonnes manquantes pour game_characters
+                migrations_pg = [
+                    "ALTER TABLE game_characters ADD COLUMN IF NOT EXISTS alignment TEXT",
+                    "ALTER TABLE game_characters ADD COLUMN IF NOT EXISTS role TEXT",
+                    "ALTER TABLE game_characters ADD COLUMN IF NOT EXISTS factions TEXT",
+                    "ALTER TABLE game_characters ADD COLUMN IF NOT EXISTS is_galactic_legend BOOLEAN DEFAULT FALSE",
+                    "ALTER TABLE game_characters ADD COLUMN IF NOT EXISTS is_leader BOOLEAN DEFAULT FALSE",
+                    "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_alignment TEXT",
+                    "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_faction TEXT",
+                    "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_role TEXT",
+                ]
+                for mig in migrations_pg:
+                    try:
+                        await conn.execute(mig)
+                    except Exception as e:
+                        log.debug("Migration PG ignorée ou déjà appliquée: %s", e)
         log.info("🐘 Base de données PostgreSQL initialisée avec succès.")
     else:
         from database.models import CREATE_TABLES_SQL
@@ -233,6 +250,31 @@ async def init_db() -> None:
             await db.execute("PRAGMA foreign_keys = ON")
             for sql in CREATE_TABLES_SQL:
                 await db.execute(sql)
+            
+            # Migrations des colonnes manquantes pour game_characters (SQLite)
+            cursor = await db.execute("PRAGMA table_info(game_characters)")
+            existing_cols = {row["name"] for row in await cursor.fetchall()}
+            if "alignment" not in existing_cols:
+                await db.execute("ALTER TABLE game_characters ADD COLUMN alignment TEXT")
+            if "role" not in existing_cols:
+                await db.execute("ALTER TABLE game_characters ADD COLUMN role TEXT")
+            if "factions" not in existing_cols:
+                await db.execute("ALTER TABLE game_characters ADD COLUMN factions TEXT")
+            if "is_galactic_legend" not in existing_cols:
+                await db.execute("ALTER TABLE game_characters ADD COLUMN is_galactic_legend BOOLEAN DEFAULT 0")
+            if "is_leader" not in existing_cols:
+                await db.execute("ALTER TABLE game_characters ADD COLUMN is_leader BOOLEAN DEFAULT 0")
+
+            # Migrations des colonnes manquantes pour datacron_affixes (SQLite)
+            cursor_aff = await db.execute("PRAGMA table_info(datacron_affixes)")
+            existing_aff_cols = {row["name"] for row in await cursor_aff.fetchall()}
+            if "target_alignment" not in existing_aff_cols:
+                await db.execute("ALTER TABLE datacron_affixes ADD COLUMN target_alignment TEXT")
+            if "target_faction" not in existing_aff_cols:
+                await db.execute("ALTER TABLE datacron_affixes ADD COLUMN target_faction TEXT")
+            if "target_role" not in existing_aff_cols:
+                await db.execute("ALTER TABLE datacron_affixes ADD COLUMN target_role TEXT")
+
             await db.commit()
         log.info("📁 Base de données SQLite initialisée : %s", DATABASE_PATH)
 
@@ -934,3 +976,177 @@ async def get_gac_valid_omicrons() -> dict[str, list[dict]]:
                 "icon_url": row["icon_url"],
             })
     return result
+
+
+async def save_datacron_data(sets_list: list[dict]) -> int:
+    """Sauvegarde ou met à jour les sets, templates et affixes de Datacrons."""
+    if not sets_list:
+        return 0
+    total_templates = 0
+    async with get_db() as db:
+        for s in sets_list:
+            set_id = s.get("set_id")
+            if not set_id:
+                continue
+            name = s.get("name", f"Set {set_id}")
+            is_active = 1 if s.get("is_active") else 0
+            exp_date = s.get("expiration_date")
+            icon_url = s.get("icon_url", "")
+
+            await db.execute(
+                """
+                INSERT INTO datacron_sets (set_id, name, is_active, expiration_date, icon_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(set_id) DO UPDATE SET
+                    name = excluded.name,
+                    is_active = excluded.is_active,
+                    expiration_date = excluded.expiration_date,
+                    icon_url = excluded.icon_url,
+                    updated_at = datetime('now')
+                """,
+                (set_id, name, is_active, exp_date, icon_url)
+            )
+
+            # Templates / Variantes
+            for tpl in s.get("templates", []):
+                t_id = tpl.get("template_id")
+                if not t_id:
+                    continue
+                is_foc = 1 if tpl.get("is_focused") else 0
+                target_char_id = tpl.get("target_character_id")
+                target_char_name = tpl.get("target_character_name")
+                target_char_icon = tpl.get("target_character_icon")
+                max_tiers = tpl.get("max_tiers", 3)
+                tpl_icon = tpl.get("icon_url") or icon_url
+                tiers_json = json.dumps(tpl.get("tiers", []), ensure_ascii=False)
+
+                await db.execute(
+                    """
+                    INSERT INTO datacron_templates (
+                        template_id, set_id, title, is_focused, target_character_id,
+                        target_character_name, target_character_icon, max_tiers, icon_url, tiers_data, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                    ON CONFLICT(template_id) DO UPDATE SET
+                        title = excluded.title,
+                        is_focused = excluded.is_focused,
+                        target_character_id = excluded.target_character_id,
+                        target_character_name = excluded.target_character_name,
+                        target_character_icon = excluded.target_character_icon,
+                        max_tiers = excluded.max_tiers,
+                        icon_url = excluded.icon_url,
+                        tiers_data = excluded.tiers_data,
+                        updated_at = datetime('now')
+                    """,
+                    (t_id, set_id, tpl.get("title") or t_id, is_foc, target_char_id, target_char_name, target_char_icon, max_tiers, tpl_icon, tiers_json)
+                )
+
+                # Nettoyage et insertion des affixes détaillés
+                await db.execute("DELETE FROM datacron_affixes WHERE template_id = ?", (t_id,))
+                for aff in tpl.get("tiers", []):
+                    await db.execute(
+                        """
+                        INSERT INTO datacron_affixes (
+                            template_id, tier, scope, scope_name, target_unit_id,
+                            target_alignment, target_faction, target_role,
+                            stat_type, stat_value, ability_id, description, icon_url
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            t_id,
+                            aff.get("tier", 1),
+                            aff.get("scope", 1),
+                            aff.get("scope_name"),
+                            aff.get("target_unit_id"),
+                            aff.get("target_alignment"),
+                            aff.get("target_faction"),
+                            aff.get("target_role"),
+                            aff.get("stat_type"),
+                            aff.get("stat_value", 0.0),
+                            aff.get("ability_id"),
+                            aff.get("description"),
+                            aff.get("icon_url")
+                        )
+                    )
+                total_templates += 1
+
+        await db.commit()
+    return total_templates
+
+
+async def get_active_datacron_sets() -> list[dict]:
+    """Retourne la liste des sets de Datacrons actifs avec leurs templates."""
+    sets = []
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM datacron_sets WHERE is_active = 1 ORDER BY set_id DESC")
+        rows = await cursor.fetchall()
+        for r in rows:
+            s_dict = dict(r)
+            c_tpl = await db.execute("SELECT * FROM datacron_templates WHERE set_id = ?", (r["set_id"],))
+            tpl_rows = await c_tpl.fetchall()
+            s_dict["templates"] = [dict(t) for t in tpl_rows]
+            sets.append(s_dict)
+    return sets
+
+
+async def get_datacron_template(template_id: str) -> dict | None:
+    """Retourne les informations complètes d'un template de Datacron."""
+    if not template_id:
+        return None
+    async with get_db() as db:
+        cursor = await db.execute("SELECT * FROM datacron_templates WHERE template_id = ?", (template_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        if res.get("tiers_data"):
+            try:
+                res["tiers"] = json.loads(res["tiers_data"])
+            except Exception:
+                res["tiers"] = []
+        return res
+
+
+async def get_datacrons_for_character(base_id: str) -> list[dict]:
+    """Trouve les Datacrons (actifs) qui ciblent spécifiquement un personnage donné (L9 ou focused)."""
+    if not base_id:
+        return []
+    bid = base_id.strip().upper()
+    results = []
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT dt.template_id, dt.set_id, dt.is_focused, dt.max_tiers, dt.icon_url, da.tier, da.description, da.scope_name
+            FROM datacron_affixes da
+            JOIN datacron_templates dt ON da.template_id = dt.template_id
+            JOIN datacron_sets ds ON dt.set_id = ds.set_id
+            WHERE ds.is_active = 1 AND UPPER(da.target_unit_id) = ?
+            ORDER BY da.tier DESC
+            """,
+            (bid,)
+        )
+        rows = await cursor.fetchall()
+        for r in rows:
+            results.append(dict(r))
+    return results
+
+
+async def get_character_metadata(base_id: str) -> dict | None:
+    """Récupère les métadonnées enrichies d'un personnage (alignement, rôle, factions, GL, Leader)."""
+    if not base_id:
+        return None
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT base_id, name, alignment, role, factions, is_galactic_legend, is_leader FROM game_characters WHERE UPPER(base_id) = ?",
+            (base_id.strip().upper(),)
+        )
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        res = dict(row)
+        try:
+            res["factions"] = json.loads(res.get("factions") or "[]")
+        except Exception:
+            res["factions"] = []
+        return res

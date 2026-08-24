@@ -20,38 +20,55 @@ class AdminCog(commands.Cog, name="Admin"):
         self.periodic_sync_gac_omicrons.cancel()
 
     async def cog_load(self) -> None:
-        """Vérifie au démarrage si les Omicrons GAC sont initialisés en BDD."""
-        asyncio.create_task(self._check_initial_gac_omicrons())
+        """Vérifie au démarrage si les Omicrons GAC et les Datacrons sont initialisés en BDD."""
+        asyncio.create_task(self._check_initial_gac_data())
 
-    async def _check_initial_gac_omicrons(self) -> None:
+    async def _check_initial_gac_data(self) -> None:
         try:
             await asyncio.sleep(5)  # Attendre que la BDD soit totalement prête
             from database.db import get_db
             async with get_db() as db:
                 cursor = await db.execute("SELECT COUNT(*) as cnt FROM gac_valid_omicrons")
                 row = await cursor.fetchone()
-                count = row["cnt"] if row else 0
+                omi_count = row["cnt"] if row else 0
 
-            if count == 0:
-                log.info("🛡️ Table gac_valid_omicrons vide au démarrage : lancement de la synchronisation automatique...")
+                cursor_dtc = await db.execute("SELECT COUNT(*) as cnt FROM datacron_sets")
+                row_dtc = await cursor_dtc.fetchone()
+                dtc_count = row_dtc["cnt"] if row_dtc else 0
+
+            if omi_count == 0:
+                log.info("🛡️ Table gac_valid_omicrons vide au démarrage : lancement de la synchronisation Omicrons...")
                 from services.gac_omicron_scraper import GacOmicronScraper
                 await GacOmicronScraper().scrape_and_sync()
+
+            if dtc_count == 0:
+                log.info("🎲 Table datacron_sets vide au démarrage : lancement de la synchronisation Datacrons...")
+                from services.datacron_scraper import datacron_scraper_service
+                await datacron_scraper_service.scrape_and_sync()
+
         except Exception as e:
-            log.warning("Erreur vérification initiale Omicrons GAC : %s", e)
+            log.warning("Erreur vérification initiale Omicrons/Datacrons GAC : %s", e)
 
     # ------------------------------------------------------------------
-    # Tâche récurrente : Synchronisation quotidienne des Omicrons GAC
+    # Tâche récurrente : Synchronisation quotidienne des Omicrons & Datacrons GAC
     # ------------------------------------------------------------------
     @tasks.loop(time=datetime.time(hour=4, minute=30, tzinfo=datetime.timezone.utc))  # 06h30 Paris
     async def periodic_sync_gac_omicrons(self) -> None:
-        """Actualisation automatique quotidienne des Omicrons GAC."""
-        log.info("⏰ [CRON] Synchronisation automatique quotidienne des Omicrons GAC...")
+        """Actualisation automatique quotidienne des Omicrons GAC et des Datacrons."""
+        log.info("⏰ [CRON] Synchronisation automatique quotidienne des Omicrons et Datacrons GAC...")
         try:
             from services.gac_omicron_scraper import GacOmicronScraper
             count = await GacOmicronScraper().scrape_and_sync()
             log.info("⏰ [CRON] Fin de synchronisation : %d Omicrons GAC à jour.", count)
         except Exception as e:
             log.error("⏰ [CRON] Erreur lors de la synchronisation automatique des Omicrons GAC : %s", e)
+
+        try:
+            from services.datacron_scraper import datacron_scraper_service
+            dtc_count = await datacron_scraper_service.scrape_and_sync()
+            log.info("⏰ [CRON] Fin de synchronisation : %d Datacrons templates à jour.", dtc_count)
+        except Exception as e:
+            log.error("⏰ [CRON] Erreur lors de la synchronisation automatique des Datacrons : %s", e)
 
     @periodic_sync_gac_omicrons.before_loop
     async def before_periodic_sync(self) -> None:
@@ -188,7 +205,10 @@ class AdminCog(commands.Cog, name="Admin"):
             await interaction.followup.send("⏳ **Resynchronisation manuelle en cours...** (Téléchargement des nouveaux personnages et portraits)...", ephemeral=True)
             
             from sync_all_units import sync as sync_comlink_units
-            comlink_summary = await sync_comlink_units()
+            comlink_summary = await sync_comlink_units() or {}
+            total_units = comlink_summary.get("total_comlink", 0)
+            new_cnt = comlink_summary.get("new_portraits_count", 0)
+            names = comlink_summary.get("downloaded_names", [])
             
             from services.unit_names import build_name_cache
             from services.portrait_cache import build_portrait_cache
@@ -198,9 +218,13 @@ class AdminCog(commands.Cog, name="Admin"):
             from services.gac_omicron_scraper import GacOmicronScraper
             omi_count = await GacOmicronScraper().scrape_and_sync()
 
+            from services.datacron_scraper import datacron_scraper_service
+            dtc_count = await datacron_scraper_service.scrape_and_sync()
+
             msg = f"✅ **Resynchronisation terminée avec succès !**\n"
             msg += f"• **Total Unités (Comlink)** : {total_units}\n"
             msg += f"• 🛡️ **Omicrons GAC à jour** : {omi_count}\n"
+            msg += f"• 🎲 **Datacrons Templates à jour** : {dtc_count}\n"
             if new_cnt > 0:
                 names_str = ", ".join(names[:10]) + ("..." if len(names) > 10 else "")
                 msg += f"• 🆕 **{new_cnt} nouveau(x) portrait(s) téléchargé(s)** : `{names_str}`"
@@ -245,6 +269,39 @@ class AdminCog(commands.Cog, name="Admin"):
                 await interaction.followup.send("⚠️ Aucun nouvel Omicron GAC n'a pu être extrait. Vérifiez les logs.", ephemeral=True)
         except Exception as e:
             log.exception("Erreur lors de la synchronisation des Omicrons GAC : %s", e)
+            await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /sync-datacrons — Synchronisation des Datacrons (Sets, Variantes, Tiers)
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="sync-datacrons",
+        description="[Admin] Récupère et met à jour la liste des Datacrons actifs et de leurs tiers depuis swgoh.gg."
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def sync_datacrons(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        try:
+            from services.datacron_scraper import datacron_scraper_service
+            
+            async def progress(msg: str):
+                try:
+                    await interaction.followup.send(msg, ephemeral=True)
+                except Exception:
+                    pass
+
+            count = await datacron_scraper_service.scrape_and_sync(progress_callback=progress)
+            if count > 0:
+                await interaction.followup.send(
+                    f"🎉 **Synchronisation des Datacrons réussie !**\n"
+                    f"• Templates et variantes mis à jour : **{count}**\n"
+                    f"Les Datacrons actifs et leurs bonus de tiers (L1 à L15) sont désormais en mémoire.",
+                    ephemeral=True
+                )
+            else:
+                await interaction.followup.send("⚠️ Aucun Datacron n'a pu être synchronisé. Vérifiez les logs.", ephemeral=True)
+        except Exception as e:
+            log.exception("Erreur lors de la synchronisation des Datacrons : %s", e)
             await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
 
 

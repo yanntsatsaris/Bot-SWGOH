@@ -136,6 +136,15 @@ async def sync():
             new_portraits_count = 0
             downloaded_names = []
 
+            # Construction de la table de correspondance des catégories/factions
+            category_map = {}
+            for cat in data.get("category", []):
+                cat_id = cat.get("id")
+                desc_key = cat.get("descKey")
+                if cat_id:
+                    translated = name_map.get(desc_key) if desc_key else None
+                    category_map[cat_id] = translated or cat_id
+
             async with get_db() as db:
                 for unit in playable_units:
                     bid = unit.get("baseId", "")
@@ -149,6 +158,46 @@ async def sync():
                     combat_type = unit.get("combatType", 1)
                     unit_type = "character" if combat_type == 1 else "ship"
                     thumb = unit.get("thumbnailName", "")
+
+                    # Extraction de l'alignement, du rôle, du statut GL / Leader et des factions
+                    cat_ids = unit.get("categoryIdList", [])
+                    
+                    alignment = None
+                    if "alignment_light" in cat_ids:
+                        alignment = "Light Side"
+                    elif "alignment_dark" in cat_ids:
+                        alignment = "Dark Side"
+                    elif "alignment_neutral" in cat_ids:
+                        alignment = "Neutral"
+
+                    role = None
+                    if "role_attacker" in cat_ids:
+                        role = "Attacker"
+                    elif "role_support" in cat_ids:
+                        role = "Support"
+                    elif "role_tank" in cat_ids:
+                        role = "Tank"
+                    elif "role_healer" in cat_ids:
+                        role = "Healer"
+
+                    is_gl = "galactic_legend" in cat_ids
+                    is_leader = "role_leader" in cat_ids or any("leader" in str(s).lower() for s in unit.get("skillReferenceList", []))
+
+                    excluded_cat_prefixes = ("alignment_", "role_", "type_")
+                    excluded_cats = {"galactic_legend", "obtainable", "character", "ship", "crew", "preview", "capital"}
+                    
+                    unit_factions = []
+                    for cid in cat_ids:
+                        if cid in excluded_cats or any(cid.startswith(p) for p in excluded_cat_prefixes):
+                            continue
+                        f_name = category_map.get(cid, name_map.get(cid, cid))
+                        # Nettoyer d'éventuels préfixes bruts si non traduit
+                        if f_name.startswith("faction_") or f_name.startswith("species_") or f_name.startswith("profession_"):
+                            f_name = f_name.split("_", 1)[-1].capitalize()
+                        if f_name and f_name not in unit_factions:
+                            unit_factions.append(f_name)
+
+                    factions_json = json.dumps(unit_factions, ensure_ascii=False)
 
                     dest_dir = Path("assets/vaisseaux") if combat_type == 2 else Path("assets/portraits")
                     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -198,21 +247,30 @@ async def sync():
                                 except Exception:
                                     pass
 
-
-
-
                     await db.execute(
                         """
-                        INSERT INTO game_characters (base_id, name, type, thumbnail_name, image_path, is_image_valid)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO game_characters (
+                            base_id, name, type, thumbnail_name, image_path, is_image_valid,
+                            alignment, role, factions, is_galactic_legend, is_leader
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(base_id) DO UPDATE SET
                             name=excluded.name,
                             type=excluded.type,
                             thumbnail_name=excluded.thumbnail_name,
                             image_path=COALESCE(excluded.image_path, game_characters.image_path),
-                            is_image_valid=CASE WHEN excluded.image_path IS NOT NULL THEN 1 ELSE game_characters.is_image_valid END
+                            is_image_valid=CASE WHEN excluded.image_path IS NOT NULL THEN 1 ELSE game_characters.is_image_valid END,
+                            alignment=excluded.alignment,
+                            role=excluded.role,
+                            factions=excluded.factions,
+                            is_galactic_legend=excluded.is_galactic_legend,
+                            is_leader=excluded.is_leader
                     """,
-                        (bid, final_name, unit_type, thumb, image_path, 1 if image_path else 0),
+                        (
+                            bid, final_name, unit_type, thumb, image_path, 1 if image_path else 0,
+                            alignment, role, factions_json,
+                            1 if is_gl else 0, 1 if is_leader else 0
+                        ),
                     )
                     
                 print(" -> Traitement des Omicrons et Zetas...")

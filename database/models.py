@@ -30,13 +30,70 @@ CREATE_TABLES_SQL: list[str] = [
     """,
     """
     CREATE TABLE IF NOT EXISTS game_characters (
-        base_id        TEXT    PRIMARY KEY,
-        name           TEXT    NOT NULL,
-        type           TEXT    NOT NULL CHECK(type IN ('character', 'ship')),
-        thumbnail_name TEXT,
-        image_path     TEXT,
-        is_image_valid BOOLEAN
+        base_id            TEXT    PRIMARY KEY,
+        name               TEXT    NOT NULL,
+        type               TEXT    NOT NULL CHECK(type IN ('character', 'ship')),
+        thumbnail_name     TEXT,
+        image_path         TEXT,
+        is_image_valid     BOOLEAN,
+        alignment          TEXT,
+        role               TEXT,
+        factions           TEXT,
+        is_galactic_legend BOOLEAN DEFAULT 0,
+        is_leader          BOOLEAN DEFAULT 0
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS datacron_sets (
+        set_id          INTEGER PRIMARY KEY,
+        name            TEXT    NOT NULL,
+        is_active       BOOLEAN NOT NULL DEFAULT 1,
+        expiration_date TEXT,
+        icon_url        TEXT,
+        updated_at      TEXT    DEFAULT (datetime('now'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS datacron_templates (
+        template_id           TEXT    PRIMARY KEY,
+        set_id                INTEGER NOT NULL REFERENCES datacron_sets(set_id) ON DELETE CASCADE,
+        title                 TEXT,
+        is_focused            BOOLEAN NOT NULL DEFAULT 0,
+        target_character_id   TEXT,
+        target_character_name TEXT,
+        target_character_icon TEXT,
+        max_tiers             INTEGER NOT NULL DEFAULT 3,
+        icon_url              TEXT,
+        tiers_data            TEXT,
+        updated_at            TEXT    DEFAULT (datetime('now'))
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS datacron_affixes (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        template_id          TEXT    NOT NULL REFERENCES datacron_templates(template_id) ON DELETE CASCADE,
+        tier                 INTEGER NOT NULL,
+        scope                INTEGER NOT NULL,
+        scope_name           TEXT,
+        target_unit_id       TEXT,
+        target_alignment     TEXT,
+        target_faction       TEXT,
+        target_role          TEXT,
+        stat_type            TEXT,
+        stat_value           REAL,
+        ability_id           TEXT,
+        description          TEXT,
+        icon_url             TEXT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_datacron_affixes_unit ON datacron_affixes(target_unit_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_datacron_affixes_tpl ON datacron_affixes(template_id, tier)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_datacron_affixes_faction ON datacron_affixes(target_faction)
     """,
     """
     CREATE TABLE IF NOT EXISTS game_omicrons (
@@ -245,13 +302,70 @@ CREATE_TABLES_PG_SQL: list[str] = [
     """,
     """
     CREATE TABLE IF NOT EXISTS game_characters (
-        base_id        TEXT    PRIMARY KEY,
-        name           TEXT    NOT NULL,
-        type           TEXT    NOT NULL CHECK(type IN ('character', 'ship')),
-        thumbnail_name TEXT,
-        image_path     TEXT,
-        is_image_valid BOOLEAN
+        base_id            TEXT    PRIMARY KEY,
+        name               TEXT    NOT NULL,
+        type               TEXT    NOT NULL CHECK(type IN ('character', 'ship')),
+        thumbnail_name     TEXT,
+        image_path         TEXT,
+        is_image_valid     BOOLEAN,
+        alignment          TEXT,
+        role               TEXT,
+        factions           TEXT,
+        is_galactic_legend BOOLEAN DEFAULT FALSE,
+        is_leader          BOOLEAN DEFAULT FALSE
     )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS datacron_sets (
+        set_id          INTEGER PRIMARY KEY,
+        name            TEXT    NOT NULL,
+        is_active       BOOLEAN NOT NULL DEFAULT TRUE,
+        expiration_date TIMESTAMPTZ,
+        icon_url        TEXT,
+        updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS datacron_templates (
+        template_id           TEXT    PRIMARY KEY,
+        set_id                INTEGER NOT NULL REFERENCES datacron_sets(set_id) ON DELETE CASCADE,
+        title                 TEXT,
+        is_focused            BOOLEAN NOT NULL DEFAULT FALSE,
+        target_character_id   TEXT,
+        target_character_name TEXT,
+        target_character_icon TEXT,
+        max_tiers             INTEGER NOT NULL DEFAULT 3,
+        icon_url              TEXT,
+        tiers_data            TEXT,
+        updated_at            TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS datacron_affixes (
+        id                   SERIAL PRIMARY KEY,
+        template_id          TEXT    NOT NULL REFERENCES datacron_templates(template_id) ON DELETE CASCADE,
+        tier                 INTEGER NOT NULL,
+        scope                INTEGER NOT NULL,
+        scope_name           TEXT,
+        target_unit_id       TEXT,
+        target_alignment     TEXT,
+        target_faction       TEXT,
+        target_role          TEXT,
+        stat_type            TEXT,
+        stat_value           REAL,
+        ability_id           TEXT,
+        description          TEXT,
+        icon_url             TEXT
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_datacron_affixes_unit ON datacron_affixes(target_unit_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_datacron_affixes_tpl ON datacron_affixes(template_id, tier)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_datacron_affixes_faction ON datacron_affixes(target_faction)
     """,
     """
     CREATE TABLE IF NOT EXISTS game_omicrons (

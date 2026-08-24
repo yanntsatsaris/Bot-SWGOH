@@ -125,11 +125,19 @@ def scrape_datacrons(output_json_path: str) -> bool:
 
             log.info(f"Détail des sets identifiés : {[s['set_id'] for s in parsed_sets]}")
 
-            # 2. Explorer chaque set actif (ou récent) pour extraire les templates et tiers
-            for s_info in parsed_sets:
+            # Filtrer UNIQUEMENT les sets actifs (généralement 3 ou 4 sets)
+            active_sets = [s for s in parsed_sets if s["is_active"]]
+            if not active_sets:
+                log.warning("Aucun set tagué 'Active' trouvé avec certitude, limitation aux 4 sets les plus récents.")
+                active_sets = parsed_sets[:4]
+
+            log.info(f"🎯 Sets ACTIFS à scrapper ({len(active_sets)}) : {[s['set_id'] for s in active_sets]}")
+
+            # 2. Explorer chaque set ACTIF pour extraire les templates et tiers
+            for s_info in active_sets:
                 set_id = s_info["set_id"]
                 set_url = s_info["url"]
-                log.info(f"--- Analyse du Set {set_id} ({s_info['name']}) : {set_url} ---")
+                log.info(f"--- Analyse du Set ACTIF {set_id} ({s_info['name']}) : {set_url} ---")
                 
                 sb.open(set_url)
                 sb.sleep(2)

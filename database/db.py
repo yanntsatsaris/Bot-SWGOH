@@ -989,7 +989,7 @@ async def save_datacron_data(sets_list: list[dict]) -> int:
             if not set_id:
                 continue
             name = s.get("name", f"Set {set_id}")
-            is_active = 1 if s.get("is_active") else 0
+            is_active = bool(s.get("is_active"))
             exp_date = s.get("expiration_date")
             icon_url = s.get("icon_url", "")
 
@@ -1012,7 +1012,7 @@ async def save_datacron_data(sets_list: list[dict]) -> int:
                 t_id = tpl.get("template_id")
                 if not t_id:
                     continue
-                is_foc = 1 if tpl.get("is_focused") else 0
+                is_foc = bool(tpl.get("is_focused"))
                 target_char_id = tpl.get("target_character_id")
                 target_char_name = tpl.get("target_character_name")
                 target_char_icon = tpl.get("target_character_icon")

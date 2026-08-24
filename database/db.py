@@ -53,6 +53,12 @@ def _translate_sql_to_pg(query: str) -> str:
     pg_sql = re.sub(r"\?", _repl, query)
     pg_sql = re.sub(r"datetime\('now'\)", "CURRENT_TIMESTAMP", pg_sql, flags=re.IGNORECASE)
     
+    # Traduction automatique des comparaisons booléennes = 0 / = 1 pour PostgreSQL
+    pg_sql = re.sub(r"\b(is_attack|is_image_valid|success)\s*=\s*0\b", r"\1 = FALSE", pg_sql, flags=re.IGNORECASE)
+    pg_sql = re.sub(r"\b(is_attack|is_image_valid|success)\s*=\s*1\b", r"\1 = TRUE", pg_sql, flags=re.IGNORECASE)
+    pg_sql = re.sub(r"\b(is_attack|is_image_valid|success)\s*!=\s*0\b", r"\1 = TRUE", pg_sql, flags=re.IGNORECASE)
+    pg_sql = re.sub(r"\b(is_attack|is_image_valid|success)\s*!=\s*1\b", r"\1 = FALSE", pg_sql, flags=re.IGNORECASE)
+
     # Traduction INSERT OR IGNORE INTO -> INSERT INTO ... ON CONFLICT DO NOTHING
     if "INSERT OR IGNORE INTO" in pg_sql.upper():
         pg_sql = re.sub(r"INSERT\s+OR\s+IGNORE\s+INTO", "INSERT INTO", pg_sql, flags=re.IGNORECASE)

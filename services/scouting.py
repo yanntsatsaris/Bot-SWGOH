@@ -75,13 +75,26 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
     Priorité :
     1. Datacron ciblant spécifiquement un personnage de l'escouade (ex: GL Rey, Colonel Ward, Bishop...).
     2. Datacron ciblant la faction de l'escouade (ex: Resistance, Rebel, Empire...).
+    3. Datacron ciblant l'alignement de l'escouade (Dark Side / Light Side).
     """
     if not player_datacrons:
         return
 
-    valid_dtcs = [d for d in player_datacrons if len(d.get("affix", [])) >= 3 or d.get("templateId", "").startswith("datacron_set_")]
+    # Un Datacron doit avoir au moins 3 affixes (Level 3+) pour avoir un palier actif
+    valid_dtcs = [d for d in player_datacrons if len(d.get("affix", [])) >= 3]
     if not valid_dtcs:
         return
+
+    # Dictionnaire de correspondance de factions pour vérification de l'escouade
+    FACTION_KEYWORDS = {
+        "resistance": ["GLREY", "REY", "BENSOLO", "REYJEDITRAINING", "FINN", "POE", "AMILYNHOLDO", "BB8", "RESISTANCE"],
+        "firstorder": ["SUPREMELEADERKYLOREN", "KYLOREN", "GENERALHUX", "FIRSTORDER", "SITHTROOPER", "PHASMA"],
+        "empire": ["VADER", "EMPEROR", "VEERS", "IDEN", "THRAWN", "INQUISITOR", "THIRD_SISTER", "FIFTHBROTHER", "SEVENTHSISTER", "EIGHTHBROTHER", "MARAJADE", "GIDEON"],
+        "rebel": ["COMMANDERLUKESKYWALKER", "HANSOLO", "CHEWBACCA", "LEIA", "MOTHMA", "RADDUS", "CHOPPER", "HERA", "CASSIAN", "JYN"],
+        "jedi": ["JEDIMASTERKENOBI", "JEDIMASTERLUKE", "MACEWINDU", "JEDIKNIGHTREVAN", "QUI", "YODA", "AHSOKA", "JEDI", "CALKESTIS"],
+        "sith": ["SITHPALPATINE", "DARTHBANE", "DARTHMALGUS", "DARTHMALAK", "DARTHTRAYA", "DARTHNIHILUS", "DARTHSION", "SITH"],
+        "bountyhunter": ["BOBAFETT", "BOSSK", "JANGOFETT", "DENGAR", "EMBO", "MANDALORIAN", "FENNEC", "KRRSANTAN", "GREEDO"]
+    }
 
     used_dtc_ids = set()
 
@@ -92,9 +105,10 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
                 continue
             members = [ldr] + team.get("members_ids", [])
             members_upper = [m.upper() for m in members if m]
+            squad_str = " ".join(members_upper)
 
             best_dtc = None
-            best_match_level = 0
+            best_match_level = 0  # 3 = Perso, 2 = Faction, 1 = Alignement
 
             for dtc in valid_dtcs:
                 dtc_id = dtc.get("id")
@@ -106,37 +120,59 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict])
                 
                 dtc_char_target = None
                 dtc_faction_target = None
+                dtc_align_target = None
 
                 for aff in affixes:
                     rule = (aff.get("targetRule") or "").lower()
                     ab_id = (aff.get("abilityId") or "").lower()
                     combined_target = f"{rule} {ab_id}"
-                    
+
+                    # 1. Vérification cible personnage spécifique
                     for m_id in members_upper:
                         clean_m = m_id.replace("_", "").lower()
-                        if clean_m in combined_target or (m_id == "GLREY" and "glrey" in combined_target):
+                        if (clean_m in combined_target) or (m_id in ["GLREY", "REY"] and "glrey" in combined_target):
                             dtc_char_target = m_id
                             break
-                    
-                    for fac in ["resistance", "rebel", "empire", "sith", "jedi", "firstorder", "first_order", "bountyhunter", "mandalorian"]:
-                        if fac in combined_target:
-                            dtc_faction_target = fac.upper()
-                            break
 
+                    # 2. Vérification cible faction
+                    for fac_name, keywords in FACTION_KEYWORDS.items():
+                        if fac_name in combined_target:
+                            # L'escouade doit RÉELLEMENT posséder des membres de cette faction
+                            if any(kw in squad_str for kw in keywords):
+                                dtc_faction_target = fac_name
+                                break
+
+                    # 3. Vérification alignement
+                    if "darkside" in combined_target:
+                        dtc_align_target = "DARK_SIDE"
+                    elif "lightside" in combined_target:
+                        dtc_align_target = "LIGHT_SIDE"
+
+                # Calcul du niveau d'étoiles/pastilles (Level 9 = 3 pastilles, Level 6 = 2 pastilles, Level 3 = 1 pastille)
+                if len(affixes) >= 9:
+                    dtc_level = 3
+                elif len(affixes) >= 6:
+                    dtc_level = 2
+                elif len(affixes) >= 3:
+                    dtc_level = 1
+                else:
+                    dtc_level = 0
+
+                # Score et sélection
                 if dtc_char_target:
                     best_dtc = {
                         "template_id": template_id,
-                        "level": 3 if len(affixes) >= 9 else (2 if len(affixes) >= 6 else 1),
+                        "level": dtc_level,
                         "is_focused": "focused" in template_id,
                         "character_base_id": dtc_char_target,
                         "id": dtc_id
                     }
                     best_match_level = 3
-                    break
+                    break  # Priorité absolue au personnage spécifique !
                 elif dtc_faction_target and best_match_level < 2:
                     best_dtc = {
                         "template_id": template_id,
-                        "level": 2 if len(affixes) >= 6 else 1,
+                        "level": dtc_level,
                         "is_focused": False,
                         "id": dtc_id
                     }

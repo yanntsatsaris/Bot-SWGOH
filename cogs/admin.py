@@ -1,20 +1,61 @@
-"""
-cogs/admin.py — Commandes d'administration réservées aux administrateurs du serveur
-"""
 import logging
+import asyncio
+import datetime
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 log = logging.getLogger(__name__)
 
 
 class AdminCog(commands.Cog, name="Admin"):
-    """Commandes d'administration du bot."""
+    """Commandes d'administration du bot et tâches de fond."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        self.periodic_sync_gac_omicrons.start()
+
+    def cog_unload(self) -> None:
+        self.periodic_sync_gac_omicrons.cancel()
+
+    async def cog_load(self) -> None:
+        """Vérifie au démarrage si les Omicrons GAC sont initialisés en BDD."""
+        asyncio.create_task(self._check_initial_gac_omicrons())
+
+    async def _check_initial_gac_omicrons(self) -> None:
+        try:
+            await asyncio.sleep(5)  # Attendre que la BDD soit totalement prête
+            from database.db import get_db
+            async with get_db() as db:
+                cursor = await db.execute("SELECT COUNT(*) as cnt FROM gac_valid_omicrons")
+                row = await cursor.fetchone()
+                count = row["cnt"] if row else 0
+
+            if count == 0:
+                log.info("🛡️ Table gac_valid_omicrons vide au démarrage : lancement de la synchronisation automatique...")
+                from services.gac_omicron_scraper import GacOmicronScraper
+                await GacOmicronScraper().scrape_and_sync()
+        except Exception as e:
+            log.warning("Erreur vérification initiale Omicrons GAC : %s", e)
+
+    # ------------------------------------------------------------------
+    # Tâche récurrente : Synchronisation quotidienne des Omicrons GAC
+    # ------------------------------------------------------------------
+    @tasks.loop(time=datetime.time(hour=4, minute=30, tzinfo=datetime.timezone.utc))  # 06h30 Paris
+    async def periodic_sync_gac_omicrons(self) -> None:
+        """Actualisation automatique quotidienne des Omicrons GAC."""
+        log.info("⏰ [CRON] Synchronisation automatique quotidienne des Omicrons GAC...")
+        try:
+            from services.gac_omicron_scraper import GacOmicronScraper
+            count = await GacOmicronScraper().scrape_and_sync()
+            log.info("⏰ [CRON] Fin de synchronisation : %d Omicrons GAC à jour.", count)
+        except Exception as e:
+            log.error("⏰ [CRON] Erreur lors de la synchronisation automatique des Omicrons GAC : %s", e)
+
+    @periodic_sync_gac_omicrons.before_loop
+    async def before_periodic_sync(self) -> None:
+        await self.bot.wait_until_ready()
 
     # ------------------------------------------------------------------
     # /ping — Latence du bot
@@ -154,12 +195,12 @@ class AdminCog(commands.Cog, name="Admin"):
             await build_name_cache()
             await build_portrait_cache()
             
-            total_units = comlink_summary.get("total_comlink", 0) if comlink_summary else 0
-            new_cnt = comlink_summary.get("new_portraits_count", 0) if comlink_summary else 0
-            names = comlink_summary.get("downloaded_names", []) if comlink_summary else []
-            
+            from services.gac_omicron_scraper import GacOmicronScraper
+            omi_count = await GacOmicronScraper().scrape_and_sync()
+
             msg = f"✅ **Resynchronisation terminée avec succès !**\n"
             msg += f"• **Total Unités (Comlink)** : {total_units}\n"
+            msg += f"• 🛡️ **Omicrons GAC à jour** : {omi_count}\n"
             if new_cnt > 0:
                 names_str = ", ".join(names[:10]) + ("..." if len(names) > 10 else "")
                 msg += f"• 🆕 **{new_cnt} nouveau(x) portrait(s) téléchargé(s)** : `{names_str}`"

@@ -27,6 +27,17 @@ def scrape_gac_omicrons(output_json_path: str) -> bool:
     log.info(f"Ouverture de {url} avec SeleniumBase...")
     
     try:
+        profile_dir = os.path.join(project_dir, "chrome_profile")
+        
+        # Nettoyer les verrous résiduels éventuels de Chrome sur Linux
+        for lock_file in ["SingletonLock", "SingletonSocket", "SingletonCookie"]:
+            lf_path = os.path.join(profile_dir, lock_file)
+            if os.path.exists(lf_path):
+                try:
+                    os.remove(lf_path)
+                except Exception:
+                    pass
+
         if not is_windows:
             try:
                 from pyvirtualdisplay import Display
@@ -35,12 +46,11 @@ def scrape_gac_omicrons(output_json_path: str) -> bool:
             except Exception as e:
                 log.warning(f"pyvirtualdisplay non démarré: {e}")
 
-        profile_dir = os.path.join(project_dir, "chrome_profile")
         omicrons = []
         page = 1
         seen_keys = set()
 
-        with SB(uc=True, headless=False if not is_windows else True, user_data_dir=profile_dir) as sb:
+        with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             while True:
                 page_url = f"https://swgoh.gg/stats/ability-report/?fo=grand-arena&ft=all&page={page}"
                 log.info(f"Scraping page {page} : {page_url}...")

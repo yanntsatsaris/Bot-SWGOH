@@ -56,6 +56,7 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
         
     canvas = Image.new("RGBA", (width, height), C_BG)
     draw = ImageDraw.Draw(canvas)
+    datacrons_to_overlay = []
     
     # Header
     title_font = _get_font("bold", 22)
@@ -142,29 +143,11 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
                 cur_x += cell + gap
                 drawn += 1
 
-        # Affichage du Datacron associé si présent
+        # Mémorisation du badge Datacron pour incrustation HD native
         dtc = t.get("datacron")
         if dtc and not is_fleet:
-            try:
-                from services.datacron_renderer import render_datacron_badge
-                lvl = dtc.get("level") or (len(dtc.get("affix", [])) if "affix" in dtc else 3)
-                is_foc = dtc.get("is_focused", False)
-                char_id = dtc.get("character_base_id") or dtc.get("target_unit_id")
-                cube_tex = dtc.get("cube_texture_url") or dtc.get("icon_url")
-                
-                badge_img = render_datacron_badge(
-                    level=lvl,
-                    max_tiers=dtc.get("max_tiers"),
-                    is_focused=is_foc,
-                    character_base_id=char_id,
-                    character_icon_url=dtc.get("character_icon_url"),
-                    cube_texture_url=cube_tex,
-                    size=(cell, cell)
-                )
-                canvas.paste(badge_img, (cur_x + 4, y), badge_img)
-                cur_x += cell + gap + 4
-            except Exception as e:
-                log.warning("Erreur rendu badge Datacron sur scout map: %s", e)
+            datacrons_to_overlay.append((cur_x + 4, y, dtc, cell))
+            cur_x += cell + gap + 4
         
         team_source = t.get("source", "predictive")
         if "Historique" in team_source:
@@ -220,6 +203,30 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
 
     # Suréchantillonnage 2x LANCZOS pour affichage Retina HD net sur mobile
     canvas_hd = canvas.resize((canvas.width * 2, canvas.height * 2), Image.LANCZOS)
+
+    # Incrustation des Badges Datacrons en Ultra HD 2x Native (Vector-Sharp)
+    from services.datacron_renderer import render_datacron_badge
+    for (ox, oy, dtc_info, dtc_cell) in datacrons_to_overlay:
+        try:
+            lvl = dtc_info.get("level") or (len(dtc_info.get("affix", [])) if "affix" in dtc_info else 3)
+            is_foc = dtc_info.get("is_focused", False)
+            char_id = dtc_info.get("character_base_id") or dtc_info.get("target_unit_id")
+            cube_tex = dtc_info.get("cube_texture_url") or dtc_info.get("icon_url")
+            
+            hd_size = dtc_cell * 2
+            badge_hd = render_datacron_badge(
+                level=lvl,
+                max_tiers=dtc_info.get("max_tiers"),
+                is_focused=is_foc,
+                character_base_id=char_id,
+                character_icon_url=dtc_info.get("character_icon_url"),
+                cube_texture_url=cube_tex,
+                size=(hd_size, hd_size)
+            )
+            canvas_hd.paste(badge_hd, (ox * 2, oy * 2), badge_hd)
+        except Exception as e:
+            log.warning("Erreur rendu badge Datacron Retina 2x: %s", e)
+
     out = io.BytesIO()
     canvas_hd.save(out, format="PNG", optimize=True)
     out.seek(0)

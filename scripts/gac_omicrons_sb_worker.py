@@ -3,6 +3,7 @@ scripts/gac_omicrons_sb_worker.py — Worker SeleniumBase pour scrapper la liste
 """
 import sys
 import os
+import platform
 import json
 import logging
 from bs4 import BeautifulSoup
@@ -12,14 +13,43 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger("gac_omicrons_worker")
 
 def scrape_gac_omicrons(output_json_path: str) -> bool:
+    project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    if not os.path.exists(project_dir):
+        project_dir = os.getcwd()
+        
+    is_windows = (platform.system() == "Windows")
+    if not is_windows:
+        os.environ["HOME"] = project_dir
+        os.environ["XDG_CONFIG_HOME"] = os.path.join(project_dir, ".config")
+    
+    display = None
     url = "https://swgoh.gg/stats/ability-report/?fo=grand-arena&ft=all"
     log.info(f"Ouverture de {url} avec SeleniumBase...")
     
     try:
-        with SB(uc=True, headless=True) as sb:
-            sb.open(url)
-            # Attendre que le tableau soit chargé
-            sb.wait_for_element_visible("table", timeout=20)
+        if not is_windows:
+            try:
+                from pyvirtualdisplay import Display
+                display = Display(visible=0, size=(1920, 1080))
+                display.start()
+            except Exception as e:
+                log.warning(f"pyvirtualdisplay non démarré: {e}")
+
+        profile_dir = os.path.join(project_dir, "chrome_profile")
+        with SB(uc=True, headless=False if not is_windows else True, user_data_dir=profile_dir) as sb:
+            sb.uc_open_with_reconnect(url, reconnect_time=3)
+            
+            # Vérification Cloudflare Turnstile
+            quick_check = sb.get_page_source()
+            if any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
+                try:
+                    sb.uc_gui_click_captcha()
+                except Exception:
+                    pass
+                sb.sleep(8)
+            else:
+                sb.sleep(3)
+
             html = sb.get_page_source()
 
         soup = BeautifulSoup(html, "html.parser")
@@ -71,6 +101,12 @@ def scrape_gac_omicrons(output_json_path: str) -> bool:
     except Exception as e:
         log.error(f"❌ Erreur lors du scraping des Omicrons GAC: {e}", exc_info=True)
         return False
+    finally:
+        if display:
+            try:
+                display.stop()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

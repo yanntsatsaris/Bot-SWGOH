@@ -160,7 +160,7 @@ async def sync():
                     thumb = unit.get("thumbnailName", "")
 
                     # Extraction de l'alignement, du rôle, du statut GL / Leader et des factions
-                    cat_ids = unit.get("categoryIdList", [])
+                    cat_ids = unit.get("categoryId", unit.get("categoryIdList", []))
                     
                     alignment = None
                     if "alignment_light" in cat_ids:
@@ -181,7 +181,8 @@ async def sync():
                         role = "Healer"
 
                     is_gl = "galactic_legend" in cat_ids
-                    is_leader = "role_leader" in cat_ids or any("leader" in str(s).lower() for s in unit.get("skillReferenceList", []))
+                    skills_list = unit.get("skillReference", unit.get("skillReferenceList", []))
+                    is_leader = "role_leader" in cat_ids or any("leader" in str(s).lower() for s in skills_list)
 
                     excluded_cat_prefixes = ("alignment_", "role_", "type_")
                     excluded_cats = {"galactic_legend", "obtainable", "character", "ship", "crew", "preview", "capital"}

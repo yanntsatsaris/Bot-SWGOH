@@ -78,23 +78,25 @@ async def fetch_unit_from_comlink(target_base_id: str = "GLREY"):
                 return
 
             # 3. Analyser et afficher les informations
+            cat_list = target_unit.get("categoryId", target_unit.get("categoryIdList", []))
+            force_align = target_unit.get("forceAlignment", 0)
+            align_str = ALIGNMENT_MAP.get(force_align, f"Inconnu ({force_align})")
+
+            factions = [c.replace("affiliation_", "").replace("profession_", "") for c in cat_list if "affiliation_" in c or "profession_" in c or "unaligned" in c]
+            roles = [c.replace("role_", "") for c in cat_list if "role_" in c]
+            special = [c for c in cat_list if c in ["galactic_legend", "leader", "crewmember", "capital", "role_leader"]]
+
             print("=" * 60)
             print(f"📊 RÉSULTAT COMLINK POUR : {target_base_id}")
             print("=" * 60)
-            print(f"• Clés disponibles dans l'unité : {list(target_unit.keys())}")
-            
-            # Afficher les champs potentiels de catégories / factions
-            for k in ["categoryIdList", "categoryList", "categories", "factions", "tags", "alignment", "forceAlignment", "combatType"]:
-                if k in target_unit:
-                    print(f"• {k} : {target_unit[k]}")
-
-            # Vérifier si Comlink a d'autres collections comme categoryList
-            print("\n• Autres collections présentes dans data :", list(data.keys()))
-            
-            # Afficher le JSON complet de l'unité (tronqué si trop long)
-            print("\n📋 Extrait JSON complet de l'unité :")
-            unit_dump = json.dumps(target_unit, indent=2)
-            print(unit_dump[:2000] + ("\n... [suite tronquée]" if len(unit_dump) > 2000 else ""))
+            print(f"• Nom clé (nameKey) : {target_unit.get('nameKey')}")
+            print(f"• Type de combat   : {'Personnage' if target_unit.get('combatType') == 1 else 'Vaisseau'}")
+            print(f"• Alignement brut  : forceAlignment={force_align} -> {align_str}")
+            print(f"• Rôles détectés   : {roles}")
+            print(f"• Factions         : {factions}")
+            print(f"• Statuts spéciaux : {special}")
+            print("\n📋 Liste brute des catégories (categoryId) :")
+            print(json.dumps(cat_list, indent=2))
             print("=" * 60)
 
 if __name__ == "__main__":

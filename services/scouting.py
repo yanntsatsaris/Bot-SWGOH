@@ -86,13 +86,23 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
 
     # Dictionnaire de correspondance de factions pour vérification de l'escouade
     FACTION_KEYWORDS = {
-        "resistance": ["GLREY", "REY", "BENSOLO", "REYJEDITRAINING", "FINN", "POE", "AMILYNHOLDO", "BB8", "RESISTANCE"],
-        "firstorder": ["SUPREMELEADERKYLOREN", "KYLOREN", "GENERALHUX", "FIRSTORDER", "SITHTROOPER", "PHASMA"],
-        "empire": ["VADER", "EMPEROR", "VEERS", "IDEN", "THRAWN", "INQUISITOR", "THIRD_SISTER", "FIFTHBROTHER", "SEVENTHSISTER", "EIGHTHBROTHER", "MARAJADE", "GIDEON"],
-        "rebel": ["COMMANDERLUKESKYWALKER", "HANSOLO", "CHEWBACCA", "LEIA", "MOTHMA", "RADDUS", "CHOPPER", "HERA", "CASSIAN", "JYN"],
-        "jedi": ["JEDIMASTERKENOBI", "JEDIMASTERLUKE", "MACEWINDU", "JEDIKNIGHTREVAN", "QUI", "YODA", "AHSOKA", "JEDI", "CALKESTIS"],
-        "sith": ["SITHPALPATINE", "DARTHBANE", "DARTHMALGUS", "DARTHMALAK", "DARTHTRAYA", "DARTHNIHILUS", "DARTHSION", "SITH"],
-        "bountyhunter": ["BOBAFETT", "BOSSK", "JANGOFETT", "DENGAR", "EMBO", "MANDALORIAN", "FENNEC", "KRRSANTAN", "GREEDO"]
+        "resistance": ["GLREY", "REY", "BENSOLO", "REYJEDITRAINING", "FINN", "POE", "AMILYNHOLDO", "BB8", "RESISTANCE", "ROSE"],
+        "firstorder": ["SUPREMELEADERKYLOREN", "KYLOREN", "GENERALHUX", "FIRSTORDER", "SITHTROOPER", "PHASMA", "FOST", "KRU", "EXECUTIONER"],
+        "empire": ["VADER", "EMPEROR", "VEERS", "IDEN", "THRAWN", "INQUISITOR", "THIRD_SISTER", "FIFTHBROTHER", "SEVENTHSISTER", "EIGHTHBROTHER", "MARAJADE", "GIDEON", "STARCK", "PIETT", "TIE", "SNOWTROOPER"],
+        "inquisitor": ["THIRDSISTER", "GRANDINQUISITOR", "FIFTHBROTHER", "SEVENTHSISTER", "EIGHTHBROTHER", "NINTHSISTER", "SECOND_SISTER", "MARROK", "INQUISITOR"],
+        "rebel": ["COMMANDERLUKESKYWALKER", "HANSOLO", "CHEWBACCA", "LEIA", "MOTHMA", "RADDUS", "CHOPPER", "HERA", "CASSIAN", "JYN", "SAWGERRERA", "KLEYA", "LUTHEN", "CHIRRUT", "BAZE", "REBEL"],
+        "jedi": ["JEDIMASTERKENOBI", "JEDIMASTERLUKE", "MACEWINDU", "JEDIKNIGHTREVAN", "QUI", "YODA", "AHSOKA", "JEDI", "CALKESTIS", "KELLERANBEQ", "KAM", "PLO", "AAYLA"],
+        "galacticrepublic": ["QUEENAMIDALA", "MASTERQUIGON", "PADAWANOBIWAN", "PADMEAMIDALA", "GENERALKENOBI", "MACEWINDU", "SHAAKTI", "GRANDMASTERYODA", "ANAKINKNIGHT", "CLONETROOPER", "REX", "CODY", "ECHO", "FIVES", "GALACTICREPUBLIC", "GAS", "GENERALSKYWALKER"],
+        "separatist": ["GRIEVOUS", "B1BATTLEDROID", "B2SUPERBATTLEDROID", "MAGNAGUARD", "DROIDEKA", "NUTEGUNRAY", "WATTAMBOR", "JANGOFETT", "DOOKU", "TRENCH", "SEPARATIST", "POGGLE", "SUNFAC", "GEONOSIAN"],
+        "sith": ["SITHPALPATINE", "DARTHBANE", "DARTHMALGUS", "DARTHMALAK", "DARTHTRAYA", "DARTHNIHILUS", "DARTHSION", "SITH", "SITHMARAUDER", "TALON", "SAVAGEOPRESS", "DARTHVADER"],
+        "sithempire": ["DARTHMALGUS", "DARTHREVAN", "DARTHMALAK", "BASTILASHANDARK", "SITHMARAUDER", "SITHEMPIRE"],
+        "oldrepublic": ["JEDIKNIGHTREVAN", "BASTILASHAN", "JOLEEBINDO", "MISSIONVAO", "ZAALBAR", "CARTHONASI", "JUHANI", "T3M4", "CANDEROUS", "OLDREPUBLIC"],
+        "bountyhunter": ["BOBAFETT", "BOSSK", "JANGOFETT", "DENGAR", "EMBO", "MANDALORIAN", "FENNEC", "KRRSANTAN", "GREEDO", "IG88", "AURRA"],
+        "huttcartel": ["GLHONDO", "HONDO", "BOBAFETT", "BOBAFETTSCION", "KRRSANTAN", "EMBO", "CADBANE", "GREEDO", "GAMORREANGUARD", "MOBENFORCER", "HUTTCARTEL", "BRUTUS", "CAPTAINSILVO", "SM33", "VANE", "JABBA", "SKIFF"],
+        "scoundrel": ["GLHONDO", "HONDO", "DASHRENDAR", "CHEWBACCA", "L3_37", "QI_RA", "ENFYS", "SCOUNDREL", "PIRATE", "BRUTUS", "CAPTAINSILVO", "SM33", "VANE", "KUIIL", "IG11"],
+        "nightsister": ["MOTHERTALZIN", "ASAJJVENTRESS", "MERRIN", "OLDDAKA", "NIGHTSISTERZOMBIE", "GREATMOTHERS", "NIGHTSISTER", "MORGANELSBETH"],
+        "mandalorian": ["MANDALORIAN", "BO-KATAN", "THEMANDALORIAN", "ARMORER", "SABINE", "PAZVIZSLA", "BESKARGARMOR", "BO_KATAN"],
+        "unalignedforceuser": ["CEREJUNDA", "CALKESTIS", "FULCRUM", "BENSOLO", "KYLOREN", "STRANGER", "QIMIR", "BAYLAN", "SHIN", "UNALIGNEDFORCEUSER", "STARKILLER", "MARAJADE", "VISAS"]
     }
 
     used_dtc_ids = set()
@@ -107,7 +117,7 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
             squad_str = " ".join(members_upper)
 
             best_dtc = None
-            best_match_level = 0  # 3 = Perso, 2 = Faction, 1 = Alignement
+            best_match_level = 0  # 4 = Perso, 3 = Faction, 2 = Role/Alignement
 
             for dtc in valid_dtcs:
                 dtc_id = dtc.get("id")
@@ -120,6 +130,7 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                 dtc_char_target = None
                 dtc_faction_target = None
                 dtc_align_target = None
+                dtc_role_target = None
 
                 for aff in affixes:
                     rule = (aff.get("targetRule") or "").lower()
@@ -140,7 +151,12 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                                 dtc_faction_target = fac_name
                                 break
 
-                    # 3. Vérification alignement
+                    # 3. Vérification Rôles (Tank, Support, Attacker, Healer)
+                    for r_name in ["tank", "support", "attacker", "healer"]:
+                        if r_name in combined_target:
+                            dtc_role_target = r_name
+
+                    # 4. Vérification alignement
                     if "darkside" in combined_target:
                         dtc_align_target = "DARK_SIDE"
                     elif "lightside" in combined_target:
@@ -165,9 +181,17 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                         "character_base_id": dtc_char_target,
                         "id": dtc_id
                     }
-                    best_match_level = 3
+                    best_match_level = 4
                     break  # Priorité absolue au personnage spécifique !
-                elif dtc_faction_target and best_match_level < 2:
+                elif dtc_faction_target and best_match_level < 3:
+                    best_dtc = {
+                        "template_id": template_id,
+                        "level": dtc_max_tier,
+                        "is_focused": False,
+                        "id": dtc_id
+                    }
+                    best_match_level = 3
+                elif (dtc_role_target or dtc_align_target) and best_match_level < 2:
                     best_dtc = {
                         "template_id": template_id,
                         "level": dtc_max_tier,
@@ -206,6 +230,46 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
 
                 team["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])
+
+    # ── SECONDE PASSE : ATTRIBUTION DES DATACRONS RESTANTS POUR LES STATS PURES ──
+    # En jeu SWGOH, même si les affixes d'un Datacron ne correspondent pas aux factions de l'équipe,
+    # le joueur peut équiper n'importe quel Datacron sur une escouade Relique pour profiter des stats brutes (+DCC, +Attaque, etc.).
+    remaining_dtcs = [d for d in valid_dtcs if d.get("id") not in used_dtc_ids]
+    if remaining_dtcs:
+        for zone_name in ["North", "South", "Back"]:
+            for team in zones.get(zone_name, []):
+                if team.get("datacron") or not remaining_dtcs:
+                    continue
+                ldr = team.get("leader_id")
+                if not ldr or ldr in ["USED", "None", "EMPTY", "Vide"]:
+                    continue
+                members = [ldr] + team.get("members_ids", [])
+                members_upper = [m.upper() for m in members if m]
+
+                max_relic = 0
+                if roster_index and members_upper:
+                    max_relic = max((roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index), default=0)
+                else:
+                    max_relic = 5
+
+                if max_relic >= 1:
+                    dtc = remaining_dtcs.pop(0)
+                    dtc_id = dtc.get("id")
+                    affixes = dtc.get("affix", [])
+                    template_id = dtc.get("templateId", "")
+                    level = 3 if len(affixes) >= 9 else (2 if len(affixes) >= 6 else 1)
+                    if max_relic < 3:
+                        level = 1
+                    elif max_relic < 5:
+                        level = min(level, 2)
+
+                    team["datacron"] = {
+                        "template_id": template_id,
+                        "level": level,
+                        "is_focused": False,
+                        "id": dtc_id
+                    }
+                    used_dtc_ids.add(dtc_id)
 
 def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set, gac_omicron_units: set = None) -> dict:
     roster = {}

@@ -328,10 +328,11 @@ async def enemy_code_autocomplete(interaction: discord.Interaction, current: str
         async with get_db() as db:
             cursor = await db.execute(
                 """
-                SELECT DISTINCT player_code, opponent_name 
+                SELECT player_code, opponent_name, MAX(id) as max_id 
                 FROM gac_rounds 
                 WHERE player_code IS NOT NULL AND player_code != ''
-                ORDER BY id DESC LIMIT 20
+                GROUP BY player_code, opponent_name
+                ORDER BY max_id DESC LIMIT 20
                 """
             )
             rows = await cursor.fetchall()

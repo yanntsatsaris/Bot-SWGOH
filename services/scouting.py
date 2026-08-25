@@ -178,43 +178,31 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
 
             if best_dtc:
                 # ── CONTRÔLE DES RELIQUES DU JOUEUR/ENNEMI POUR L'ACTIVATION RÉELLE ──
-                # Les prérequis dépendent du type de Datacron (Focused vs Standard) et du set :
+                # En jeu SWGOH :
+                # - Si le Datacron cible un personnage spécifique (ex: GLREY) et que ce personnage a la relique requise (R5/R7),
+                #   le palier maximal (Tier 3 ou 5) est pleinement débloqué pour ce personnage.
+                # - Les autres membres bénéficient individuellement de leurs buffs de faction/stats selon leur propre niveau.
                 if roster_index and members_upper:
-                    squad_relics = [roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index]
-                    squad_gears = [roster_index.get(m, {}).get("gear_tier", 0) for m in members_upper if m in roster_index]
-                    min_relic = min(squad_relics) if squad_relics else 0
-                    min_gear = min(squad_gears) if squad_gears else 0
-                    
-                    is_foc = best_dtc.get("is_focused", False)
-                    if is_foc:
-                        # Datacrons Spécialisés (Focused) : seuils allégés
-                        if min_relic >= 7:
-                            active_tier = 5
-                        elif min_relic >= 5:
-                            active_tier = 4
-                        elif min_relic >= 3:
-                            active_tier = 3
-                        elif min_relic >= 1 or min_gear >= 12:
-                            active_tier = 2
-                        elif min_gear >= 10:
-                            active_tier = 1
-                        else:
-                            active_tier = 0
+                    char_target = best_dtc.get("character_base_id")
+                    if char_target and char_target in roster_index:
+                        char_relic = roster_index[char_target].get("relic_tier", 0)
+                        # Le perso ciblé a la relique requise (ex: Rey R8) -> Palier maximal conservé !
+                        if char_relic >= 5:
+                            pass
+                        elif char_relic >= 3:
+                            best_dtc["level"] = min(best_dtc["level"], 2)
+                        elif char_relic < 1:
+                            best_dtc["level"] = 0
                     else:
-                        # Datacrons Standards (Alignement / Faction / Perso)
-                        if min_relic >= 7:
-                            active_tier = 3
-                        elif min_relic >= 5:
-                            active_tier = 2
-                        elif min_relic >= 3:
-                            active_tier = 1
-                        elif min_relic >= 1 or min_gear >= 12:
-                            # Tolérance pour certains sets de relance à R1/G12
-                            active_tier = 1
-                        else:
-                            active_tier = 0
-                    
-                    best_dtc["level"] = min(best_dtc["level"], active_tier)
+                        # Datacron de faction / alignement général : vérifie que la team a au moins des reliques R3/R5
+                        max_relic = max((roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index), default=0)
+                        if max_relic >= 5:
+                            pass
+                        elif max_relic >= 3:
+                            best_dtc["level"] = min(best_dtc["level"], 2)
+                        elif max_relic < 1:
+                            best_dtc["level"] = 0
+
 
                 team["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])

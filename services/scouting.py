@@ -239,46 +239,6 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                 team["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])
 
-    # ── SECONDE PASSE : ATTRIBUTION DES DATACRONS RESTANTS POUR LES STATS PURES ──
-    # En jeu SWGOH, même si les affixes d'un Datacron ne correspondent pas aux factions de l'équipe,
-    # le joueur peut équiper n'importe quel Datacron sur une escouade Relique pour profiter des stats brutes (+DCC, +Attaque, etc.).
-    remaining_dtcs = [d for d in valid_dtcs if d.get("id") not in used_dtc_ids]
-    if remaining_dtcs:
-        for zone_name in ["North", "South", "Back"]:
-            for team in zones.get(zone_name, []):
-                if team.get("datacron") or not remaining_dtcs:
-                    continue
-                ldr = team.get("leader_id")
-                if not ldr or ldr in ["USED", "None", "EMPTY", "Vide"]:
-                    continue
-                members = [ldr] + team.get("members_ids", [])
-                members_upper = [m.upper() for m in members if m]
-
-                max_relic = 0
-                if roster_index and members_upper:
-                    max_relic = max((roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index), default=0)
-                else:
-                    max_relic = 5
-
-                if max_relic >= 1:
-                    dtc = remaining_dtcs.pop(0)
-                    dtc_id = dtc.get("id")
-                    affixes = dtc.get("affix", [])
-                    template_id = dtc.get("templateId", "")
-                    level = 3 if len(affixes) >= 9 else (2 if len(affixes) >= 6 else 1)
-                    if max_relic < 3:
-                        level = 1
-                    elif max_relic < 5:
-                        level = min(level, 2)
-
-                    team["datacron"] = {
-                        "template_id": template_id,
-                        "level": level,
-                        "is_focused": False,
-                        "id": dtc_id
-                    }
-                    used_dtc_ids.add(dtc_id)
-
 def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set, gac_omicron_units: set = None) -> dict:
     roster = {}
     ship_base_ids = ship_base_ids or set()

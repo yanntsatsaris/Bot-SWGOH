@@ -27,8 +27,8 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
     is_5v5 = fmt == "5v5"
     cell = _CELL_5V5 if is_5v5 else PORTRAIT_CELL
     gap  = _GAP_5V5  if is_5v5 else PORTRAIT_GAP
-    # En 5v5, le canvas est plus large pour accueillir N+S côte à côte
-    width = 1100 if is_5v5 else 900
+    # En 5v5, le canvas est élargi (1360px) pour accueillir 5 persos + Datacron + Label Historique sans chevauchement
+    width = 1360 if is_5v5 else 900
     
     north_teams = zones.get("North", [])
     south_teams = zones.get("South", [])

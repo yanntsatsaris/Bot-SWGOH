@@ -180,7 +180,7 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                 else:
                     dtc_max_tier = 0
 
-                # Score et sélection
+                # Score et sélection stricte : Uniquement Personnage ou Faction dédiée !
                 if dtc_char_target:
                     best_dtc = {
                         "template_id": template_id,
@@ -199,14 +199,6 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                         "id": dtc_id
                     }
                     best_match_level = 3
-                elif (dtc_role_target or dtc_align_target) and best_match_level < 2:
-                    best_dtc = {
-                        "template_id": template_id,
-                        "level": dtc_max_tier,
-                        "is_focused": False,
-                        "id": dtc_id
-                    }
-                    best_match_level = 2
 
             if best_dtc:
                 # ── CONTRÔLE DES RELIQUES DU JOUEUR/ENNEMI POUR L'ACTIVATION RÉELLE ──

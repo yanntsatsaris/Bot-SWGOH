@@ -255,8 +255,6 @@ def scrape_datacrons(output_json_path: str) -> bool:
                                 if m_ab:
                                     ability_id = m_ab.group(1)
 
-                            target_align, target_fac, target_role = parse_target_scopes(desc_text, scope_name, target_unit_id)
-
                             # Stats numériques éventuelles (Scope 1)
                             stat_type = ""
                             stat_val = 0.0

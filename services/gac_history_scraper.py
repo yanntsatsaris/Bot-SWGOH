@@ -427,6 +427,32 @@ class GACHistoryScraper:
                     
                 is_hub_page = target_url.endswith('gac-history/') if target_url else not matches
                 if is_hub_page:
+                    # ── Lire le format de chaque saison directement depuis le HTML ──
+                    # Structure : <div class="panel mt-2"> contient
+                    #   <h2>Season 82 <span class="text-gg-gray-300 small">(5v5)</span></h2>
+                    #   + les liens /gac-history/{season_id}/{round}/
+                    season_format_map = {}  # {season_id: "5v5" | "3v3"}
+                    for panel in soup.find_all('div', class_=lambda c: c and 'panel' in c.split()):
+                        header = panel.find('h2')
+                        if not header:
+                            continue
+                        span = header.find('span')
+                        if not span:
+                            continue
+                        span_text = span.get_text(strip=True).lower()
+                        if '5v5' in span_text:
+                            panel_format = '5v5'
+                        elif '3v3' in span_text:
+                            panel_format = '3v3'
+                        else:
+                            continue
+                        # Récupérer tous les season_ids des liens dans ce panel
+                        for a in panel.find_all('a', href=True):
+                            import re as _re
+                            m = _re.search(r'/gac-history/([^/]+)/', a['href'])
+                            if m:
+                                season_format_map[m.group(1)] = panel_format
+
                     hub_links = []
                     for a in soup.find_all('a', href=True):
                         href = a['href']
@@ -434,48 +460,28 @@ class GACHistoryScraper:
                             full_url = f"https://swgoh.gg{href}" if href.startswith('/') else href
                             if full_url not in hub_links: hub_links.append(full_url)
                     if hub_links:
-                        # Trier tous les liens par season_id (timestamp) décroissant
+                        # Trier par season_id décroissant (plus récent en premier)
                         hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
-                        
-                        # Extraire les season_ids uniques triés → index 0 = la plus récente
-                        all_season_ids = []
-                        for link in hub_links_sorted:
-                            s_id = link.split("/gac-history/")[-1].split("/")[0]
-                            if s_id not in all_season_ids:
-                                all_season_ids.append(s_id)
-                        
-                        # La saison la plus récente = saison 82 = paire = 5v5
-                        # On déduit la parité par position : index 0 → pair, index 1 → impair, index 2 → pair...
-                        # (car les saisons alternent strictement 5v5 / 3v3)
-                        # CURRENT_SEASON_IS_EVEN = True (saison 82, 84... = 5v5)
-                        CURRENT_SEASON_IS_EVEN = True  # Mettre à False si saison actuelle = impaire (3v3)
-                        season_parity = {}  # {season_id: "5v5" | "3v3"}
-                        for idx, s_id in enumerate(all_season_ids):
-                            if CURRENT_SEASON_IS_EVEN:
-                                season_parity[s_id] = "5v5" if idx % 2 == 0 else "3v3"
-                            else:
-                                season_parity[s_id] = "3v3" if idx % 2 == 0 else "5v5"
-                        
                         unique_seasons = []
                         filtered_links = []
                         for link in hub_links_sorted:
                             s_id = link.split("/gac-history/")[-1].split("/")[0]
                             if s_id not in unique_seasons:
+                                # Limiter à 6 events maximum pour ne pas scraper tout l'historique
                                 if len(unique_seasons) >= 6:
                                     break
-                                # ── FILTRE PAR FORMAT basé sur la parité chronologique ──
-                                if format_filter and s_id in season_parity:
-                                    detected_fmt = season_parity[s_id]
+                                # ── FILTRE PAR FORMAT lu directement dans le HTML ──
+                                if format_filter and s_id in season_format_map:
+                                    detected_fmt = season_format_map[s_id]
                                     if detected_fmt != format_filter:
-                                        logger.info(f"⏭️ Saison {s_id} ignorée (format estimé: {detected_fmt} ≠ filtre {format_filter})")
-                                        unique_seasons.append(s_id)  # marquer comme vue sans compter dans les 6 utiles
+                                        logger.info(f"⏭️ Event {s_id} ignoré — format HTML: {detected_fmt} ≠ filtre {format_filter}")
+                                        unique_seasons.append(s_id)  # marquer comme vu sans compter dans les 6 utiles
                                         continue
                                 unique_seasons.append(s_id)
                             filtered_links.append(link)
                             
                         results.append({"matches": [], "hub_links": filtered_links, "url": target_url})
                         continue
-
 
                     
                 land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]

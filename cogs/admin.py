@@ -229,6 +229,70 @@ class AdminCog(commands.Cog, name="Admin"):
             log.exception("Erreur admin_inspect_history: %s", err)
             await interaction.followup.send(f"❌ Erreur lors de l'inspection : {err}", ephemeral=True)
 
+    # ------------------------------------------------------------------
+    # /admin-preview-enemy-map — Prévisualisation directe de la carte ennemie
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="admin-preview-enemy-map",
+        description="[Admin] Prévisualise la carte de défense d'un joueur sans session utilisateur ni contres.",
+    )
+    @app_commands.describe(
+        ally_code="L'ally code du joueur (ex: 646155991)",
+        format_gac="Format 5v5 ou 3v3"
+    )
+    @app_commands.choices(
+        format_gac=[
+            app_commands.Choice(name="5 contre 5", value="5v5"),
+            app_commands.Choice(name="3 contre 3", value="3v3"),
+        ]
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def admin_preview_enemy_map(self, interaction: discord.Interaction, ally_code: str, format_gac: app_commands.Choice[str] = None) -> None:
+        await interaction.response.defer(ephemeral=True)
+        clean_code = ally_code.replace("-", "").strip()
+        fmt = format_gac.value if format_gac else "5v5"
+
+        try:
+            from services.scouting import get_scout_data
+            from services.scout_image import generate_scout_map
+            import asyncio
+
+            # On appelle get_scout_data sans my_ally_code pour ne pas scraper de contres ni modifier de session
+            scout_data = await get_scout_data(clean_code, fmt, my_ally_code=None)
+
+            fmt_enemy_code = f"{clean_code[:3]}-{clean_code[3:6]}-{clean_code[6:]}" if len(clean_code) == 9 else clean_code
+
+            img_bytes = await asyncio.to_thread(
+                generate_scout_map,
+                scout_data["zones"],
+                scout_data["quotas"],
+                scout_data["league"],
+                scout_data["format"],
+                f"{scout_data['enemy_name']} ({fmt_enemy_code}) [Aperçu Admin]",
+                scout_data["source"],
+                scout_data.get("roster_index")
+            )
+
+            file = discord.File(img_bytes, filename=f"preview_{clean_code}.png")
+
+            # Résumé texte des zones
+            lines = [f"🛡️ **Aperçu des défenses pour `{scout_data['enemy_name']}` ({fmt_enemy_code})** — Format `{fmt}`\n"]
+            for z_name, teams in scout_data.get("zones", {}).items():
+                quota = scout_data.get("quotas", {}).get(z_name, len(teams))
+                lines.append(f"**Zone {z_name.upper()} ({len(teams)}/{quota}) :**")
+                for i, t in enumerate(teams):
+                    ldr = t.get("leader_id") or "Vide"
+                    m_count = len(t.get("members_ids", []))
+                    src = t.get("source", "Prédiction")
+                    lines.append(f"  • Slot #{i+1}: **{ldr}** (+{m_count} membres) — *{src}*")
+                lines.append("")
+
+            report = "\n".join(lines)
+            await interaction.followup.send(content=report, file=file, ephemeral=True)
+        except Exception as err:
+            log.exception("Erreur admin_preview_enemy_map: %s", err)
+            await interaction.followup.send(f"❌ Erreur lors de la prévisualisation : {err}", ephemeral=True)
+
 
     # ------------------------------------------------------------------
     # /refresh-counters — Forcer le scraping de counters

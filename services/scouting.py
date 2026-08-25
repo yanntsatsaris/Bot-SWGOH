@@ -385,62 +385,16 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                             if not has_synergy and len(valid_members) > 0 and percent < 5.0:
                                 continue
 
-                    # Logique de remplacement (Upgrade)
-                    best_upgrade = None
-                    if hz != "fleet":
-                        # Chercher si une équipe Meta partage des personnages clés et est plus forte
-                        history_set = set([leader] + valid_members)
-                        
-                        for meta_team in available_teams:
-                            if meta_team["leader_id"] in used_base_ids:
-                                continue
-                                
-                            meta_set = set([meta_team["leader_id"]] + meta_team["members"])
-                            overlap = len(history_set.intersection(meta_set))
-                            
-                            # Si on a un chevauchement significatif (au moins 2 persos en 5v5, 1 ou 2 en 3v3)
-                            # Ou si le leader est le même mais la compo Meta est meilleure
-                            # Et que le score de défense de la Meta est très bon
-                            if overlap >= (1 if expected_size == 3 else 2) or leader == meta_team["leader_id"]:
-                                # Un upgrade est valide si la Meta a un meilleur score défensif strict
-                                # ou si la Meta contient des personnages Premium (GL, Reva, Bane) non présents historiquement
-                                premium_units = ["THIRDSISTER", "GLREY", "JEDIMASTERKENOBI", "SUPREMELEADERKYLOREN", "SITHPALPATINE", "JEDIMASTERLUKE", "LORDVADER", "JABBATHEHUTT", "LEIAORGANA", "DARTHBANE", "TARONMALICOS", "BOKATANMANDALOR"]
-                                has_new_premium = any(p in meta_set and p not in history_set for p in premium_units)
-                                
-                                # On simule le score def de l'équipe historique si c'était une Meta
-                                # Pour simplifier, on dit que si la Meta a >= 7 en défense ou a un premium, on upgrade.
-                                # Sauf si l'historique a déjà un excellent percent (ex: > 80%).
-                                if (meta_team["defense"] >= 7 or has_new_premium) and percent < 90:
-                                    if best_upgrade is None or meta_team["defense"] > best_upgrade["defense"]:
-                                        best_upgrade = meta_team
-                                        
-                    if best_upgrade:
-                        # Remplacement par l'Upgrade
-                        upgrade_leader = best_upgrade["leader_id"]
-                        upgrade_members = best_upgrade["members"]
-                        
-                        zones[h_name].append({
-                            "leader_id": upgrade_leader,
-                            "members_ids": upgrade_members,
-                            "source": f"Upgrade (Ancien: {leader})",
-                            "target_size": expected_size
-                        })
-                        used_base_ids.add(upgrade_leader)
-                        used_base_ids.update(upgrade_members)
-                        placed_in_zone += 1
-                        # On retire l'équipe Meta des available_teams pour ne pas la réutiliser
-                        best_upgrade["leader_id"] = "USED"
-                    else:
-                        # Ajout classique de l'équipe historique
-                        zones[h_name].append({
-                            "leader_id": leader,
-                            "members_ids": valid_members,
-                            "source": f"Historique ({percent}%)",
-                            "target_size": expected_size if hz != "fleet" else 8
-                        })
-                        used_base_ids.add(leader)
-                        used_base_ids.update(valid_members)
-                        placed_in_zone += 1
+                    # Ajout direct et fidèle de l'équipe historique du joueur
+                    zones[h_name].append({
+                        "leader_id": leader,
+                        "members_ids": valid_members,
+                        "source": f"Historique ({percent}%)",
+                        "target_size": expected_size if hz != "fleet" else 8
+                    })
+                    used_base_ids.add(leader)
+                    used_base_ids.update(valid_members)
+                    placed_in_zone += 1
     
     # Remplir les slots vides UNIQUEMENT avec de vraies équipes meta disponibles (pas de leftovers aléatoires)
     for zone in ["North", "South", "Back"]:

@@ -428,41 +428,34 @@ class GACHistoryScraper:
                 is_hub_page = target_url.endswith('gac-history/') if target_url else not matches
                 if is_hub_page:
                     hub_links = []
-                    
-                    # Construire une map season_timestamp -> season_number depuis le HTML
-                    # Les liens contiennent parfois l'ID de saison en data-attribute ou dans le href de type SEASON_XX
-                    season_num_map = {}  # {season_timestamp: season_number}
-                    for a in soup.find_all('a', href=True):
-                        href = a['href']
-                        # Chercher des liens du type /gac-history/?season_id=...SEASON_82 sur la page hub
-                        import re as _re
-                        m_sn = _re.search(r'SEASON_(\d+)', href)
-                        m_ts = _re.search(r'/gac-history/([^/]+)/', href)
-                        if m_sn and m_ts:
-                            season_num_map[m_ts.group(1)] = int(m_sn.group(1))
-                    
-                    # Si pas trouvé via href, chercher dans le texte de la page (ex: "Season 82")
-                    if not season_num_map:
-                        for elem in soup.find_all(string=_re.compile(r'Season\s+\d+', _re.IGNORECASE)):
-                            m_sn = _re.search(r'Season\s+(\d+)', str(elem), _re.IGNORECASE)
-                            if m_sn:
-                                # Trouver le lien parent avec un timestamp
-                                parent_a = getattr(elem, 'parent', None)
-                                for _ in range(5):  # Remonter jusqu'à 5 niveaux
-                                    if parent_a and parent_a.name == 'a':
-                                        m_ts = _re.search(r'/gac-history/([^/]+)/', parent_a.get('href', ''))
-                                        if m_ts:
-                                            season_num_map[m_ts.group(1)] = int(m_sn.group(1))
-                                        break
-                                    parent_a = getattr(parent_a, 'parent', None) if parent_a else None
-
                     for a in soup.find_all('a', href=True):
                         href = a['href']
                         if "/gac-history/" in href and (href.endswith('/1/') or href.endswith('/2/') or href.endswith('/3/')):
                             full_url = f"https://swgoh.gg{href}" if href.startswith('/') else href
                             if full_url not in hub_links: hub_links.append(full_url)
                     if hub_links:
+                        # Trier tous les liens par season_id (timestamp) décroissant
                         hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
+                        
+                        # Extraire les season_ids uniques triés → index 0 = la plus récente
+                        all_season_ids = []
+                        for link in hub_links_sorted:
+                            s_id = link.split("/gac-history/")[-1].split("/")[0]
+                            if s_id not in all_season_ids:
+                                all_season_ids.append(s_id)
+                        
+                        # La saison la plus récente = saison 82 = paire = 5v5
+                        # On déduit la parité par position : index 0 → pair, index 1 → impair, index 2 → pair...
+                        # (car les saisons alternent strictement 5v5 / 3v3)
+                        # CURRENT_SEASON_IS_EVEN = True (saison 82, 84... = 5v5)
+                        CURRENT_SEASON_IS_EVEN = True  # Mettre à False si saison actuelle = impaire (3v3)
+                        season_parity = {}  # {season_id: "5v5" | "3v3"}
+                        for idx, s_id in enumerate(all_season_ids):
+                            if CURRENT_SEASON_IS_EVEN:
+                                season_parity[s_id] = "5v5" if idx % 2 == 0 else "3v3"
+                            else:
+                                season_parity[s_id] = "3v3" if idx % 2 == 0 else "5v5"
+                        
                         unique_seasons = []
                         filtered_links = []
                         for link in hub_links_sorted:
@@ -470,20 +463,19 @@ class GACHistoryScraper:
                             if s_id not in unique_seasons:
                                 if len(unique_seasons) >= 6:
                                     break
-                                # ── FILTRE PAR FORMAT basé sur la parité de la saison ──
-                                # Saisons paires (80, 82, 84...) = 5v5 | Impaires (79, 81, 83...) = 3v3
-                                if format_filter and s_id in season_num_map:
-                                    s_num = season_num_map[s_id]
-                                    expected_parity = 0 if format_filter == "5v5" else 1  # 0=pair=5v5, 1=impair=3v3
-                                    if s_num % 2 != expected_parity:
-                                        logger.info(f"⏭️ Saison {s_num} ({s_id}) ignorée — format {('3v3' if s_num%2 else '5v5')} ≠ filtre {format_filter}")
-                                        unique_seasons.append(s_id)  # marquer comme vue pour ne pas compter dans les 6
+                                # ── FILTRE PAR FORMAT basé sur la parité chronologique ──
+                                if format_filter and s_id in season_parity:
+                                    detected_fmt = season_parity[s_id]
+                                    if detected_fmt != format_filter:
+                                        logger.info(f"⏭️ Saison {s_id} ignorée (format estimé: {detected_fmt} ≠ filtre {format_filter})")
+                                        unique_seasons.append(s_id)  # marquer comme vue sans compter dans les 6 utiles
                                         continue
                                 unique_seasons.append(s_id)
                             filtered_links.append(link)
                             
                         results.append({"matches": [], "hub_links": filtered_links, "url": target_url})
                         continue
+
 
                     
                 land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]

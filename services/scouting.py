@@ -1182,9 +1182,9 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             ldr_upper = chosen_c["atk_leader_id"].upper()
             if fmt == "5v5" and len(atk_members) < 4 and ldr_upper not in RECOGNIZED_SOLO_LEADERS and len(atk_members) >= 2:
                 FACTION_FILLERS = {
-                    "BOSSNASS": ["GUNGANPHALANX", "GUNGANBOOMADIER", "CAPTAINTARPALS", "JARJARBINKSSWGOH"],
+                    "BOSSNASS": ["GUNGANPHALANX", "GUNGANBOOMADIER", "CAPTAINTARPALS", "JARJARBINKS"],
                     "GRIEVOUS": ["DROIDEKA", "B2SUPERBATTLEDROID", "MAGNAGUARD", "B1BATTLEDROIDV2", "STAP"],
-                    "VEERS": ["DARKROOPERSWGOH", "COLONELSTARCK", "ADMIRALPIETT", "RANGETROOPER", "MOFFGIDEONS1"],
+                    "VEERS": ["DARKTROOPER", "COLONELSTARCK", "ADMIRALPIETT", "RANGETROOPER", "MOFFGIDEONS1"],
                     "IDENVERSIOEMPIRE": ["MAGMATROOPER", "DEATHTROOPER", "STORMTROOPER", "SCOUTTROOPER", "SNOWTROOPER"],
                     "COMMANDERLUKESKYWALKER": ["CHEWBACCALEGENDARY", "HANSOLO", "C3POLEGENDARY", "CHIRRUTIMWE", "BAZEMALBUS"],
                     "HEROAMIRAL": ["KAPEX", "CT7567", "CC2224", "CT210408", "CT5555", "ARCTROOPER501ST"],

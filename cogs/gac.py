@@ -183,95 +183,65 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
 
     discord_id = str(interaction.user.id)
     
-    from database.db import get_db
+    from database.db import get_db, load_active_gac_session, load_user_defense_zones
     from services.unit_names import get_name
     from utils.gac_config import get_gac_quotas
     from services.comlink import get_player
     
-    ally_code = None
-    league = "BRONZIUM"
+    league = "KYBER"
     format_type = "5v5"
     
-    async with get_db() as db:
-        cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (discord_id,))
-        row = await cursor.fetchone()
-        if row:
-            ally_code = row["ally_code"]
-            
-        cursor = await db.execute(
-            "SELECT league, format FROM gac_rounds WHERE player_code = ? AND league IS NOT NULL ORDER BY id DESC LIMIT 1",
-            (ally_code,) if ally_code else (discord_id,)
-        )
-        r_row = await cursor.fetchone()
-        if r_row:
-            if r_row["league"]: league = r_row["league"].upper()
-            if r_row["format"]: format_type = r_row["format"]
-        elif ally_code:
-            try:
-                profile = await get_player(ally_code)
-                if profile:
-                    season_status = profile.get("seasonStatus", [])
-                    if season_status:
-                        last_season = season_status[-1]
-                        l_val = last_season.get("league", "BRONZIUM")
-                        if isinstance(l_val, str):
-                            league = l_val.split("_")[-1].upper()
-            except Exception:
-                pass
+    # 1. Récupérer la session active de l'utilisateur
+    try:
+        session = await load_active_gac_session(discord_id)
+        if session:
+            if session.get("league"):
+                league = session["league"].upper()
+            if session.get("format"):
+                format_type = session["format"]
+    except Exception as e:
+        log.debug("Erreur lecture session active pour slot_autocomplete: %s", e)
 
-        quotas = get_gac_quotas(league, format_type)
-        max_slots = quotas.get(zone, 2)
+    # 2. Quotas de la ligue
+    quotas = get_gac_quotas(league, format_type)
+    quota_slots = quotas.get(zone, 4 if league == "KYBER" else 2)
 
-        # Récupération ordonnée par id ASC (le leader a toujours été inséré en premier)
-        cursor = await db.execute(
-            """
-            SELECT slot_index, base_id 
-            FROM active_round_units 
-            WHERE discord_id = ? AND zone = ? AND used_type = ?
-            ORDER BY slot_index ASC, id ASC
-            """,
-            (discord_id, zone, used_type_target)
-        )
-        rows = await cursor.fetchall()
-        
-        # Si aucun résultat sous discord_id, tenter avec ally_code
-        if not rows and ally_code:
-            cursor = await db.execute(
-                """
-                SELECT slot_index, base_id 
-                FROM active_round_units 
-                WHERE discord_id = ? AND zone = ? AND used_type = ?
-                ORDER BY slot_index ASC, id ASC
-                """,
-                (str(ally_code), zone, used_type_target)
-            )
-            rows = await cursor.fetchall()
-        
-        # Récupération des secteurs déjà tombés (CLEARED)
-        cleared_slots = set()
-        if "record-battle" in cmd_name:
-            c_cursor = await db.execute(
-                "SELECT slot_index FROM active_sector_status WHERE discord_id = ? AND zone = ? AND status = 'CLEARED'",
-                (discord_id, zone)
-            )
-            c_rows = await c_cursor.fetchall()
-            cleared_slots = {r["slot_index"] for r in c_rows}
-        
+    # 3. Charger les équipes actuelles enregistrées pour cette zone
     slots_dict = {}
-    if rows:
-        for r in rows:
-            s_idx = r["slot_index"] or 1
-            if s_idx not in slots_dict:
-                slots_dict[s_idx] = r["base_id"]
-                
-    max_slots = max(max_slots, max(slots_dict.keys(), default=1))
-    
+    try:
+        user_zones = await load_user_defense_zones(discord_id, used_type_target)
+        zone_teams = user_zones.get(zone, [])
+        for idx, t in enumerate(zone_teams, 1):
+            s_idx = t.get("slot_index") or idx
+            ldr = t.get("leader_id")
+            if ldr and ldr not in ["USED", "None", "EMPTY", "Vide"]:
+                slots_dict[s_idx] = ldr
+    except Exception as e:
+        log.debug("Erreur lecture user_zones pour slot_autocomplete: %s", e)
+        zone_teams = []
+
+    max_slots = max(quota_slots, max(slots_dict.keys(), default=1), len(zone_teams))
+
+    # Récupération des secteurs déjà tombés (CLEARED) si record-battle
+    cleared_slots = set()
+    if "record-battle" in cmd_name:
+        try:
+            async with get_db() as db:
+                c_cursor = await db.execute(
+                    "SELECT slot_index FROM active_sector_status WHERE discord_id = ? AND zone = ? AND status = 'CLEARED'",
+                    (discord_id, zone)
+                )
+                c_rows = await c_cursor.fetchall()
+                cleared_slots = {r["slot_index"] for r in c_rows}
+        except Exception:
+            pass
+
     choices = []
     for s_idx in range(1, max_slots + 1):
         if s_idx in cleared_slots:
             continue  # Exclure les secteurs déjà tombés
         ldr_id = slots_dict.get(s_idx)
-        if ldr_id and ldr_id not in ["USED", "None", "EMPTY"]:
+        if ldr_id and ldr_id not in ["USED", "None", "EMPTY", "Vide"]:
             label = f"Slot #{s_idx} : {get_name(ldr_id)}"
         else:
             label = f"Slot #{s_idx} (Vide / À modifier)"
@@ -281,8 +251,6 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
         choices.append(app_commands.Choice(name=f"🎉 Tous les secteurs de la zone {zone} sont tombés !", value=1))
         
     return choices[:25]
-
-
 
 
 class GacCog(commands.Cog, name="GAC"):

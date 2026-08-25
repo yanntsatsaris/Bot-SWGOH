@@ -301,59 +301,27 @@ class DefenseValidationView(discord.ui.View):
 
 
 async def enemy_code_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
-    """Autocomplète le code allié de l'adversaire avec la session active (dernier scouté) et l'historique."""
-    from database.db import load_active_gac_session, get_db
+    """Autocomplète le code allié avec le dernier adversaire scouté par l'utilisateur."""
+    from database.db import load_active_gac_session
     choices = []
     current_clean = current.replace("-", "").strip().lower()
-    seen_codes = set()
 
-    # 1. Priorité : Le dernier adversaire scouté en mémoire (session active)
+    # Le dernier adversaire scouté en mémoire (session active de l'utilisateur)
     try:
         session = await load_active_gac_session(str(interaction.user.id))
         if session and session.get("enemy_code"):
             e_code = str(session["enemy_code"]).replace("-", "").strip()
-            e_name = session.get("enemy_name") or "Dernier Ennemi"
+            e_name = session.get("enemy_name") or "Dernier Adversaire"
             fmt_code = f"{e_code[:3]}-{e_code[3:6]}-{e_code[6:]}" if len(e_code) == 9 else e_code
             if not current_clean or current_clean in e_code.lower() or current_clean in e_name.lower():
                 choices.append(app_commands.Choice(
-                    name=f"⭐ {e_name} ({fmt_code}) [Ennemi Actif]",
+                    name=f"⭐ {e_name} ({fmt_code})",
                     value=e_code
                 ))
-                seen_codes.add(e_code)
     except Exception as err:
         log.warning(f"Erreur lecture session active pour autocomplete : {err}")
 
-    # 2. Chercher dans les adversaires récents (gac_rounds)
-    try:
-        async with get_db() as db:
-            cursor = await db.execute(
-                """
-                SELECT player_code, opponent_name, MAX(id) as max_id 
-                FROM gac_rounds 
-                WHERE player_code IS NOT NULL AND player_code != ''
-                GROUP BY player_code, opponent_name
-                ORDER BY max_id DESC LIMIT 20
-                """
-            )
-            rows = await cursor.fetchall()
-            for r in rows:
-                p_code = str(r["player_code"]).replace("-", "").strip()
-                if p_code in seen_codes:
-                    continue
-                p_name = r["opponent_name"] or "Joueur"
-                fmt_code = f"{p_code[:3]}-{p_code[3:6]}-{p_code[6:]}" if len(p_code) == 9 else p_code
-                if not current_clean or current_clean in p_code.lower() or current_clean in p_name.lower():
-                    choices.append(app_commands.Choice(
-                        name=f"🕒 {p_name} ({fmt_code})",
-                        value=p_code
-                    ))
-                    seen_codes.add(p_code)
-                if len(choices) >= 25:
-                    break
-    except Exception as err:
-        log.warning(f"Erreur lecture gac_rounds pour autocomplete : {err}")
-
-    return choices[:25]
+    return choices
 
 
 # ─── COG ─────────────────────────────────────────────────────────────────────

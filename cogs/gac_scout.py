@@ -537,6 +537,13 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 await self._send_response(interaction, content="⏳ Historique trouvé en base de données. Génération de la prédiction sans refaire de scan...")
                 await on_scrape_finished(clean_code, interaction)
             else:
+                if force_sync:
+                    async with get_db() as db:
+                        await db.execute("DELETE FROM gac_matches WHERE round_id IN (SELECT id FROM gac_rounds WHERE player_code = ?)", (clean_code,))
+                        await db.execute("DELETE FROM gac_round_teams WHERE round_id IN (SELECT id FROM gac_rounds WHERE player_code = ?)", (clean_code,))
+                        await db.execute("DELETE FROM gac_rounds WHERE player_code = ?", (clean_code,))
+                    log.info("🧹 Historique BDD purgé pour %s car force_sync=True", clean_code)
+
                 if not hasattr(self.bot, "gac_scraper"):
                     await self._send_response(interaction, content="❌ Le service d'extraction GAC (Scan) n'est pas actif sur ce serveur.")
                     return

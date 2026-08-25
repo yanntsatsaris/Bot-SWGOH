@@ -108,6 +108,7 @@ class AdminCog(commands.Cog, name="Admin"):
     # ------------------------------------------------------------------
     # /reset-player-history — Réinitialisation des données GAC scrapées
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
     @app_commands.command(
         name="reset-player-history",
         description="[Admin] Supprime tout l'historique GAC extrait d'un joueur (via son ally code).",
@@ -120,17 +121,113 @@ class AdminCog(commands.Cog, name="Admin"):
         try:
             from database.db import get_db
             async with get_db() as db:
+                await db.execute("DELETE FROM gac_matches WHERE round_id IN (SELECT id FROM gac_rounds WHERE player_code = ?)", (clean_code,))
+                await db.execute("DELETE FROM gac_round_teams WHERE round_id IN (SELECT id FROM gac_rounds WHERE player_code = ?)", (clean_code,))
                 await db.execute("DELETE FROM gac_rounds WHERE player_code = ?", (clean_code,))
-                # La suppression en cascade effacera les gac_matches associés
             
             await interaction.followup.send(
-                f"✅ Historique supprimé avec succès pour l'ally code **{clean_code}**.", ephemeral=True
+                f"✅ Tout l'historique (rounds et combats) a été supprimé pour l'ally code **{clean_code}**.", ephemeral=True
             )
         except Exception:
             log.exception(f"Erreur lors de la suppression de l'historique pour {clean_code}")
             await interaction.followup.send(
                 "Erreur lors de la suppression.", ephemeral=True
             )
+
+    # ------------------------------------------------------------------
+    # /admin-inspect-history — Inspecter les données brutes d'historique en BDD
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="admin-inspect-history",
+        description="[Admin] Affiche les rounds et combats enregistrés en BDD pour un joueur.",
+    )
+    @app_commands.describe(
+        ally_code="L'ally code du joueur (ex: 646155991)",
+        format_gac="Format 5v5 ou 3v3"
+    )
+    @app_commands.choices(
+        format_gac=[
+            app_commands.Choice(name="5 contre 5", value="5v5"),
+            app_commands.Choice(name="3 contre 3", value="3v3"),
+        ]
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def admin_inspect_history(self, interaction: discord.Interaction, ally_code: str, format_gac: app_commands.Choice[str] = None) -> None:
+        await interaction.response.defer(ephemeral=True)
+        clean_code = ally_code.replace("-", "").strip()
+        fmt = format_gac.value if format_gac else "5v5"
+        
+        from database.db import get_db
+        from services.gac_scout_analyzer import GacScoutAnalyzer
+        
+        try:
+            async with get_db() as db:
+                cursor = await db.execute(
+                    """
+                    SELECT id, season_id, round_number, opponent_name, format, league 
+                    FROM gac_rounds 
+                    WHERE player_code = ? 
+                    ORDER BY id DESC
+                    """,
+                    (clean_code,)
+                )
+                rounds = await cursor.fetchall()
+                
+                cursor_m = await db.execute(
+                    """
+                    SELECT m.id, m.round_id, m.is_attack, m.attacker_team, m.defender_team, m.zone, m.outcome, m.banners, r.season_id, r.round_number
+                    FROM gac_matches m
+                    JOIN gac_rounds r ON m.round_id = r.id
+                    WHERE r.player_code = ?
+                    ORDER BY m.id DESC LIMIT 40
+                    """,
+                    (clean_code,)
+                )
+                matches = await cursor_m.fetchall()
+
+            habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
+            
+            lines = [f"📊 **Historique BDD pour `{clean_code}`** (Format : `{fmt}`)\n"]
+            lines.append(f"• **Rounds enregistrés en BDD ({len(rounds)})** :")
+            if rounds:
+                for r in rounds[:12]:
+                    lines.append(f"  - Round #{r['round_number']} | Saison: `{r['season_id']}` | Format: `{r['format']}` | Ligue: `{r['league']}` | Vs: {r['opponent_name']}")
+            else:
+                lines.append("  *(Aucun round trouvé en BDD pour ce code)*")
+            
+            lines.append(f"\n• **Combats enregistrés (Total : {len(matches)})** :")
+            if matches:
+                for m in matches[:12]:
+                    side = "⚔️ Attaque" if m["is_attack"] else "🛡️ Défense"
+                    try:
+                        def_t = json.loads(m["defender_team"])
+                        def_lead = def_t[0] if def_t else "Vide"
+                        def_count = len(def_t)
+                    except:
+                        def_lead = m["defender_team"]
+                        def_count = 0
+                    lines.append(f"  - [{side}] S{m['season_id']}R{m['round_number']} | Zone: `{m['zone']}` | Leader Def: **{def_lead}** ({def_count} persos) | {m['banners']} pts | {m['outcome']}")
+            else:
+                lines.append("  *(Aucun combat enregistré)*")
+                
+            lines.append(f"\n• **Habitudes défensives synthétisées ({habits.get('total_rounds', 0)} rounds pris en compte)** :")
+            for z_name, z_teams in habits.get("zones", {}).items():
+                if z_teams:
+                    t_names = [f"{t['leader_id']} ({t['percent']}%)" for t in z_teams[:3]]
+                    lines.append(f"  - Zone `{z_name.upper()}` : {', '.join(t_names)}")
+                else:
+                    lines.append(f"  - Zone `{z_name.upper()}` : Aucune équipe récurrente")
+                    
+            report = "\n".join(lines)
+            if len(report) > 1950:
+                import io
+                file = discord.File(io.BytesIO(report.encode("utf-8")), filename=f"history_{clean_code}.txt")
+                await interaction.followup.send(content=f"📄 Rapport complet pour `{clean_code}` :", file=file, ephemeral=True)
+            else:
+                await interaction.followup.send(content=report, ephemeral=True)
+        except Exception as err:
+            log.exception("Erreur admin_inspect_history: %s", err)
+            await interaction.followup.send(f"❌ Erreur lors de l'inspection : {err}", ephemeral=True)
 
 
     # ------------------------------------------------------------------

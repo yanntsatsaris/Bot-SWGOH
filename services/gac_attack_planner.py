@@ -93,6 +93,22 @@ def filter_counters_by_roster(
         # Cela élimine les entrées de données incomplètes (ex: Emperor Palpatine Solo).
         if len(all_ids) == 1 and counter["atk_leader_id"].upper() not in RECOGNIZED_SOLO_LEADERS:
             continue
+
+        # ── Anti-Gaspillage Solos : Interdire les personnages solos en soutiens dans d'autres équipes ──
+        # Wampa, Nest et Savage doivent être réservés pour leurs propres contres et ne JAMAIS être placés en bouche-trou.
+        SOLO_ONLY_CHARACTERS = {"WAMPA", "NEST", "SAVAGEOPRESS"}
+        if len(all_ids) > 1:
+            atk_members = counter.get("atk_members_ids", [])
+            if any(m.upper() in SOLO_ONLY_CHARACTERS for m in atk_members):
+                continue
+
+        # ── Gestion spéciale Gungans 4/4 (sans Jar Jar) ──
+        # Si le contre propose Jar Jar mais que le joueur possède les 4 Gungans de base (Boss Nass, Tarpals, Phalanx, Boomadier),
+        # l'équipe 4 Gungans est automatiquement conservée en sous-effectif (4v5) sans être rejetée ni comblée par des persos non-Gungans !
+        if counter["atk_leader_id"].upper() == "BOSSNASS" and "JARJARBINKS" in [x.upper() for x in all_ids]:
+            if "JARJARBINKS" not in my_roster_index:
+                all_ids = [x for x in all_ids if x.upper() != "JARJARBINKS"]
+                counter = {**counter, "atk_members_ids": [x for x in counter.get("atk_members_ids", []) if x.upper() != "JARJARBINKS"]}
         
         # ── Calcul préalable de la puissance relique ennemie ──────────────
         def_ids = [counter.get("def_leader_id")] + counter.get("def_members_ids", [])

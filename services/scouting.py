@@ -231,6 +231,135 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                 team["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])
 
+def attach_datacrons_to_attack_plan(plan: dict, player_datacrons: list[dict], roster_index: dict = None) -> None:
+    """
+    Associe intelligemment les Datacrons de l'inventaire du joueur aux escouades d'attaque recommandées dans le planneur.
+    Règle d'usage unique : chaque Datacron physique n'est assigné qu'à une seule équipe d'attaque.
+    """
+    if not player_datacrons or not plan:
+        return
+
+    valid_dtcs = [d for d in player_datacrons if len(d.get("affix", [])) >= 3]
+    if not valid_dtcs:
+        return
+
+    FACTION_KEYWORDS = {
+        "resistance": ["GLREY", "REY", "BENSOLO", "REYJEDITRAINING", "FINN", "POE", "AMILYNHOLDO", "BB8", "RESISTANCE", "ROSE", "ZORII"],
+        "firstorder": ["SUPREMELEADERKYLOREN", "KYLOREN", "GENERALHUX", "FIRSTORDER", "SITHTROOPER", "PHASMA", "FOST", "KRU", "EXECUTIONER"],
+        "empire": ["VADER", "EMPEROR", "VEERS", "IDEN", "THRAWN", "INQUISITOR", "THIRD_SISTER", "FIFTHBROTHER", "SEVENTHSISTER", "EIGHTHBROTHER", "MARAJADE", "GIDEON", "STARCK", "PIETT", "TIE", "SNOWTROOPER"],
+        "inquisitor": ["THIRDSISTER", "GRANDINQUISITOR", "FIFTHBROTHER", "SEVENTHSISTER", "EIGHTHBROTHER", "NINTHSISTER", "SECOND_SISTER", "MARROK", "INQUISITOR"],
+        "imperialtrooper": ["VEERS", "PIETT", "STARCK", "IDEN", "GIDEON", "DARKTROOPER", "RANGETROOPER", "DEATHTROOPER", "SNOWTROOPER", "MAGMATROOPER", "SHORETROOPER", "SCOUTTROOPER"],
+        "rebel": ["COMMANDERLUKESKYWALKER", "HANSOLO", "CHEWBACCA", "LEIA", "MOTHMA", "RADDUS", "CHOPPER", "HERA", "CASSIAN", "JYN", "SAWGERRERA", "KLEYA", "LUTHEN", "CHIRRUT", "BAZE", "REBEL", "DROGAN"],
+        "jedi": ["JEDIMASTERKENOBI", "JEDIMASTERLUKE", "MACEWINDU", "JEDIKNIGHTREVAN", "QUI", "YODA", "AHSOKA", "JEDI", "CALKESTIS", "KELLERANBEQ", "KAM", "PLO", "AAYLA", "JEDIKNIGHTCAL"],
+        "galacticrepublic": ["QUEENAMIDALA", "MASTERQUIGON", "PADAWANOBIWAN", "PADMEAMIDALA", "GENERALKENOBI", "MACEWINDU", "SHAAKTI", "GRANDMASTERYODA", "ANAKINKNIGHT", "CLONETROOPER", "REX", "CODY", "ECHO", "FIVES", "GALACTICREPUBLIC", "GAS", "GENERALSKYWALKER", "HUNTER", "WRECKER", "TECH", "CROSSHAIR", "OMEGA"],
+        "badbatch": ["HUNTER", "WRECKER", "TECH", "ECHO", "OMEGA", "CROSSHAIR"],
+        "clonetrooper": ["REX", "CODY", "ECHO", "FIVES", "ARCTROOPER", "HUNTER", "WRECKER", "TECH", "CROSSHAIR", "CLONETROOPER", "GREGOR"],
+        "separatist": ["GRIEVOUS", "B1BATTLEDROID", "B2SUPERBATTLEDROID", "MAGNAGUARD", "DROIDEKA", "NUTEGUNRAY", "WATTAMBOR", "JANGOFETT", "DOOKU", "TRENCH", "SEPARATIST", "POGGLE", "SUNFAC", "GEONOSIAN", "STAP"],
+        "geonosian": ["GEONOSIANBROODALPHA", "POGGLE", "SUNFAC", "GEONOSIANSOLDIER", "GEONOSIANSPY", "GEONOSIAN"],
+        "sith": ["SITHPALPATINE", "DARTHBANE", "DARTHMALGUS", "DARTHMALAK", "DARTHTRAYA", "DARTHNIHILUS", "DARTHSION", "SITH", "SITHMARAUDER", "TALON", "SAVAGEOPRESS", "DARTHVADER"],
+        "sithempire": ["DARTHMALGUS", "DARTHREVAN", "DARTHMALAK", "BASTILASHANDARK", "SITHMARAUDER", "SITHEMPIRE", "SITHASSASSIN"],
+        "oldrepublic": ["JEDIKNIGHTREVAN", "BASTILASHAN", "JOLEEBINDO", "MISSIONVAO", "ZAALBAR", "CARTHONASI", "JUHANI", "T3M4", "CANDEROUS", "OLDREPUBLIC"],
+        "bountyhunter": ["BOBAFETT", "BOSSK", "JANGOFETT", "DENGAR", "EMBO", "MANDALORIAN", "FENNEC", "KRRSANTAN", "GREEDO", "IG88", "AURRA", "ZUCKUSS", "4LOM"],
+        "huttcartel": ["GLHONDO", "HONDO", "BOBAFETT", "BOBAFETTSCION", "KRRSANTAN", "EMBO", "CADBANE", "GREEDO", "GAMORREANGUARD", "MOBENFORCER", "HUTTCARTEL", "BRUTUS", "CAPTAINSILVO", "SM33", "VANE", "JABBA", "SKIFF", "BOUSHH"],
+        "scoundrel": ["GLHONDO", "HONDO", "DASHRENDAR", "CHEWBACCA", "L3_37", "QI_RA", "ENFYS", "SCOUNDREL", "PIRATE", "BRUTUS", "CAPTAINSILVO", "SM33", "VANE", "KUIIL", "IG11", "NEST"],
+        "nightsister": ["MOTHERTALZIN", "ASAJJVENTRESS", "MERRIN", "OLDDAKA", "NIGHTSISTERZOMBIE", "GREATMOTHERS", "NIGHTSISTER", "MORGANELSBETH", "NIGHTSISTERINITIATE", "NIGHTSISTERSPIRIT"],
+        "mandalorian": ["MANDALORIAN", "BO-KATAN", "THEMANDALORIAN", "ARMORER", "SABINE", "PAZVIZSLA", "BESKARGARMOR", "BO_KATAN", "MANDOBOKATAN", "MAUL"],
+        "gungan": ["JARJARBINDS", "JARJARBINKS", "BOSSNASS", "CAPTAINTARPALS", "GUNGANBOOMADIER", "GUNGANPHALANX", "GUNGAN"],
+        "ewok": ["CHIEFCHIRPA", "EWOKELDER", "PAPLOO", "LOGRAY", "WICKET", "KNEESAA", "EWOK"],
+        "jawa": ["CHIEFNEBIT", "JAWAENGINEER", "JAWASCAVENGER", "DATHCHA", "JAWA"],
+        "tusken": ["TUSKENCHIEFTAIN", "TUSKENWARRIOR", "TUSKENRAIDER", "TUSKENSHAMAN", "URORRURRR", "TUSKEN"],
+        "unalignedforceuser": ["CEREJUNDA", "CALKESTIS", "FULCRUM", "BENSOLO", "KYLOREN", "STRANGER", "QIMIR", "BAYLAN", "SHIN", "UNALIGNEDFORCEUSER", "STARKILLER", "MARAJADE", "VISAS", "MAUL"]
+    }
+
+    used_dtc_ids = set()
+
+    for zone, slots in plan.items():
+        for slot in slots:
+            c_info = slot.get("counter")
+            if not c_info:
+                continue
+            
+            c_leader = c_info.get("atk_leader_id")
+            if not c_leader or c_leader in ["USED", "None", "EMPTY"]:
+                continue
+            
+            members = [c_leader] + c_info.get("atk_members_ids", [])
+            members_upper = [m.upper() for m in members if m]
+            squad_str = " ".join(members_upper)
+
+            best_dtc = None
+            best_match_level = 0
+
+            for dtc in valid_dtcs:
+                dtc_id = dtc.get("id")
+                if dtc_id in used_dtc_ids:
+                    continue
+
+                affixes = dtc.get("affix", [])
+                template_id = dtc.get("templateId", "")
+                
+                dtc_char_target = None
+                dtc_faction_target = None
+
+                for aff in affixes:
+                    rule = (aff.get("targetRule") or "").lower()
+                    ab_id = (aff.get("abilityId") or "").lower()
+                    combined_target = f"{rule} {ab_id}"
+
+                    # 1. Personnage
+                    for m_id in members_upper:
+                        clean_m = m_id.replace("_", "").lower()
+                        if (clean_m in combined_target) or (m_id in ["GLREY", "REY"] and "glrey" in combined_target):
+                            dtc_char_target = m_id
+                            break
+
+                    # 2. Faction
+                    for fac_name, keywords in FACTION_KEYWORDS.items():
+                        if fac_name in combined_target:
+                            if any(kw in squad_str for kw in keywords):
+                                dtc_faction_target = fac_name
+                                break
+
+                dtc_max_tier = 3 if len(affixes) >= 9 else (2 if len(affixes) >= 6 else 1)
+
+                if dtc_char_target:
+                    best_dtc = {
+                        "template_id": template_id,
+                        "level": dtc_max_tier,
+                        "is_focused": "focused" in template_id,
+                        "character_base_id": dtc_char_target,
+                        "id": dtc_id
+                    }
+                    best_match_level = 4
+                    break
+                elif dtc_faction_target and best_match_level < 3:
+                    best_dtc = {
+                        "template_id": template_id,
+                        "level": dtc_max_tier,
+                        "is_focused": False,
+                        "id": dtc_id
+                    }
+                    best_match_level = 3
+
+            if best_dtc:
+                if roster_index and members_upper:
+                    char_target = best_dtc.get("character_base_id")
+                    if char_target and char_target in roster_index:
+                        char_relic = roster_index[char_target].get("relic_tier", 0)
+                        if char_relic < 3:
+                            best_dtc["level"] = min(best_dtc["level"], 1)
+                        elif char_relic < 5:
+                            best_dtc["level"] = min(best_dtc["level"], 2)
+                    else:
+                        max_relic = max((roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index), default=0)
+                        if max_relic < 3:
+                            best_dtc["level"] = min(best_dtc["level"], 1)
+                        elif max_relic < 5:
+                            best_dtc["level"] = min(best_dtc["level"], 2)
+
+                c_info["datacron"] = best_dtc
+                used_dtc_ids.add(best_dtc["id"])
+
 def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, ship_base_ids: set, gac_omicron_units: set = None) -> dict:
     roster = {}
     ship_base_ids = ship_base_ids or set()
@@ -1017,7 +1146,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     return result
 
 
-async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER", enemy_roster_index: dict = None) -> dict:
+async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dict, fmt: str, league: str = "KYBER", enemy_roster_index: dict = None, my_datacrons: list[dict] = None) -> dict:
     """
     Génère un plan d'attaque global optimisé pour l'ensemble de la carte ennemie.
     Utilise un algorithme d'affectation globale sous contraintes (Global Matching) :
@@ -1273,6 +1402,23 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
         if z in slots_by_zone:
             slots_by_zone[z].sort(key=lambda s: s["slot_index"])
             attack_plan[z] = slots_by_zone[z]
+
+    # ── Association intelligente des Datacrons d'Attaque du Joueur ──
+    try:
+        if not my_datacrons and discord_id:
+            from database.db import get_db
+            async with get_db() as db:
+                cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(discord_id),))
+                row = await cursor.fetchone()
+                if row and row["ally_code"]:
+                    p_code = str(row["ally_code"]).replace("-", "").strip()
+                    p_prof = await get_player(p_code)
+                    if p_prof:
+                        my_datacrons = p_prof.get("datacron", [])
+        if my_datacrons:
+            attach_datacrons_to_attack_plan(attack_plan, my_datacrons, my_index)
+    except Exception as e:
+        log.warning(f"Erreur association Datacrons d'attaque: {e}")
 
     return attack_plan
 

@@ -238,10 +238,10 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
     Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
     """
     is_5v5 = fmt == "5v5"
-    # En 5v5 : portraits réduits (72px) et canvas élargi (1200px) pour tenir 5+5 portraits + séparateur
+    # En 5v5 : portraits réduits (72px) et canvas élargi (1360px) pour tenir 5+DTC + séparateur + 5+DTC
     p_cell = _CELL_5V5 if is_5v5 else PORTRAIT_CELL  # 72 ou 88
     p_gap  = _GAP_5V5  if is_5v5 else PORTRAIT_GAP   # 6 ou 8
-    width  = 1200 if is_5v5 else 1100
+    width  = 1360 if is_5v5 else 1150
     slots_per_row = 5 if is_5v5 else 3
     # Hauteur d'une ligne : portrait + labels ("Slot #N Ennemi" + étoiles)
     row_height = p_cell + 50
@@ -253,6 +253,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             
     canvas = Image.new("RGBA", (width, height), C_BG)
     draw = ImageDraw.Draw(canvas)
+    datacrons_to_overlay = []
     
     title_font = _get_font("bold", 22)
     sub_font = _get_font("regular", 16)
@@ -322,6 +323,12 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     overlay = Image.new("RGBA", (p_cell, p_cell), (0, 0, 0, 160))
                     canvas.paste(overlay, (x_def, y_portraits), overlay)
                 x_def += p_cell + p_gap
+
+            # Incrustation du Datacron ennemi si présent
+            e_dtc = e_team.get("datacron")
+            if e_dtc and status != "CLEARED":
+                datacrons_to_overlay.append((x_def + 4, y_portraits, e_dtc, p_cell))
+                x_def += p_cell + p_gap + 4
                 
             x_mid = x_def + 20
             mid_y_icon  = current_y + max(24, row_height // 2 - 18)
@@ -382,6 +389,12 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                         is_miss_omi = bid.upper() in c_missing
                         _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, is_miss_omi, False, lvl, zts, omis, rarity)
                         x_counter += p_cell + p_gap
+
+                    # Incrustation du Datacron d'attaque si assigné
+                    c_dtc = c_info.get("datacron")
+                    if c_dtc:
+                        datacrons_to_overlay.append((x_counter + 4, y_portraits, c_dtc, p_cell))
+                        x_counter += p_cell + p_gap + 4
                 else:
                     draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
                 
@@ -391,6 +404,30 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
 
 
     canvas_hd = canvas.resize((canvas.width * 2, canvas.height * 2), Image.LANCZOS)
+
+    # Incrustation des Badges Datacrons en Ultra HD 2x Native
+    from services.datacron_renderer import render_datacron_badge
+    for (ox, oy, dtc_info, dtc_cell) in datacrons_to_overlay:
+        try:
+            lvl = dtc_info.get("level") or (len(dtc_info.get("affix", [])) if "affix" in dtc_info else 3)
+            is_foc = dtc_info.get("is_focused", False)
+            char_id = dtc_info.get("character_base_id") or dtc_info.get("target_unit_id")
+            cube_tex = dtc_info.get("cube_texture_url") or dtc_info.get("icon_url")
+            
+            hd_size = dtc_cell * 2
+            badge_hd = render_datacron_badge(
+                level=lvl,
+                max_tiers=dtc_info.get("max_tiers"),
+                is_focused=is_foc,
+                character_base_id=char_id,
+                character_icon_url=dtc_info.get("character_icon_url"),
+                cube_texture_url=cube_tex,
+                size=(hd_size, hd_size)
+            )
+            canvas_hd.paste(badge_hd, (ox * 2, oy * 2), badge_hd)
+        except Exception as e:
+            log.warning("Erreur rendu badge Datacron planneur Retina 2x: %s", e)
+
     out = io.BytesIO()
     canvas_hd.save(out, format="PNG", optimize=True)
     out.seek(0)

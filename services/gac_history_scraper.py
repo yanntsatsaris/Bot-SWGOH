@@ -432,26 +432,24 @@ class GACHistoryScraper:
                     #   <h2>Season 82 <span class="text-gg-gray-300 small">(5v5)</span></h2>
                     #   + les liens /gac-history/{season_id}/{round}/
                     season_format_map = {}  # {season_id: "5v5" | "3v3"}
-                    for panel in soup.find_all('div', class_=lambda c: c and 'panel' in c.split()):
-                        header = panel.find('h2')
-                        if not header:
-                            continue
-                        span = header.find('span')
-                        if not span:
-                            continue
-                        span_text = span.get_text(strip=True).lower()
-                        if '5v5' in span_text:
+                    import re as _re
+                    for panel in soup.find_all('div', class_=lambda c: c and ('panel' in c if isinstance(c, list) else 'panel' in str(c))):
+                        panel_text = panel.get_text().lower()
+                        panel_format = None
+                        if '(5v5)' in panel_text:
                             panel_format = '5v5'
-                        elif '3v3' in span_text:
+                        elif '(3v3)' in panel_text:
                             panel_format = '3v3'
-                        else:
-                            continue
-                        # Récupérer tous les season_ids des liens dans ce panel
-                        for a in panel.find_all('a', href=True):
-                            import re as _re
-                            m = _re.search(r'/gac-history/([^/]+)/', a['href'])
-                            if m:
-                                season_format_map[m.group(1)] = panel_format
+                        elif '5v5' in panel_text:
+                            panel_format = '5v5'
+                        elif '3v3' in panel_text:
+                            panel_format = '3v3'
+
+                        if panel_format:
+                            for a in panel.find_all('a', href=True):
+                                m = _re.search(r'/gac-history/([^/]+)/', a['href'])
+                                if m:
+                                    season_format_map[m.group(1)] = panel_format
 
                     hub_links = []
                     for a in soup.find_all('a', href=True):

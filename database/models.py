@@ -272,6 +272,13 @@ CREATE_TABLES_SQL: list[str] = [
         updated_at        TEXT DEFAULT (datetime('now'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS unit_aliases (
+        alias       TEXT PRIMARY KEY,
+        base_id     TEXT NOT NULL,
+        created_at  TEXT DEFAULT (datetime('now'))
+    )
+    """,
 ]
 
 # Liste des instructions CREATE TABLE pour PostgreSQL.
@@ -541,6 +548,13 @@ CREATE_TABLES_PG_SQL: list[str] = [
         format            TEXT,
         enemy_roster_json TEXT,
         updated_at        TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS unit_aliases (
+        alias       TEXT PRIMARY KEY,
+        base_id     TEXT NOT NULL,
+        created_at  TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
     )
     """,
 ]

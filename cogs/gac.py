@@ -47,6 +47,7 @@ Voici les commandes principales que tu peux utiliser :
 async def unit_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
     zone_raw = str(getattr(interaction.namespace, "zone", "") or "")
     is_fleet = ("fleet" in zone_raw.lower() or "flotte" in zone_raw.lower())
+    has_zone = bool(zone_raw)
 
     # Récupérer les unités déjà renseignées dans les autres champs de la même commande
     already_selected = set()
@@ -61,40 +62,105 @@ async def unit_autocomplete(interaction: discord.Interaction, current: str) -> l
     target_type = "ship" if is_fleet else "character"
     current_lower = current.strip().lower() if current else ""
     
+    choices = []
+    seen_bids = set()
+
     async with get_db() as db:
         if current_lower:
-            cursor = await db.execute(
-                """
-                SELECT base_id, name 
-                FROM game_characters 
-                WHERE type = ? AND (LOWER(name) LIKE ? OR LOWER(base_id) LIKE ?)
-                ORDER BY name ASC
-                LIMIT 35
-                """,
-                (target_type, f"%{current_lower}%", f"%{current_lower}%")
-            )
+            # 1. Recherche prioritaire dans les abréviations (ex: SLKR, CLS, JMK...)
+            try:
+                if has_zone:
+                    cursor_alias = await db.execute(
+                        """
+                        SELECT a.alias, c.base_id, c.name
+                        FROM unit_aliases a
+                        JOIN game_characters c ON UPPER(a.base_id) = UPPER(c.base_id)
+                        WHERE c.type = ? AND (LOWER(a.alias) = ? OR LOWER(a.alias) LIKE ?)
+                        ORDER BY LENGTH(a.alias) ASC, a.alias ASC
+                        LIMIT 15
+                        """,
+                        (target_type, current_lower, f"{current_lower}%")
+                    )
+                else:
+                    cursor_alias = await db.execute(
+                        """
+                        SELECT a.alias, c.base_id, c.name
+                        FROM unit_aliases a
+                        JOIN game_characters c ON UPPER(a.base_id) = UPPER(c.base_id)
+                        WHERE LOWER(a.alias) = ? OR LOWER(a.alias) LIKE ?
+                        ORDER BY LENGTH(a.alias) ASC, a.alias ASC
+                        LIMIT 15
+                        """,
+                        (current_lower, f"{current_lower}%")
+                    )
+                alias_rows = await cursor_alias.fetchall()
+                for r in alias_rows:
+                    bid = r["base_id"].upper()
+                    if bid not in already_selected and bid not in seen_bids:
+                        choices.append(app_commands.Choice(
+                            name=f"⚡ [{r['alias'].upper()}] {r['name']} ({r['base_id']})",
+                            value=r["base_id"]
+                        ))
+                        seen_bids.add(bid)
+            except Exception as err:
+                log.debug("Erreur recherche alias dans autocomplete: %s", err)
+
+            # 2. Recherche standard par nom et base_id
+            if has_zone:
+                cursor = await db.execute(
+                    """
+                    SELECT base_id, name 
+                    FROM game_characters 
+                    WHERE type = ? AND (LOWER(name) LIKE ? OR LOWER(base_id) LIKE ?)
+                    ORDER BY name ASC
+                    LIMIT 35
+                    """,
+                    (target_type, f"%{current_lower}%", f"%{current_lower}%")
+                )
+            else:
+                cursor = await db.execute(
+                    """
+                    SELECT base_id, name 
+                    FROM game_characters 
+                    WHERE LOWER(name) LIKE ? OR LOWER(base_id) LIKE ?
+                    ORDER BY name ASC
+                    LIMIT 35
+                    """,
+                    (f"%{current_lower}%", f"%{current_lower}%")
+                )
+            rows = await cursor.fetchall()
         else:
-            cursor = await db.execute(
-                """
-                SELECT base_id, name 
-                FROM game_characters 
-                WHERE type = ?
-                ORDER BY name ASC
-                LIMIT 35
-                """,
-                (target_type,)
-            )
-        rows = await cursor.fetchall()
-        
-    choices = []
+            if has_zone:
+                cursor = await db.execute(
+                    """
+                    SELECT base_id, name 
+                    FROM game_characters 
+                    WHERE type = ?
+                    ORDER BY name ASC
+                    LIMIT 35
+                    """,
+                    (target_type,)
+                )
+            else:
+                cursor = await db.execute(
+                    """
+                    SELECT base_id, name 
+                    FROM game_characters 
+                    ORDER BY name ASC
+                    LIMIT 35
+                    """
+                )
+            rows = await cursor.fetchall()
+
     for row in rows:
         bid = row["base_id"].upper()
-        if bid not in already_selected:
+        if bid not in already_selected and bid not in seen_bids:
             choices.append(app_commands.Choice(name=f"{row['name']} ({row['base_id']})", value=row["base_id"]))
+            seen_bids.add(bid)
             if len(choices) >= 25:
                 break
                 
-    return choices
+    return choices[:25]
 
 
 async def slot_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[int]]:

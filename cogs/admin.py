@@ -304,7 +304,120 @@ class AdminCog(commands.Cog, name="Admin"):
             log.exception("Erreur lors de la synchronisation des Datacrons : %s", e)
             await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
 
+    # ------------------------------------------------------------------
+    # /admin-add-alias — Ajouter une abréviation personnalisée
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="admin-add-alias",
+        description="[Admin] Associe une abréviation (ex: SLKR, CLS...) à un personnage ou vaisseau."
+    )
+    @app_commands.describe(
+        abreviation="L'abréviation ou acronyme (ex: SLKR, JMK, CLS, REVA...)",
+        personnage="Le personnage ou vaisseau correspondant (autocomplétion disponible)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def admin_add_alias(self, interaction: discord.Interaction, abreviation: str, personnage: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+        from database.db import add_unit_alias, get_character_metadata
+        from services.unit_names import get_name
+
+        clean_alias = abreviation.strip().upper()
+        clean_bid = personnage.strip().upper()
+
+        if not clean_alias or not clean_bid:
+            await interaction.followup.send("❌ Abréviation et personnage obligatoires.", ephemeral=True)
+            return
+
+        try:
+            await add_unit_alias(clean_alias, clean_bid)
+            char_name = get_name(clean_bid) or clean_bid
+            await interaction.followup.send(
+                f"✅ **Abréviation enregistrée !**\n"
+                f"• **Abréviation :** `⚡ [{clean_alias}]`\n"
+                f"• **Personnage/Vaisseau :** **{char_name}** (`{clean_bid}`)\n\n"
+                f"Cette abréviation sera désormais proposée en priorité dans tous les menus d'autocomplétion.",
+                ephemeral=True
+            )
+        except Exception as e:
+            log.exception("Erreur ajout alias : %s", e)
+            await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /admin-remove-alias — Supprimer une abréviation
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="admin-remove-alias",
+        description="[Admin] Supprime une abréviation existante."
+    )
+    @app_commands.describe(abreviation="L'abréviation à supprimer (ex: SLKR)")
+    @app_commands.default_permissions(administrator=True)
+    async def admin_remove_alias(self, interaction: discord.Interaction, abreviation: str) -> None:
+        await interaction.response.defer(ephemeral=True)
+        from database.db import remove_unit_alias
+
+        clean_alias = abreviation.strip().upper()
+        try:
+            await remove_unit_alias(clean_alias)
+            await interaction.followup.send(
+                f"🗑️ Abréviation `[{clean_alias}]` supprimée avec succès.",
+                ephemeral=True
+            )
+        except Exception as e:
+            log.exception("Erreur suppression alias : %s", e)
+            await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
+
+    # ------------------------------------------------------------------
+    # /admin-list-aliases — Lister toutes les abréviations
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="admin-list-aliases",
+        description="[Admin] Affiche la liste des abréviations de personnages et vaisseaux enregistrées."
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def admin_list_aliases(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        from database.db import get_all_unit_aliases
+        from services.unit_names import get_name
+
+        try:
+            aliases = await get_all_unit_aliases()
+            if not aliases:
+                await interaction.followup.send("ℹ️ Aucune abréviation enregistrée.", ephemeral=True)
+                return
+
+            lines = []
+            for a in aliases:
+                u_name = a.get("name") or get_name(a["base_id"]) or a["base_id"]
+                lines.append(f"• `[{a['alias']}]` ➔ **{u_name}** (`{a['base_id']}`)")
+
+            # Découpage si trop long pour un seul message Discord (max 2000 chars)
+            chunks = []
+            cur_chunk = ""
+            for line in lines:
+                if len(cur_chunk) + len(line) + 2 > 1900:
+                    chunks.append(cur_chunk)
+                    cur_chunk = line + "\n"
+                else:
+                    cur_chunk += line + "\n"
+            if cur_chunk:
+                chunks.append(cur_chunk)
+
+            await interaction.followup.send(
+                f"📚 **Liste des abréviations actives ({len(aliases)}) :**\n\n{chunks[0]}",
+                ephemeral=True
+            )
+            for ch in chunks[1:]:
+                await interaction.followup.send(ch, ephemeral=True)
+
+        except Exception as e:
+            log.exception("Erreur liste alias : %s", e)
+            await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
+    # Autocomplétion sur admin_add_alias
+    from cogs.gac import unit_autocomplete
+    AdminCog.admin_add_alias = app_commands.autocomplete(personnage=unit_autocomplete)(AdminCog.admin_add_alias)
     await bot.add_cog(AdminCog(bot))
+
 

@@ -283,6 +283,12 @@ async def init_db() -> None:
 
             await db.commit()
         log.info("📁 Base de données SQLite initialisée : %s", DATABASE_PATH)
+    
+    # Initialisation des abréviations par défaut
+    try:
+        await seed_default_unit_aliases()
+    except Exception as e:
+        log.warning("Impossible d'initialiser les abréviations par défaut : %s", e)
 
 
 @asynccontextmanager
@@ -1165,3 +1171,156 @@ async def get_character_metadata(base_id: str) -> dict | None:
         except Exception:
             res["factions"] = []
         return res
+
+
+# ─── GESTION DES ABRÉVIATIONS / ALIASES D'UNITÉS ──────────────────────────────
+
+DEFAULT_UNIT_ALIASES: dict[str, str] = {
+    # Légendes Galactiques (GL)
+    "SLKR": "SUPREMELEADERKYLOREN",
+    "JMK": "JEDIMASTERKENOBI",
+    "JML": "JEDIMASTERLUKE",
+    "SEE": "SITHPALPATINE",
+    "LV": "LORDVADER",
+    "REY": "GLREY",
+    "JABBA": "JABBATHEHUTT",
+    "LEIA": "LEIAORGANA",
+    "GLAT": "GLAHSOKATANO",
+    
+    # Leaders & Personnages Majeurs
+    "CLS": "COMMANDERLUKESKYWALKER",
+    "GAS": "GENERALSKYWALKER",
+    "DR": "DARTHREVAN",
+    "JKR": "JEDIKNIGHTREVAN",
+    "JKL": "JEDIKNIGHTLUKE",
+    "MALAK": "DARTHMALAK",
+    "BANE": "DARTHBANE",
+    "MALICOS": "TARONMALICOS",
+    "REVA": "THIRDSISTER",
+    "3S": "THIRDSISTER",
+    "GI": "GRANDINQUISITOR",
+    "BKM": "BOKATANMANDALOR",
+    "DTMG": "DARKTROOPERMOFFGIDEON",
+    "SK": "STARKILLER",
+    "CAT": "COMMANDERAHSOKA",
+    "ATF": "FULCRUMAHSOKA",
+    "FULCRUM": "FULCRUMAHSOKA",
+    "SNIPS": "AHSOKATANO",
+    "MAUL": "MAULS7",
+    "EP": "EMPERORPALPATINE",
+    "PALP": "EMPERORPALPATINE",
+    "DV": "VADER",
+    "VADER": "VADER",
+    "GBA": "GEONOSIANBROODALPHA",
+    "KRU": "KYLORENUNMASKED",
+    "OGKYLO": "KYLOREN",
+    "PADME": "PADMEAMIDALA",
+    "GG": "GRIEVOUS",
+    "WAT": "WATTAMBOR",
+    "JTR": "REYJEDITRAINING",
+    "RJT": "REYJEDITRAINING",
+    "SCAV": "REYSCAVENGER",
+    "SCAVREY": "REYSCAVENGER",
+    "ZORII": "ZORIIBLISS",
+    "BAM": "MANDALORIANBESKAR",
+    "MANDO": "THEMANDALORIAN",
+    "BOSSK": "BOSSK",
+    "QIRA": "QIRA",
+    "DASH": "DASHRENDAR",
+    "MARA": "MARAJADE",
+    "C3PO": "C3PO",
+    "R2": "R2D2_LEGENDARY",
+    "CHEWIE": "CHEWBACCALEGENDARY",
+    "HERA": "HERASYNDULLAS3",
+    "CREX": "CAPTAINREX",
+    "FENNEC": "FENNECSHAND",
+    "GIDEON": "MOFFGIDEONS1",
+    "PIETT": "ADMIRALPIETT",
+    "VEERS": "GENERALVEERS",
+    "STAP": "STAP",
+    "SAVAGE": "SAVAGEOPRESS",
+    "TRAYA": "DARTHTRAYA",
+    "SION": "DARTHSION",
+    "NIHILUS": "DARTHNIHILUS",
+    "TALZIN": "MOTHERTALZIN",
+    "MERRIN": "MERRIN",
+    "DROGAN": "CAPTAINDROGAN",
+    "KELLERAN": "KELLERANBEQ",
+    "WAMPA": "WAMPA",
+    
+    # Flottes & Vaisseaux Amiraux
+    "EXEC": "CAPITALEXECUTOR",
+    "EXECUTOR": "CAPITALEXECUTOR",
+    "PROF": "CAPITALPROFUNDITY",
+    "PROFUNDITY": "CAPITALPROFUNDITY",
+    "LEVI": "CAPITALLEVIATHAN",
+    "LEVIATHAN": "CAPITALLEVIATHAN",
+    "NEGO": "CAPITALNEGOTIATOR",
+    "NEGOTIATOR": "CAPITALNEGOTIATOR",
+    "MALEV": "CAPITALMALEVOLENCE",
+    "MALEVOLENCE": "CAPITALMALEVOLENCE",
+    "RADDUS": "CAPITALRADDUS",
+    "FINALIZER": "CAPITALFINALIZER",
+    "CHIMAERA": "CAPITALCHIMAERA",
+    "EXECU": "CAPITALSTARDESTROYER",
+    "HOMEONE": "CAPITALMONCALAMARICRUISER",
+    "ENDURANCE": "CAPITALJEDICRUISER",
+    "FURY": "CAPITALFURY",
+}
+
+
+async def add_unit_alias(alias: str, base_id: str) -> None:
+    """Ajoute ou met à jour une abréviation pour un personnage ou vaisseau."""
+    if not alias or not base_id:
+        return
+    clean_alias = alias.strip().upper()
+    clean_bid = base_id.strip().upper()
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO unit_aliases (alias, base_id)
+            VALUES (?, ?)
+            ON CONFLICT(alias) DO UPDATE SET base_id = excluded.base_id
+            """,
+            (clean_alias, clean_bid)
+        )
+
+
+async def remove_unit_alias(alias: str) -> bool:
+    """Supprime une abréviation."""
+    if not alias:
+        return False
+    clean_alias = alias.strip().upper()
+    async with get_db() as db:
+        await db.execute("DELETE FROM unit_aliases WHERE UPPER(alias) = ?", (clean_alias,))
+        return True
+
+
+async def get_all_unit_aliases() -> list[dict]:
+    """Retourne la liste de toutes les abréviations enregistrées."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT a.alias, a.base_id, c.name, c.type
+            FROM unit_aliases a
+            LEFT JOIN game_characters c ON a.base_id = c.base_id
+            ORDER BY a.alias ASC
+            """
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def seed_default_unit_aliases() -> None:
+    """Initialise les abréviations par défaut si elles ne sont pas déjà en base."""
+    async with get_db() as db:
+        for al, bid in DEFAULT_UNIT_ALIASES.items():
+            await db.execute(
+                """
+                INSERT INTO unit_aliases (alias, base_id)
+                VALUES (?, ?)
+                ON CONFLICT(alias) DO UPDATE SET base_id = excluded.base_id
+                """,
+                (al.upper(), bid.upper())
+            )
+

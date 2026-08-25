@@ -462,26 +462,30 @@ class GACHistoryScraper:
                     if hub_links:
                         # Trier par season_id décroissant (plus récent en premier)
                         hub_links_sorted = sorted(hub_links, key=lambda u: u.split("/gac-history/")[-1].split("/")[0], reverse=True)
-                        unique_seasons = []
+                        seen_seasons = set()      # Toutes les saisons déjà traitées (évite les doublons)
+                        included_seasons = set()  # Saisons incluses dans le batch (compte vers la limite)
                         filtered_links = []
                         for link in hub_links_sorted:
                             s_id = link.split("/gac-history/")[-1].split("/")[0]
-                            if s_id not in unique_seasons:
-                                # Limiter à 6 events maximum pour ne pas scraper tout l'historique
-                                if len(unique_seasons) >= 6:
-                                    break
+                            if s_id not in seen_seasons:
+                                seen_seasons.add(s_id)
                                 # ── FILTRE PAR FORMAT lu directement dans le HTML ──
                                 if format_filter and s_id in season_format_map:
                                     detected_fmt = season_format_map[s_id]
                                     if detected_fmt != format_filter:
                                         logger.info(f"⏭️ Event {s_id} ignoré — format HTML: {detected_fmt} ≠ filtre {format_filter}")
-                                        unique_seasons.append(s_id)  # marquer comme vu sans compter dans les 6 utiles
-                                        continue
-                                unique_seasons.append(s_id)
+                                        continue  # Ne compte PAS dans la limite des 6
+                                # Limiter à 6 events du bon format maximum
+                                if len(included_seasons) >= 6:
+                                    break
+                                included_seasons.add(s_id)
+                            elif s_id not in included_seasons:
+                                continue  # Saison vue mais filtrée → ignorer aussi ses rounds suivants
                             filtered_links.append(link)
                             
                         results.append({"matches": [], "hub_links": filtered_links, "url": target_url})
                         continue
+
 
                     
                 land_matches = [m for m in matches if not (m.get("defender_lead") and ("CAPITAL" in str(m["defender_lead"]) or m["defender_lead"] in ["CAPITALSTARDESTROYER", "CAPITALCHIMAERA", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALNEGOTIATOR", "CAPITALMALEVOLENCE", "CAPITALRADDUS", "CAPITALFINALIZER", "CAPITALLEVIATHAN"]))]

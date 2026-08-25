@@ -201,32 +201,33 @@ def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict],
                     best_match_level = 3
 
             if best_dtc:
-                # ── CONTRÔLE DES RELIQUES DU JOUEUR/ENNEMI POUR L'ACTIVATION RÉELLE ──
-                # En jeu SWGOH :
-                # - Si le Datacron cible un personnage spécifique (ex: GLREY) et que ce personnage a la relique requise (R5/R7),
-                #   le palier maximal (Tier 3 ou 5) est pleinement débloqué pour ce personnage.
-                # - Les autres membres bénéficient individuellement de leurs buffs de faction/stats selon leur propre niveau.
+                # ── CONTRÔLE DES RELIQUES DU JOUEUR/ENNEMI SELON LES PRÉREQUIS OFFICIELS ──
+                # - Palier 1 (Tier 3) : R3+
+                # - Palier 2 (Tier 6) : R5+
+                # - Palier 3 (Tier 9) : R7+
                 if roster_index and members_upper:
                     char_target = best_dtc.get("character_base_id")
                     if char_target and char_target in roster_index:
                         char_relic = roster_index[char_target].get("relic_tier", 0)
-                        # Le perso ciblé a la relique requise (ex: Rey R8) -> Palier maximal conservé !
-                        if char_relic >= 5:
+                        if char_relic >= 7:
                             pass
-                        elif char_relic >= 3:
+                        elif char_relic >= 5:
                             best_dtc["level"] = min(best_dtc["level"], 2)
-                        elif char_relic < 1:
+                        elif char_relic >= 3:
+                            best_dtc["level"] = min(best_dtc["level"], 1)
+                        else:
                             best_dtc["level"] = 0
                     else:
-                        # Datacron de faction / alignement général : vérifie que la team a au moins des reliques R3/R5
+                        # Datacron de faction : vérifie le niveau de relique des membres
                         max_relic = max((roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index), default=0)
-                        if max_relic >= 5:
+                        if max_relic >= 7:
                             pass
-                        elif max_relic >= 3:
+                        elif max_relic >= 5:
                             best_dtc["level"] = min(best_dtc["level"], 2)
-                        elif max_relic < 1:
+                        elif max_relic >= 3:
+                            best_dtc["level"] = min(best_dtc["level"], 1)
+                        else:
                             best_dtc["level"] = 0
-
 
                 team["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])
@@ -342,20 +343,33 @@ def attach_datacrons_to_attack_plan(plan: dict, player_datacrons: list[dict], ro
                     best_match_level = 3
 
             if best_dtc:
+                # ── CONTRÔLE DES RELIQUES DU JOUEUR SELON LES PRÉREQUIS OFFICIELS ──
+                # - Palier 1 (Tier 3) : R3+
+                # - Palier 2 (Tier 6) : R5+
+                # - Palier 3 (Tier 9) : R7+
                 if roster_index and members_upper:
                     char_target = best_dtc.get("character_base_id")
                     if char_target and char_target in roster_index:
                         char_relic = roster_index[char_target].get("relic_tier", 0)
-                        if char_relic < 3:
-                            best_dtc["level"] = min(best_dtc["level"], 1)
-                        elif char_relic < 5:
+                        if char_relic >= 7:
+                            pass
+                        elif char_relic >= 5:
                             best_dtc["level"] = min(best_dtc["level"], 2)
+                        elif char_relic >= 3:
+                            best_dtc["level"] = min(best_dtc["level"], 1)
+                        else:
+                            best_dtc["level"] = 0
                     else:
+                        # Datacron de faction : vérifie le niveau de relique des membres
                         max_relic = max((roster_index.get(m, {}).get("relic_tier", 0) for m in members_upper if m in roster_index), default=0)
-                        if max_relic < 3:
-                            best_dtc["level"] = min(best_dtc["level"], 1)
-                        elif max_relic < 5:
+                        if max_relic >= 7:
+                            pass
+                        elif max_relic >= 5:
                             best_dtc["level"] = min(best_dtc["level"], 2)
+                        elif max_relic >= 3:
+                            best_dtc["level"] = min(best_dtc["level"], 1)
+                        else:
+                            best_dtc["level"] = 0
 
                 c_info["datacron"] = best_dtc
                 used_dtc_ids.add(best_dtc["id"])

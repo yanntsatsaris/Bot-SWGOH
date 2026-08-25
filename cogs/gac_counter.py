@@ -14,6 +14,7 @@ from services.gac_counters_scraper import GacCountersScraper
 from services.unit_names import get_name
 from services.comlink import get_player
 from services.image_generator import generate_gac_report
+from cogs.gac_scout import enemy_code_autocomplete
 
 log = logging.getLogger(__name__)
 
@@ -293,7 +294,7 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
     @app_commands.describe(
         leader="Leader de l'équipe ennemie (autocomplétion disponible)",
         format_gac="Format du combat",
-        ally_code_adversaire="Ally code de l'adversaire (pour afficher les reliques de sa défense)",
+        ally_code_adversaire="Ally code de l'adversaire (autocomplété avec le dernier ennemi scouté)",
         membre_2="2ème personnage de l'équipe ennemie",
         membre_3="3ème personnage (optionnel)",
         membre_4="4ème personnage (5v5 uniquement)",
@@ -305,6 +306,7 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
     ])
     @app_commands.autocomplete(
         leader=unit_autocomplete,
+        ally_code_adversaire=enemy_code_autocomplete,
         membre_2=unit_autocomplete,
         membre_3=unit_autocomplete,
         membre_4=unit_autocomplete,
@@ -343,10 +345,21 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
         raw_members = [m for m in [membre_2, membre_3, membre_4, membre_5] if m]
         members_list = [m.strip().upper() for m in raw_members[:max_members]]
 
-        # ── 3. Roster adversaire (Optionnel) ─────────────────────────────────
+        # ── 3. Roster adversaire (Optionnel ou Mémoire active) ───────────────
         adv_roster = None
         adv_name = "Adversaire Inconnu"
-        if ally_code_adversaire:
+        
+        # Si aucun code n'est spécifié, tenter de charger l'adversaire de la session active
+        if not ally_code_adversaire:
+            from database.db import load_active_gac_session
+            session = await load_active_gac_session(str(interaction.user.id))
+            if session and session.get("enemy_code"):
+                ally_code_adversaire = session["enemy_code"]
+                adv_name = session.get("enemy_name", "Adversaire")
+                adv_roster = session.get("enemy_roster_index")
+                log.info(f"[/gac-counter] Utilisation automatique du dernier adversaire scouté : {adv_name} ({ally_code_adversaire})")
+
+        if ally_code_adversaire and not adv_roster:
             adv_clean = ally_code_adversaire.replace("-", "").strip()
             try:
                 profile = await get_player(adv_clean)

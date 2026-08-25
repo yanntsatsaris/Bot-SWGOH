@@ -347,10 +347,6 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 kwargs = {}
                 if content is not None:
                     kwargs["content"] = content
-                if attachments is not None:
-                    kwargs["files"] = attachments
-                if view is not None:
-                    kwargs["view"] = view
                 await inter.response.send_message(**kwargs)
         except (discord.errors.NotFound, discord.errors.HTTPException) as e:
             log.warning("Échec réponse interaction (%s) — fallback sur le salon textuel", e)
@@ -366,6 +362,62 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             except Exception as send_err:
                 log.error("Échec de l'envoi fallback sur le salon : %s", send_err)
 
+
+async def enemy_code_autocomplete(interaction: discord.Interaction, current: str) -> list[app_commands.Choice[str]]:
+    """Autocomplète le code allié de l'adversaire avec la session active (dernier scouté) et l'historique."""
+    from database.db import load_active_gac_session, get_db
+    choices = []
+    current_clean = current.replace("-", "").strip().lower()
+    seen_codes = set()
+
+    # 1. Priorité : Le dernier adversaire scouté en mémoire (session active)
+    try:
+        session = await load_active_gac_session(str(interaction.user.id))
+        if session and session.get("enemy_code"):
+            e_code = str(session["enemy_code"]).replace("-", "").strip()
+            e_name = session.get("enemy_name") or "Dernier Ennemi"
+            fmt_code = f"{e_code[:3]}-{e_code[3:6]}-{e_code[6:]}" if len(e_code) == 9 else e_code
+            if not current_clean or current_clean in e_code.lower() or current_clean in e_name.lower():
+                choices.append(app_commands.Choice(
+                    name=f"⭐ {e_name} ({fmt_code}) [Ennemi Actif]",
+                    value=e_code
+                ))
+                seen_codes.add(e_code)
+    except Exception as err:
+        log.warning(f"Erreur lecture session active pour autocomplete : {err}")
+
+    # 2. Chercher dans les adversaires récents (gac_rounds)
+    try:
+        async with get_db() as db:
+            cursor = await db.execute(
+                """
+                SELECT DISTINCT player_code, opponent_name 
+                FROM gac_rounds 
+                WHERE player_code IS NOT NULL AND player_code != ''
+                ORDER BY id DESC LIMIT 20
+                """
+            )
+            rows = await cursor.fetchall()
+            for r in rows:
+                p_code = str(r["player_code"]).replace("-", "").strip()
+                if p_code in seen_codes:
+                    continue
+                p_name = r["opponent_name"] or "Joueur"
+                fmt_code = f"{p_code[:3]}-{p_code[3:6]}-{p_code[6:]}" if len(p_code) == 9 else p_code
+                if not current_clean or current_clean in p_code.lower() or current_clean in p_name.lower():
+                    choices.append(app_commands.Choice(
+                        name=f"🕒 {p_name} ({fmt_code})",
+                        value=p_code
+                    ))
+                    seen_codes.add(p_code)
+                if len(choices) >= 25:
+                    break
+    except Exception as err:
+        log.warning(f"Erreur lecture gac_rounds pour autocomplete : {err}")
+
+    return choices[:25]
+
+
     @app_commands.command(
         name="gac-scout",
         description="Scout le profil GAC d'un adversaire."
@@ -380,6 +432,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             app_commands.Choice(name="3 contre 3", value="3v3"),
             app_commands.Choice(name="5 contre 5", value="5v5"),
         ]
+    )
+    @app_commands.autocomplete(
+        code_ennemi=enemy_code_autocomplete
     )
     async def gac_scout(
         self, 
@@ -452,18 +507,20 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     )
 
                     
+                    fmt_enemy_code = f"{clean_code[:3]}-{clean_code[3:6]}-{clean_code[6:]}" if len(clean_code) == 9 else clean_code
+
                     def _build_files(sd):
                         result_files = []
                         e_img = generate_scout_map(
                             sd["zones"], sd["quotas"], sd["league"], sd["format"],
-                            sd["enemy_name"] + " (Ennemi)", sd["source"],
+                            f"{sd['enemy_name']} ({fmt_enemy_code}) [Ennemi]", sd["source"],
                             sd.get("roster_index")
                         )
                         result_files.append(discord.File(e_img, filename="enemy_defense.png"))
                         if "my_zones" in sd:
                             m_img = generate_scout_map(
                                 sd["my_zones"], sd["quotas"], sd["league"], sd["format"],
-                                sd["my_name"] + " (Ta Défense Suggérée)",
+                                f"{sd['my_name']} (Ta Défense Suggérée)",
                                 "Contre-Défense Optimisée",
                                 sd.get("my_roster_index"),
                                 is_player=True
@@ -473,9 +530,12 @@ class GACScoutCog(commands.Cog, name="GACScout"):
 
                     files = await asyncio.to_thread(_build_files, scout_data)
 
-                    msg = f"<@{inter.user.id}> Voici la prédiction de la GAC pour {scout_data['enemy_name']} !\n"
-                    msg += "⚠️ *Note : Les prédictions sont générées automatiquement. Utilise le bouton [🔒 Valider ma Défense] pour verrouiller tes persos posés, ou [⚔️ Plan d'Attaque Global] pour obtenir la stratégie complète d'attaque.*\n"
-                    msg += "*Pour réajuster un slot spécifique sur la carte, utilise `/gac-edit-slot` avec autocomplétion des persos.*\n"
+                    msg = (
+                        f"<@{inter.user.id}> 🎯 **Scout GAC : {scout_data['enemy_name']}** (Code : `{fmt_enemy_code}`)\n"
+                        f"📋 *Code copiable pour d'autres commandes :* `{clean_code}`\n\n"
+                        f"⚠️ *Note : Les prédictions sont générées automatiquement. Utilise le bouton [🔒 Valider ma Défense] pour verrouiller tes persos posés, ou [⚔️ Plan d'Attaque Global] pour obtenir la stratégie complète d'attaque.*\n"
+                        f"💡 *Pour réajuster un slot spécifique sur la carte, utilise `/gac-edit-slot` avec autocomplétion des persos.*\n"
+                    )
                     
                     def_view = None
                     if "my_zones" in scout_data:

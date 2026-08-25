@@ -454,11 +454,33 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                         used_base_ids.update(valid_members)
                         placed_in_zone += 1
     
+    # Remplir les slots vides UNIQUEMENT avec de vraies équipes meta disponibles (pas de leftovers aléatoires)
     for zone in ["North", "South", "Back"]:
         q = quotas.get(zone, 0)
         remaining_q = max(0, q - len(zones[zone]))
+        if remaining_q == 0:
+            continue
+        for meta_team in list(available_teams):
+            if remaining_q == 0:
+                break
+            if meta_team["leader_id"] in used_base_ids or meta_team["leader_id"] == "USED":
+                continue
+            leader = meta_team["leader_id"]
+            members = [m for m in meta_team["members"] if m not in used_base_ids]
+            zones[zone].append({
+                "leader_id": leader,
+                "members_ids": members,
+                "source": "Prédiction (Meta)",
+                "target_size": expected_size
+            })
+            used_base_ids.add(leader)
+            used_base_ids.update(members)
+            meta_team["leader_id"] = "USED"
+            remaining_q -= 1
+        # Si toujours pas assez d'équipes meta connues → slots vides (plutôt qu'équipes absurdes)
         for _ in range(remaining_q):
             zones[zone].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": expected_size})
+
 
     # Construire leader_synergy_map pour le bouchage des trous (Hole-Filling)
     leader_synergy_map = {}
@@ -470,7 +492,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
             if m != ldr and m not in leader_synergy_map[ldr]:
                 leader_synergy_map[ldr].append(m)
 
-    # BOUCHAGE DE TROUS (Hole-Filling) AVEC SYNERGIE
+    # BOUCHAGE DE TROUS (Hole-Filling) — UNIQUEMENT avec candidats synergiques (aucun leftover anarchique)
     leftovers = [
         m for m, data in enemy_index.items()
         if m not in used_base_ids
@@ -483,46 +505,26 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         for t in zones[zone]:
             target = t.get("target_size", expected_size)
             leader_id = t.get("leader_id")
-            need = target - (1 if leader_id else 0)
+            if not leader_id:
+                # Slot sans leader → on ne le remplit PAS (déjà source="empty")
+                continue
+            need = target - 1  # -1 pour le leader déjà placé
+            synergy_candidates = leader_synergy_map.get(leader_id, [])
             while len(t["members_ids"]) < need:
-                if not leader_id:
-                    # Équipe totalement vide : prendre le plus fort
-                    filler = None
-                    for i, l in enumerate(leftovers):
-                        if l in UNIT_RESTRICTIONS and not UNIT_RESTRICTIONS[l]: # Si pas de leader valide on passe
+                filler = None
+                # Chercher uniquement parmi les candidats synergiques de ce leader
+                for candidate in synergy_candidates:
+                    if candidate in leftovers and candidate not in t["members_ids"]:
+                        if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
                             continue
-                        filler = leftovers.pop(i)
+                        filler = candidate
+                        leftovers.remove(candidate)
                         break
-                    if not filler:
-                        break
-                    t["leader_id"] = filler
-                    leader_id = filler
-                    t["source"] = "leftover"
-                    need = target - 1
-                else:
-                    filler = None
-                    synergy_candidates = leader_synergy_map.get(leader_id, [])
-                    for candidate in synergy_candidates:
-                        if candidate in leftovers and candidate not in t["members_ids"]:
-                            if candidate in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[candidate]:
-                                continue
-                            filler = candidate
-                            leftovers.remove(candidate)
-                            break
+                if filler is None:
+                    break  # Pas de candidat synergique dispo → on laisse l'équipe incomplète
+                t["members_ids"].append(filler)
+                used_base_ids.add(filler)
 
-                    if filler is None and leftovers:
-                        for i, l in enumerate(leftovers):
-                            if l in UNIT_RESTRICTIONS and leader_id not in UNIT_RESTRICTIONS[l]:
-                                continue
-                            filler = leftovers.pop(i)
-                            break
-
-                    if filler is None:
-                        break
-
-                    t["members_ids"].append(filler)
-                if filler:
-                    used_base_ids.add(filler)
 
     # 2. FLOTTES
     available_fleets = []

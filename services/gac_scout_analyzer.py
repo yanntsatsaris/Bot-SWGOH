@@ -79,6 +79,7 @@ class GacScoutAnalyzer:
         # 2. Si aucune donnée dans gac_round_teams, on interroge gac_matches (données scrapées)
         if total_rounds == 0:
             async with get_db() as db:
+                # Vérifier s'il y a des rounds dans le bon format
                 async with db.execute(
                     "SELECT COUNT(*) FROM gac_rounds WHERE player_code = ? AND format = ?",
                     (ally_code, format_type)
@@ -86,8 +87,21 @@ class GacScoutAnalyzer:
                     row = await cur.fetchone()
                     total_rounds = row[0] if row else 0
                     
+                # Si aucun round dans le bon format, chercher dans tous les formats (ex: joueur n'a joué qu'en 3v3)
+                effective_format = format_type
+                if total_rounds == 0:
+                    async with db.execute(
+                        "SELECT COUNT(*), format FROM gac_rounds WHERE player_code = ? GROUP BY format ORDER BY COUNT(*) DESC LIMIT 1",
+                        (ally_code,)
+                    ) as cur:
+                        row = await cur.fetchone()
+                        if row and row[0]:
+                            total_rounds = row[0]
+                            effective_format = row[1]  # format disponible le plus fréquent
+                            logger.info(f"⚠️ Pas de rounds {format_type} pour {ally_code} — fallback sur {effective_format} ({total_rounds} rounds)")
+                    
                 if total_rounds > 0:
-                    # On récupère les équipes terrestres (strictement sur le format demandé)
+                    # On récupère les équipes terrestres (sur le format effectif)
                     query_scraped_land = """
                         SELECT 
                             m.defender_team,
@@ -122,13 +136,14 @@ class GacScoutAnalyzer:
                         ORDER BY score DESC, frequency DESC
                     """
                     
-                    async with db.execute(query_scraped_land, (threshold_val, format_type, ally_code)) as cur:
+                    async with db.execute(query_scraped_land, (threshold_val, effective_format, ally_code)) as cur:
                         scraped_land_rows = await cur.fetchall()
                         
                     async with db.execute(query_scraped_fleet, (threshold_val, ally_code)) as cur:
                         scraped_fleet_rows = await cur.fetchall()
                         
                     scraped_rows = scraped_land_rows + scraped_fleet_rows
+
                     
                     # Extraire et séparer terre/flottes
                     land_teams = []

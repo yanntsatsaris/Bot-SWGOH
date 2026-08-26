@@ -89,6 +89,11 @@ class GacShipCountersScraper:
                 return 0
             saved = await save_fleet_tier_list(entries)
             log.info(f"[FleetTier] {saved} entrees sauvegardees pour {side}/{league}")
+            try:
+                if os.path.exists(out_file):
+                    os.remove(out_file)
+            except Exception:
+                pass
             return saved
         except Exception as e:
             log.error(f"[FleetTier] Erreur parsing JSON {out_file}: {e}")
@@ -164,6 +169,11 @@ class GacShipCountersScraper:
 
             saved = await save_ship_counters(actual_season, def_capital_id, counters)
             log.info(f"[ShipCounters] {saved} counters sauvegardes pour {def_capital_id}")
+            try:
+                if os.path.exists(out_file):
+                    os.remove(out_file)
+            except Exception:
+                pass
             return saved
         except Exception as e:
             log.error(f"[ShipCounters] Erreur parsing JSON: {e}")

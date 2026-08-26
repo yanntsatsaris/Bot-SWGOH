@@ -20,6 +20,10 @@ log = logging.getLogger(__name__)
 ASSETS_DIR = Path("assets/datacrons")
 ASSETS_DIR.mkdir(parents=True, exist_ok=True)
 
+_BADGE_CACHE: dict[tuple, Image.Image] = {}
+_TEXTURE_CACHE: dict[str, Image.Image] = {}
+
+
 OFFICIAL_ASSETS_URLS = {
     "datacron-icon-bg--focused-level9.png": "https://assets.swgoh.gg/frontend/assets/datacron-icon-bg--focused-level9-B3neGwEp.png",
     "datacron-icon-bg--level9.webp": "https://assets.swgoh.gg/frontend/assets/datacron-icon-bg--level9-C5rkueIv.webp",
@@ -54,6 +58,9 @@ def render_datacron_badge(
     glow_tier: int = 5,
     size: tuple[int, int] = (120, 120)
 ) -> Image.Image:
+    cache_key = (level, max_tiers, is_focused, character_base_id, character_icon_url, cube_texture_url, glow_tier, size)
+    if cache_key in _BADGE_CACHE:
+        return _BADGE_CACHE[cache_key].copy()
     """
     Génère un badge Datacron haute fidélité (RGBA) identique à l'affichage officiel de swgoh.gg.
     - level : niveau débloqué (ex: 1, 2, 3 pour standard ; 1..5 pour variante focus)

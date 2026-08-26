@@ -1324,3 +1324,175 @@ async def seed_default_unit_aliases() -> None:
                 (al.upper(), bid.upper())
             )
 
+
+
+# --- FLEET TIER LIST ---
+
+async def save_fleet_tier_list(entries: list[dict]) -> int:
+    """Sauvegarde les entrees de la tier list fleet en base."""
+    saved = 0
+    async with get_db() as db:
+        for e in entries:
+            members_json = json.dumps(e.get("members_ids", []))
+            await db.execute(
+                """
+                INSERT INTO fleet_tier_list (
+                    tier, rank, side, league, season, format,
+                    capital_ship, members_ids,
+                    elo, win_pct, hold_pct, battles, builds_count,
+                    last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(side, league, season, capital_ship, members_ids)
+                DO UPDATE SET
+                    tier         = excluded.tier,
+                    rank         = excluded.rank,
+                    elo          = excluded.elo,
+                    win_pct      = excluded.win_pct,
+                    hold_pct     = excluded.hold_pct,
+                    battles      = excluded.battles,
+                    builds_count = excluded.builds_count,
+                    last_updated = excluded.last_updated
+                """,
+                (
+                    e.get("tier", ""),
+                    e.get("rank", 0),
+                    e.get("side", "offense"),
+                    e.get("league", "kyber"),
+                    e.get("season", "current"),
+                    e.get("format", "5v5"),
+                    e.get("capital_ship", ""),
+                    members_json,
+                    e.get("elo"),
+                    e.get("win_pct"),
+                    e.get("hold_pct"),
+                    e.get("battles"),
+                    e.get("builds_count"),
+                )
+            )
+            saved += 1
+    return saved
+
+
+async def get_fleet_tier_list(
+    side: str = "offense",
+    league: str = "kyber",
+    season: str = "current",
+    format_type: str = "5v5",
+    limit: int = 30,
+) -> list[dict]:
+    """Recupere la tier list fleet pour un cote/ligue/saison donnes."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT tier, rank, side, league, season, format,
+                   capital_ship, members_ids,
+                   elo, win_pct, hold_pct, battles, builds_count, last_updated
+            FROM fleet_tier_list
+            WHERE side = ? AND league = ? AND season = ? AND format = ?
+            ORDER BY rank ASC
+            LIMIT ?
+            """,
+            (side, league, season, format_type, limit),
+        )
+        rows = await cursor.fetchall()
+
+    results = []
+    for row in rows:
+        results.append({
+            "tier":         row["tier"],
+            "rank":         row["rank"],
+            "side":         row["side"],
+            "league":       row["league"],
+            "season":       row["season"],
+            "format":       row["format"],
+            "capital_ship": row["capital_ship"],
+            "members_ids":  json.loads(row["members_ids"] or "[]"),
+            "elo":          row["elo"],
+            "win_pct":      row["win_pct"],
+            "hold_pct":     row["hold_pct"],
+            "battles":      row["battles"],
+            "builds_count": row["builds_count"],
+            "last_updated": row["last_updated"],
+        })
+    return results
+
+
+# --- SHIP COUNTERS ---
+
+async def save_ship_counters(season_id: str, def_capital: str, counters_data: list[dict]) -> int:
+    """Sauvegarde les ship counters pour un vaisseau mere defensif."""
+    saved = 0
+    async with get_db() as db:
+        for c in counters_data:
+            def_members_json = json.dumps(c.get("def_members_ids", []))
+            atk_members_json = json.dumps(c.get("atk_members_ids", []))
+            await db.execute(
+                """
+                INSERT INTO ship_counters (
+                    season_id, def_capital, def_members_ids,
+                    atk_capital, atk_members_ids,
+                    seen, win_pct, avg_banners, last_updated
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(season_id, def_capital, def_members_ids, atk_capital, atk_members_ids)
+                DO UPDATE SET
+                    seen         = excluded.seen,
+                    win_pct      = excluded.win_pct,
+                    avg_banners  = excluded.avg_banners,
+                    last_updated = excluded.last_updated
+                """,
+                (
+                    season_id,
+                    def_capital,
+                    def_members_json,
+                    c.get("atk_capital", ""),
+                    atk_members_json,
+                    c.get("seen", 0),
+                    c.get("win_pct", 0.0),
+                    c.get("avg_banners", 0.0),
+                )
+            )
+            saved += 1
+    return saved
+
+
+async def get_ship_counters(def_capital: str, season_id: str = "current") -> list[dict]:
+    """Recupere les ship counters pour un capital ship defensif donne."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            """
+            SELECT season_id, def_capital, def_members_ids,
+                   atk_capital, atk_members_ids,
+                   seen, win_pct, avg_banners, last_updated
+            FROM ship_counters
+            WHERE def_capital = ?
+            ORDER BY seen DESC
+            LIMIT 20
+            """,
+            (def_capital,),
+        )
+        rows = await cursor.fetchall()
+
+    results = []
+    for row in rows:
+        results.append({
+            "season_id":       row["season_id"],
+            "def_capital":     row["def_capital"],
+            "def_members_ids": json.loads(row["def_members_ids"] or "[]"),
+            "atk_capital":     row["atk_capital"],
+            "atk_members_ids": json.loads(row["atk_members_ids"] or "[]"),
+            "seen":            row["seen"],
+            "win_pct":         row["win_pct"],
+            "avg_banners":     row["avg_banners"],
+            "last_updated":    row["last_updated"],
+        })
+    return results
+
+
+async def get_known_def_capitals() -> list[str]:
+    """Retourne la liste des capital ships defensifs deja scrapes."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT DISTINCT def_capital FROM ship_counters ORDER BY def_capital"
+        )
+        rows = await cursor.fetchall()
+    return [r["def_capital"] for r in rows]

@@ -278,6 +278,9 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
     for zone, slots in attack_plan.items():
         if not slots:
             continue
+
+        is_fleet_zone = (zone == "Fleet")
+        zone_slots_per_row = 8 if is_fleet_zone else slots_per_row
             
         draw.text((PADDING, current_y), f"ZONE : {zone.upper()}", font=section_font, fill=C_GOLD)
         current_y += H_ZONE_TITLE
@@ -310,7 +313,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             
             x_def = PADDING + 15
             y_portraits = current_y + 24
-            for bid in all_e_ids[:slots_per_row]:
+            for bid in all_e_ids[:zone_slots_per_row]:
                 e_data = enemy_roster_index.get(bid.upper()) if enemy_roster_index else None
                 e_rel  = e_data.get("relic_tier") if e_data else None
                 e_gr   = e_data.get("gear_tier")  if e_data else None
@@ -318,7 +321,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 e_omis = e_data.get("omicrons", 0) if e_data else 0
                 e_star = e_data.get("rarity", 7)  if e_data else 7
                 e_lvl  = e_data.get("level", 85)   if e_data else 85
-                _draw_scaled_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, False, e_lvl, e_zts, e_omis, e_star)
+                _draw_scaled_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, is_fleet_zone, e_lvl, e_zts, e_omis, e_star)
                 if status == "CLEARED":
                     overlay = Image.new("RGBA", (p_cell, p_cell), (0, 0, 0, 160))
                     canvas.paste(overlay, (x_def, y_portraits), overlay)
@@ -376,7 +379,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     c_members = c_info.get("atk_members_ids", [])
                     all_c_ids = [c_leader] + [m for m in c_members if m]
                     
-                    for bid in all_c_ids[:slots_per_row]:
+                    for bid in all_c_ids[:zone_slots_per_row]:
                         u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
                         rel    = u_data.get("relic_tier") if u_data else None
                         gr     = u_data.get("gear_tier")  if u_data else None
@@ -387,7 +390,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                         lvl    = u_data.get("level", 85)   if u_data else 85
                         is_ready = owned and rarity == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
                         is_miss_omi = bid.upper() in c_missing
-                        _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, is_miss_omi, False, lvl, zts, omis, rarity)
+                        _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, is_miss_omi, is_fleet_zone, lvl, zts, omis, rarity)
                         x_counter += p_cell + p_gap
 
                     # Incrustation du Datacron d'attaque si assigné
@@ -396,7 +399,10 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                         datacrons_to_overlay.append((x_counter + 4, y_portraits, c_dtc, p_cell))
                         x_counter += p_cell + p_gap + 4
                 else:
-                    draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
+                    if is_fleet_zone:
+                        draw.text((x_counter, current_y + 36), "Aucun counter vaisseau — /gac-fleet sync-counters", font=sub_font, fill=C_MUTED)
+                    else:
+                        draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
                 
             current_y += row_height
 

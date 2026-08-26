@@ -1178,6 +1178,82 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
     # 1. Collecter tous les slots actifs et leurs candidats contres
     slots_data = []
 
+    # ─── Zone Fleet : ship counters depuis la BDD ─────────────────────────────
+    fleet_slots = []
+    for slot_idx, enemy_fleet in enumerate(enemy_zones.get("Fleet", []), 1):
+        def_capital = enemy_fleet.get("leader_id")
+        def_members = enemy_fleet.get("members_ids", [])
+
+        if not def_capital or def_capital in ["USED", "None", "EMPTY"]:
+            continue
+
+        sec_info = sector_statuses.get(("Fleet", slot_idx), {})
+        fleet_status = sec_info.get("status", "OPEN")
+        fleet_offset = sec_info.get("counter_offset", 0)
+
+        if fleet_status == "CLEARED":
+            fleet_slots.append({
+                "zone": "Fleet",
+                "slot_index": slot_idx,
+                "enemy_team": enemy_fleet,
+                "counter": None,
+                "win_pct": 100,
+                "status": "CLEARED",
+                "counter_offset": 0,
+                "total_options": 0,
+                "candidates": [],
+            })
+            continue
+
+        # Chercher les ship counters depuis la BDD
+        try:
+            from database.db import get_ship_counters as _get_ship_counters
+            ship_counters_raw = await _get_ship_counters(def_capital)
+        except Exception as _e:
+            log.warning(f"[AttackPlan] Erreur get_ship_counters({def_capital}): {_e}")
+            ship_counters_raw = []
+
+        # IDs des vaisseaux du joueur disponibles
+        player_ship_ids = {
+            bid for bid, udata in my_index.items()
+            if udata.get("combat_type", 1) == 2
+        }
+        used_units_fleet = set(await get_used_units(discord_id)) if discord_id else set()
+
+        converted_fleet = []
+        for sc in ship_counters_raw:
+            atk_cap = sc.get("atk_capital", "")
+            atk_members = sc.get("atk_members_ids", [])
+            all_atk = [atk_cap] + atk_members
+            # Filtrer : le joueur possede tous les vaisseaux et aucun n'est deja utilise
+            if all(s in player_ship_ids for s in all_atk if s) and \
+               not any(s in used_units_fleet for s in all_atk if s):
+                converted_fleet.append({
+                    "atk_leader_id":   atk_cap,
+                    "atk_members_ids": atk_members,
+                    "win_pct":         sc.get("win_pct", 0.0),
+                    "seen":            sc.get("seen", 0),
+                    "avg_banners":     sc.get("avg_banners", 0.0),
+                    "def_leader_id":   def_capital,
+                    "def_members_ids": def_members,
+                })
+
+        converted_fleet.sort(key=lambda x: (x.get("win_pct", 0), x.get("seen", 0)), reverse=True)
+        best_fleet = converted_fleet[fleet_offset] if fleet_offset < len(converted_fleet) else (converted_fleet[0] if converted_fleet else None)
+
+        fleet_slots.append({
+            "zone": "Fleet",
+            "slot_index": slot_idx,
+            "enemy_team": enemy_fleet,
+            "counter": best_fleet,
+            "win_pct": best_fleet.get("win_pct", 0) if best_fleet else 0,
+            "status": fleet_status,
+            "counter_offset": fleet_offset,
+            "total_options": len(converted_fleet),
+            "candidates": converted_fleet,
+        })
+    # ─────────────────────────────────────────────────────────────────────────────
+
     for zone, teams in enemy_zones.items():
         if zone == "Fleet":
             continue
@@ -1416,6 +1492,11 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
         if z in slots_by_zone:
             slots_by_zone[z].sort(key=lambda s: s["slot_index"])
             attack_plan[z] = slots_by_zone[z]
+
+    # Ajouter la zone Fleet (ship counters)
+    if fleet_slots:
+        fleet_slots.sort(key=lambda s: s["slot_index"])
+        attack_plan["Fleet"] = fleet_slots
 
     # ── Association intelligente des Datacrons d'Attaque du Joueur ──
     try:

@@ -279,9 +279,50 @@ CREATE_TABLES_SQL: list[str] = [
         created_at  TEXT DEFAULT (datetime('now'))
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS fleet_tier_list (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        tier          TEXT    NOT NULL,
+        rank          INTEGER NOT NULL,
+        side          TEXT    NOT NULL,
+        league        TEXT    NOT NULL DEFAULT 'kyber',
+        season        TEXT    NOT NULL DEFAULT 'current',
+        format        TEXT    NOT NULL DEFAULT '5v5',
+        capital_ship  TEXT    NOT NULL,
+        members_ids   TEXT    NOT NULL DEFAULT '[]',
+        elo           INTEGER,
+        win_pct       REAL,
+        hold_pct      REAL,
+        battles       INTEGER,
+        builds_count  INTEGER,
+        last_updated  TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(side, league, season, capital_ship, members_ids)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_fleet_tier_side ON fleet_tier_list(side, league, season)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS ship_counters (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        season_id       TEXT    NOT NULL,
+        def_capital     TEXT    NOT NULL,
+        def_members_ids TEXT    NOT NULL DEFAULT '[]',
+        atk_capital     TEXT    NOT NULL,
+        atk_members_ids TEXT    NOT NULL DEFAULT '[]',
+        seen            INTEGER DEFAULT 0,
+        win_pct         REAL    DEFAULT 0.0,
+        avg_banners     REAL    DEFAULT 0.0,
+        last_updated    TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(season_id, def_capital, def_members_ids, atk_capital, atk_members_ids)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_ship_counters_def ON ship_counters(def_capital, season_id)
+    """,
 ]
 
-# Liste des instructions CREATE TABLE pour PostgreSQL.
+
 CREATE_TABLES_PG_SQL: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS players (

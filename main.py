@@ -42,6 +42,7 @@ INITIAL_EXTENSIONS = [
     "cogs.gac_scout",
     "cogs.meta_scanner",  # cron désactivé, /meta-scan-force disponible
     "cogs.gac_global_meta",
+    "cogs.gac_fleet",     # /gac-fleet
 ]
 
 

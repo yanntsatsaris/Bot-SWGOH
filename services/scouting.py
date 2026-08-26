@@ -1,8 +1,11 @@
 """
 services/scouting.py — Moteur de Scouting Hybride pour la GAC
 """
+import asyncio
 import json
 import logging
+import os
+import sys
 from database.db import get_db
 from services.comlink import get_player
 from utils.gac_config import get_gac_quotas

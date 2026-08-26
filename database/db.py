@@ -1464,9 +1464,9 @@ async def get_ship_counters(def_capital: str, season_id: str = "current") -> lis
                    atk_capital, atk_members_ids,
                    seen, win_pct, avg_banners, last_updated
             FROM ship_counters
-            WHERE def_capital = ?
-            ORDER BY seen DESC
-            LIMIT 20
+            WHERE UPPER(def_capital) = UPPER(?)
+            ORDER BY win_pct DESC, seen DESC
+            LIMIT 150
             """,
             (def_capital,),
         )

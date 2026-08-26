@@ -635,17 +635,53 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                 used_base_ids.add(filler)
 
 
-    # 2. FLOTTES
+    # 2. FLOTTES (Priorité absolue à la Tier List Défense swgoh.gg en BDD)
+    CAP_NORM = {
+        "NEGOTIATOR": "CAPITALNEGOTIATOR",
+        "PROFUNDITY": "CAPITALPROFUNDITY",
+        "LEVIATHAN": "CAPITALLEVIATHAN",
+        "EXECUTOR": "CAPITALEXECUTOR",
+        "HOMEONE": "CAPITALMONCALAMARICRUISER",
+        "CHIMAERA": "CAPITALCHIMAERA",
+        "FINALIZER": "CAPITALFINALIZER",
+        "EXECUTRIX": "CAPITALSTARDESTROYER",
+        "MALEVOLENCE": "CAPITALMALEVOLENCE",
+        "RADDUS": "CAPITALRADDUS",
+        "ENDURANCE": "CAPITALJEDICRUISER",
+    }
     available_fleets = []
-    for cap_id, team_data in GAC_FLEETS.items():
-        if enemy_index.get(cap_id) and enemy_index[cap_id].get("rarity", 0) >= 5:
-            score = enemy_index[cap_id].get("relic_tier", 0) * 10 + enemy_index[cap_id].get("gear_tier", 0)
-            available_fleets.append({
-                "leader_id": cap_id,
-                "members": team_data["members"],
-                "defense": team_data.get("defense", 5),
-                "score": score
-            })
+    tier_fleets = []
+    try:
+        from database.db import get_fleet_tier_list
+        tier_fleets = await get_fleet_tier_list(side="defense", league=league.lower(), format_type=fmt)
+        if not tier_fleets and league.lower() != "kyber":
+            tier_fleets = await get_fleet_tier_list(side="defense", league="kyber", format_type=fmt)
+    except Exception as e:
+        log.warning(f"Impossible de lire la tier list fleet: {e}")
+        tier_fleets = []
+
+    if tier_fleets:
+        for tf in tier_fleets:
+            cap_id = (tf.get("capital_ship") or "").upper()
+            cap_id = CAP_NORM.get(cap_id, cap_id)
+            if enemy_index.get(cap_id) and enemy_index[cap_id].get("rarity", 0) >= 5:
+                score = enemy_index[cap_id].get("relic_tier", 0) * 10 + enemy_index[cap_id].get("gear_tier", 0)
+                available_fleets.append({
+                    "leader_id": cap_id,
+                    "members": [m.upper() for m in tf.get("members_ids", []) if m],
+                    "defense": tf.get("hold_pct", 50.0) or (100 - tf.get("rank", 10)),
+                    "score": score
+                })
+    else:
+        for cap_id, team_data in GAC_FLEETS.items():
+            if enemy_index.get(cap_id) and enemy_index[cap_id].get("rarity", 0) >= 5:
+                score = enemy_index[cap_id].get("relic_tier", 0) * 10 + enemy_index[cap_id].get("gear_tier", 0)
+                available_fleets.append({
+                    "leader_id": cap_id,
+                    "members": team_data["members"],
+                    "defense": team_data.get("defense", 5),
+                    "score": score
+                })
             
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
     
@@ -1212,38 +1248,68 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             })
             continue
 
-        # Chercher les ship counters depuis la BDD
+        # Chercher les ship counters depuis la BDD avec normalisation des IDs
+        CAPITAL_MAP = {
+            "NEGOTIATOR": "CAPITALNEGOTIATOR",
+            "PROFUNDITY": "CAPITALPROFUNDITY",
+            "LEVIATHAN": "CAPITALLEVIATHAN",
+            "EXECUTOR": "CAPITALEXECUTOR",
+            "HOMEONE": "CAPITALMONCALAMARICRUISER",
+            "CHIMAERA": "CAPITALCHIMAERA",
+            "FINALIZER": "CAPITALFINALIZER",
+            "EXECUTRIX": "CAPITALSTARDESTROYER",
+            "MALEVOLENCE": "CAPITALMALEVOLENCE",
+            "RADDUS": "CAPITALRADDUS",
+            "ENDURANCE": "CAPITALJEDICRUISER",
+        }
+        norm_cap = CAPITAL_MAP.get(def_capital.upper(), def_capital.upper())
+
         try:
             from database.db import get_ship_counters as _get_ship_counters
-            ship_counters_raw = await _get_ship_counters(def_capital)
+            ship_counters_raw = await _get_ship_counters(norm_cap)
+            if not ship_counters_raw and norm_cap != def_capital:
+                ship_counters_raw = await _get_ship_counters(def_capital)
         except Exception as _e:
-            log.warning(f"[AttackPlan] Erreur get_ship_counters({def_capital}): {_e}")
+            log.warning(f"[AttackPlan] Erreur get_ship_counters({norm_cap}): {_e}")
             ship_counters_raw = []
 
         # IDs des vaisseaux du joueur disponibles
         player_ship_ids = {
-            bid for bid, udata in my_index.items()
+            bid.upper() for bid, udata in my_index.items()
             if udata.get("combat_type", 1) == 2
         }
-        used_units_fleet = set(await get_used_units(discord_id)) if discord_id else set()
+        used_units_fleet = {u.upper() for u in await get_used_units(discord_id)} if discord_id else set()
 
         converted_fleet = []
         for sc in ship_counters_raw:
-            atk_cap = sc.get("atk_capital", "")
-            atk_members = sc.get("atk_members_ids", [])
-            all_atk = [atk_cap] + atk_members
-            # Filtrer : le joueur possede tous les vaisseaux et aucun n'est deja utilise
-            if all(s in player_ship_ids for s in all_atk if s) and \
-               not any(s in used_units_fleet for s in all_atk if s):
-                converted_fleet.append({
-                    "atk_leader_id":   atk_cap,
-                    "atk_members_ids": atk_members,
-                    "win_pct":         sc.get("win_pct", 0.0),
-                    "seen":            sc.get("seen", 0),
-                    "avg_banners":     sc.get("avg_banners", 0.0),
-                    "def_leader_id":   def_capital,
-                    "def_members_ids": def_members,
-                })
+            atk_cap = (sc.get("atk_capital") or "").upper()
+            atk_members = [m.upper() for m in sc.get("atk_members_ids", []) if m]
+            
+            # Le joueur DOIT posséder le vaisseau amiral d'attaque
+            if not atk_cap or atk_cap not in player_ship_ids or atk_cap in used_units_fleet:
+                continue
+
+            # Front ships (les 3 premiers vaisseaux de départ)
+            front_ships = atk_members[:3]
+            front_owned = [s for s in front_ships if s in player_ship_ids and s not in used_units_fleet]
+            
+            # Au moins 2 des 3 vaisseaux de départ doivent être possédés
+            if len(front_owned) < 2:
+                continue
+
+            # Renforts : garder les possédés, laisser vide les renforts manquants
+            reinforcements_owned = [s for s in atk_members[3:] if s in player_ship_ids and s not in used_units_fleet]
+            final_members = front_owned + reinforcements_owned
+
+            converted_fleet.append({
+                "atk_leader_id":   atk_cap,
+                "atk_members_ids": final_members,
+                "win_pct":         sc.get("win_pct", 0.0),
+                "seen":            sc.get("seen", 0),
+                "avg_banners":     sc.get("avg_banners", 0.0),
+                "def_leader_id":   norm_cap,
+                "def_members_ids": def_members,
+            })
 
         converted_fleet.sort(key=lambda x: (x.get("win_pct", 0), x.get("seen", 0)), reverse=True)
         best_fleet = converted_fleet[fleet_offset] if fleet_offset < len(converted_fleet) else (converted_fleet[0] if converted_fleet else None)

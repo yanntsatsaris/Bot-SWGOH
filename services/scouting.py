@@ -1289,17 +1289,14 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             if not atk_cap or atk_cap not in player_ship_ids or atk_cap in used_units_fleet:
                 continue
 
-            # Front ships (les 3 premiers vaisseaux de départ)
+            # Front ships (les 3 vaisseaux de départ : 100% obligatoires)
             front_ships = atk_members[:3]
-            front_owned = [s for s in front_ships if s in player_ship_ids and s not in used_units_fleet]
-            
-            # Au moins 2 des 3 vaisseaux de départ doivent être possédés
-            if len(front_owned) < 2:
+            if len(front_ships) < 3 or not all(s in player_ship_ids and s not in used_units_fleet for s in front_ships):
                 continue
 
-            # Renforts : garder les possédés, laisser vide les renforts manquants
+            # Renforts (slots 4 à 7) : souples, ne garder que ceux possédés (les manquants restent vides)
             reinforcements_owned = [s for s in atk_members[3:] if s in player_ship_ids and s not in used_units_fleet]
-            final_members = front_owned + reinforcements_owned
+            final_members = front_ships + reinforcements_owned
 
             converted_fleet.append({
                 "atk_leader_id":   atk_cap,

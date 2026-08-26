@@ -55,15 +55,26 @@ def extract_seasons_from_dropdown(soup, format_type="fleet"):
 
 def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
     """
-    Parse un panneau de counter vaisseau. La structure est la meme que pour les
-    counters de personnages : data-unit-def-tooltip-app sur chaque unite.
-    Pour les vaisseaux : 1er element = capital ship, les suivants = vaisseaux de soutien.
+    Parse un panneau de counter vaisseau.
     """
-    # Equipe attaquante (droite)
-    atk_container = panel.select_one("div.justify-center.lg\:justify-end")
+    # 1. Equipe attaquante (droite)
+    atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
     if not atk_container:
-        # Fallback: chercher via classe plus generique
-        atk_container = panel.select_one("[class*=\"justify-end\"]")
+        # Fallback multi-classes
+        for div in panel.find_all("div"):
+            cls = div.get("class", [])
+            if any("justify-end" in c for c in cls):
+                atk_container = div
+                break
+                
+    if not atk_container:
+        # Fallback général : si 2 containers justify-center existent, le 2ème est l'attaque
+        j_divs = panel.select("div.justify-center")
+        if len(j_divs) >= 2:
+            atk_container = j_divs[1]
+        elif len(j_divs) == 1:
+            atk_container = j_divs[0]
+
     if not atk_container:
         return None
 
@@ -73,16 +84,29 @@ def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
         if div.get("data-unit-def-tooltip-app")
     ]
     if not atk_units:
+        # Fallback via liens /ships/
+        for a in atk_container.find_all("a"):
+            href = a.get("href", "")
+            if "/ships/" in href:
+                s_id = href.rstrip("/").split("/")[-1].upper()
+                if s_id:
+                    atk_units.append(s_id)
+
+    if not atk_units:
         return None
 
     atk_capital = atk_units[0]
     atk_members = atk_units[1:]
 
-    # Equipe defensive (gauche)
-    def_container = panel.select_one("div.justify-center.lg\:justify-start")
+    # 2. Equipe defensive (gauche)
+    def_container = panel.select_one("div.justify-center.lg\\:justify-start")
     if not def_container:
-        def_container = panel.select_one("[class*=\"justify-start\"]")
-    
+        for div in panel.find_all("div"):
+            cls = div.get("class", [])
+            if any("justify-start" in c for c in cls):
+                def_container = div
+                break
+
     def_members = []
     if def_container:
         def_units = [
@@ -90,22 +114,42 @@ def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
             for div in def_container.select("[data-unit-def-tooltip-app]")
             if div.get("data-unit-def-tooltip-app")
         ]
-        # Le premier est le capital ship defensif (qu'on connait deja), le reste = membres
-        def_members = def_units[1:] if def_units else []
+        if not def_units:
+            for a in def_container.find_all("a"):
+                href = a.get("href", "")
+                if "/ships/" in href:
+                    s_id = href.rstrip("/").split("/")[-1].upper()
+                    if s_id:
+                        def_units.append(s_id)
+        def_members = def_units[1:] if len(def_units) > 1 else []
 
-    # Stats
+    # 3. Stats
     seen = 0
     win_pct = 0.0
     avg_banners = 0.0
     stats_container = panel.select_one("div.whitespace-nowrap")
+    if not stats_container:
+        for div in panel.find_all("div"):
+            if "whitespace-nowrap" in " ".join(div.get("class", [])):
+                stats_container = div
+                break
+
     if stats_container:
         stat_divs = stats_container.select("div.flex-1 > div.font-bold")
+        if not stat_divs:
+            stat_divs = stats_container.select(".font-bold")
         if len(stat_divs) >= 3:
             try:
                 seen = int(stat_divs[0].text.strip().replace(",", ""))
                 win_pct = float(stat_divs[1].text.strip().replace("%", ""))
                 avg_banners = float(stat_divs[2].text.strip())
             except (ValueError, IndexError):
+                pass
+        elif len(stat_divs) >= 2:
+            try:
+                seen = int(stat_divs[0].text.strip().replace(",", ""))
+                win_pct = float(stat_divs[1].text.strip().replace("%", ""))
+            except:
                 pass
 
     return {
@@ -142,7 +186,6 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
         out_dir = os.path.dirname(os.path.abspath(output_file))
         os.makedirs(out_dir, exist_ok=True)
 
-        # Convertir capital_id en slug URL
         slug = CAPITAL_ID_TO_SLUG.get(def_capital_id.upper())
         if not slug:
             slug = def_capital_id.lower().replace("capital", "").replace("_", "-").strip("-")
@@ -155,14 +198,15 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             from bs4 import BeautifulSoup
 
-            # Detection automatique de la saison
+            # 1. Détection saison si 'current'
+            target_season = season_id
             if season_id == "current":
                 init_url = f"https://swgoh.gg/gac/ship-counters/{slug}/?cutoff=0"
                 print(f"[SHIP-COUNTERS] Detection saison via {init_url}...", flush=True)
                 sb.uc_open_with_reconnect(init_url, reconnect_time=4)
 
                 quick_check = sb.get_page_source()
-                if any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile"]):
+                if any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
                     print("[SHIP-COUNTERS] Cloudflare detecte...", flush=True)
                     try:
                         sb.uc_gui_click_captcha()
@@ -170,7 +214,7 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
                         pass
                     sb.sleep(10)
                 else:
-                    sb.sleep(5)
+                    sb.sleep(4)
 
                 soup = BeautifulSoup(sb.get_page_source(), "html.parser")
                 detected_seasons = extract_seasons_from_dropdown(soup)
@@ -179,22 +223,19 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
                     target_season = detected_seasons[0]
                     print(f"[SHIP-COUNTERS] Saison detectee: {target_season}", flush=True)
                 else:
-                    # Fallback
-                    target_season = "CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_80"
-                    print(f"[SHIP-COUNTERS] Fallback saison: {target_season}", flush=True)
-            else:
-                target_season = season_id
+                    target_season = ""
 
-            # Scraping des pages de counters
-            base_url = f"https://swgoh.gg/gac/ship-counters/{slug}/?cutoff=0&season_id={target_season}"
-            
-            for page in range(1, 8):
+            base_url = f"https://swgoh.gg/gac/ship-counters/{slug}/?cutoff=0"
+            if target_season:
+                base_url += f"&season_id={target_season}"
+
+            for page in range(1, 6):
                 page_url = f"{base_url}&page={page}"
                 print(f"[SHIP-COUNTERS] Page {page}: {page_url}", flush=True)
                 sb.uc_open_with_reconnect(page_url, reconnect_time=3)
 
                 quick_check = sb.get_page_source()
-                if page == 1 and any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile"]):
+                if page == 1 and any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
                     try:
                         sb.uc_gui_click_captcha()
                     except:
@@ -203,87 +244,48 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
                 else:
                     sb.sleep(3 if page == 1 else 2)
 
-                # Attendre les panneaux
                 panels_found = False
                 for _ in range(15):
                     if sb.is_element_present("div.panel"):
                         panels_found = True
                         break
-                    sb.sleep(0.5)
+                    sb.sleep(0.4)
 
                 if not panels_found:
-                    print(f"[SHIP-COUNTERS] Page {page}: fin des counters.", flush=True)
+                    print(f"[SHIP-COUNTERS] Page {page}: fin des panels.", flush=True)
                     break
 
                 page_source = sb.get_page_source()
                 soup = BeautifulSoup(page_source, "html.parser")
 
                 counter_panels = soup.select("div.panel.panel--size-sm") or soup.select("div.panel")
-                print(f"[SHIP-COUNTERS] Page {page}: {len(counter_panels)} panneaux.", flush=True)
+                print(f"[SHIP-COUNTERS] Page {page}: {len(counter_panels)} panneaux trouves.", flush=True)
 
                 page_counters = []
                 for panel in counter_panels:
                     parsed = parse_ship_counter_panel(panel, def_capital_id)
-                    if parsed:
+                    if parsed and parsed["atk_capital"]:
                         page_counters.append(parsed)
 
                 if not page_counters:
-                    print(f"[SHIP-COUNTERS] Page {page}: 0 counters extraits, arret.", flush=True)
+                    print(f"[SHIP-COUNTERS] Page {page}: 0 counters extraits.", flush=True)
                     break
 
                 counters_data.extend(page_counters)
-                print(f"[SHIP-COUNTERS] Page {page}: {len(page_counters)} counters. Total: {len(counters_data)}", flush=True)
+                print(f"[SHIP-COUNTERS] Page {page}: +{len(page_counters)} counters. Total: {len(counters_data)}", flush=True)
 
-                if len(page_counters) < 50:
-                    print(f"[SHIP-COUNTERS] Moins de 50 resultats, fin pagination.", flush=True)
+                if len(page_counters) < 40:
                     break
-
-            # Passe historique si peu de resultats
-            if len(counters_data) < 8 and len(detected_seasons) > 1:
-                print(f"[SHIP-COUNTERS] Seulement {len(counters_data)} counters. Passe historique...", flush=True)
-                seen_combos = set(
-                    (c["atk_capital"], tuple(c.get("atk_members_ids", [])))
-                    for c in counters_data
-                )
-                for hist_season in detected_seasons[1:4]:
-                    if len(counters_data) >= 12:
-                        break
-                    hist_url = f"https://swgoh.gg/gac/ship-counters/{slug}/?cutoff=0&season_id={hist_season}"
-                    for page in range(1, 3):
-                        p_url = f"{hist_url}&page={page}"
-                        print(f"[SHIP-COUNTERS] Historique page {page}: {p_url}", flush=True)
-                        try:
-                            sb.uc_open_with_reconnect(p_url, reconnect_time=2)
-                            sb.sleep(2)
-                            soup = BeautifulSoup(sb.get_page_source(), "html.parser")
-                            panels = soup.select("div.panel.panel--size-sm") or soup.select("div.panel")
-                            if not panels:
-                                break
-                            added = 0
-                            for panel in panels:
-                                parsed = parse_ship_counter_panel(panel, def_capital_id)
-                                if parsed:
-                                    key = (parsed["atk_capital"], tuple(parsed.get("atk_members_ids", [])))
-                                    if key not in seen_combos:
-                                        counters_data.append(parsed)
-                                        seen_combos.add(key)
-                                        added += 1
-                            print(f"[SHIP-COUNTERS] Hist {hist_season} p{page}: +{added}", flush=True)
-                            if added == 0:
-                                break
-                        except Exception as ex:
-                            print(f"[SHIP-COUNTERS] Erreur passe historique: {ex}", flush=True)
-                            break
 
         final = {
             "def_capital": def_capital_id,
-            "season_id":   target_season,
+            "season_id":   target_season or "current",
             "counters":    counters_data,
         }
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(final, f, ensure_ascii=False, indent=2)
 
-        print(f"[SHIP-COUNTERS] {len(counters_data)} counters sauvegardes -> {output_file}", flush=True)
+        print(f"[SHIP-COUNTERS] Total: {len(counters_data)} counters sauvegardes -> {output_file}", flush=True)
         exit_code = 0
 
     except Exception as e:
@@ -303,7 +305,6 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: python ship_counters_sb_worker.py <def_capital_id> <output_file> [season_id]")
-        print("Capitals connus:", ", ".join(CAPITAL_ID_TO_SLUG.keys()))
         sys.exit(1)
 
     capital_id = sys.argv[1].upper()

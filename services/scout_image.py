@@ -309,7 +309,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             
             e_leader = e_team.get("leader_id")
             e_members = e_team.get("members_ids", [])
-            all_e_ids = [e_leader] + [m for m in e_members if m]
+            all_e_ids = [e_leader] + [m for m in e_members if m and m != e_leader]
             
             x_def = PADDING + 15
             y_portraits = current_y + 24
@@ -377,7 +377,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 if c_info:
                     c_leader = c_info["atk_leader_id"]
                     c_members = c_info.get("atk_members_ids", [])
-                    all_c_ids = [c_leader] + [m for m in c_members if m]
+                    all_c_ids = [c_leader] + [m for m in c_members if m and m != c_leader]
                     
                     for bid in all_c_ids[:zone_slots_per_row]:
                         u_data = my_roster_index.get(bid.upper()) if my_roster_index else None

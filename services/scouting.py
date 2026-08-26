@@ -1461,9 +1461,18 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 enemy_roster_index=enemy_roster_index
             )
             
+            c_assigned_units = set([c_assigned["atk_leader_id"]] + c_assigned.get("atk_members_ids", []))
+            # Filtrer les alt_counters pour interdire formellement TOUT perso présent dans c_assigned
+            valid_alt_counters = [
+                c for c in alt_counters
+                if not set([c["atk_leader_id"]] + c.get("atk_members_ids", [])).intersection(c_assigned_units)
+            ]
+            if not valid_alt_counters:
+                continue
+
             can_swap = any(sc["atk_leader_id"] == c_assigned["atk_leader_id"] for sc in slot_counters)
             if can_swap:
-                alt_c = alt_counters[0]
+                alt_c = valid_alt_counters[0]
                 other_slot["counter"] = alt_c
                 other_slot["win_pct"] = alt_c.get("win_pct", 0)
                 
@@ -1471,10 +1480,24 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 slot["win_pct"] = c_assigned.get("win_pct", 0)
                 
                 alt_units = set([alt_c["atk_leader_id"]] + alt_c.get("atk_members_ids", []))
-                c_assigned_units = set([c_assigned["atk_leader_id"]] + c_assigned.get("atk_members_ids", []))
                 assigned_units = (free_units | alt_units | c_assigned_units)
                 log.info(f"[AttackPlanSwap] Échange effectué entre {other_slot['zone']} #{other_slot['slot_index']} et {slot['zone']} #{slot['slot_index']}")
                 break
+
+    # 3.9 Vérification finale d'intégrité anti-doublon absolue
+    final_assigned = set(used_units)
+    for s in slots_data:
+        c = s.get("counter")
+        if not c:
+            continue
+        c_team = set([c["atk_leader_id"]] + c.get("atk_members_ids", []))
+        if c_team.intersection(final_assigned):
+            conflict = c_team.intersection(final_assigned)
+            log.warning(f"[AttackPlan] Doublon résiduel détecté sur {s['zone']} #{s['slot_index']} ({conflict}). Annulation du contre.")
+            s["counter"] = None
+            s["win_pct"] = 0
+        else:
+            final_assigned.update(c_team)
 
     # 4. Reconstruire l'attack_plan groupé par zone et trié par slot_index d'origine
     attack_plan = {}

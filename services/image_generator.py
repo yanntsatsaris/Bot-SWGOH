@@ -186,6 +186,12 @@ def _draw_portrait_cell(
     stars: int = 7,
 ) -> None:
     draw = ImageDraw.Draw(canvas)
+
+    # --- 0. Emplacement vide (équipe ou flotte incomplète) ---
+    if not base_id or str(base_id).upper() in ["NONE", "EMPTY", "USED"]:
+        empty_box = [x + 4, y + 4, x + PORTRAIT_CELL - 5, y + PORTRAIT_CELL - 5]
+        draw.ellipse(empty_box, fill=(18, 20, 26, 180), outline=(50, 55, 70), width=1)
+        return
     
     # --- 1. Dessin du fond d'alignement optionnel ---
     if is_enemy:

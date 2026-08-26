@@ -58,6 +58,87 @@ async def lock_single_player(ally_code: str, season_id: str = None) -> dict | No
         return None
 
 
+
+def parse_bracket_html(html_content: str, owner_ally_code: str) -> list[str]:
+    """
+    Extrait les ally codes des 7 adversaires depuis le HTML de la page /gac-bracket/ de swgoh.gg.
+    """
+    clean_owner = str(owner_ally_code).replace("-", "").strip()
+    opponents = []
+
+    # 1. Matcher les divs d'ally codes exactes : <div class="compare-players__nameplate-ally-code">739-671-686</div>
+    codes = re.findall(r'class="compare-players__nameplate-ally-code">\s*([\d-]+)\s*<', html_content)
+    for c in codes:
+        clean = c.replace("-", "").strip()
+        if len(clean) == 9 and clean != clean_owner and clean not in opponents:
+            opponents.append(clean)
+
+    # 2. Fallback regex : liens de profil /p/123456789/
+    if len(opponents) < 7:
+        links = re.findall(r'/p/(\d{9})/', html_content)
+        for c in links:
+            if c != clean_owner and c not in opponents:
+                opponents.append(c)
+
+    return opponents[:7]
+
+
+async def fetch_bracket_from_swgoh_gg(ally_code: str) -> list[str]:
+    """
+    Tente de récupérer la page de bracket swgoh.gg et d'en extraire les 7 adversaires.
+    """
+    clean_code = str(ally_code).replace("-", "").strip()
+    target_url = f"https://swgoh.gg/p/{clean_code}/gac-bracket/"
+    
+    # 1. Essai direct HTTP rapide avec User-Agent
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True, headers={
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }) as client:
+            resp = await client.get(target_url)
+            if resp.status_code == 200:
+                opps = parse_bracket_html(resp.text, clean_code)
+                if opps:
+                    log.info(f"[GacLock] 🎯 {len(opps)} adversaires extraits via HTTP pour {clean_code}")
+                    return opps
+    except Exception as e:
+        log.debug(f"[GacLock] HTTP direct echoue pour bracket {clean_code}: {e}")
+
+    # 2. Si protection Cloudflare, passage par le scraper SeleniumBase
+    try:
+        import sys
+        import os
+        project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        worker_path = os.path.join(project_dir, "scripts", "sb_worker.py")
+        temp_html = os.path.join(project_dir, "temp_bracket.html")
+
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            worker_path,
+            target_url,
+            temp_html,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=project_dir
+        )
+        await process.communicate()
+        if os.path.exists(temp_html):
+            content = open(temp_html, "r", encoding="utf-8", errors="ignore").read()
+            try:
+                os.remove(temp_html)
+            except:
+                pass
+            opps = parse_bracket_html(content, clean_code)
+            if opps:
+                log.info(f"[GacLock] 🎯 {len(opps)} adversaires extraits via SB pour {clean_code}")
+                return opps
+    except Exception as e:
+        log.warning(f"[GacLock] Erreur scraping bracket {clean_code}: {e}")
+
+    return []
+
+
 async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str] = None) -> dict:
     """
     Verrouille le profil du joueur enregistré ainsi que tous ses adversaires de poule GAC.
@@ -74,7 +155,13 @@ async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str
     if opponent_codes:
         opponents_to_lock = [str(c).replace("-", "").strip() for c in opponent_codes if str(c).replace("-", "").strip() != clean_owner]
 
-    # 2. Sinon, vérifier si on a déjà des adversaires enregistrés en BDD pour cette saison
+    # 2. Extraction automatique depuis le bracket swgoh.gg live
+    if not opponents_to_lock:
+        scraped_opps = await fetch_bracket_from_swgoh_gg(clean_owner)
+        if scraped_opps:
+            opponents_to_lock = scraped_opps
+
+    # 3. Fallback : vérifier si on a déjà des adversaires enregistrés en BDD pour cette saison
     if not opponents_to_lock:
         existing_bracket = await get_bracket_opponents(clean_owner, season_id)
         if existing_bracket:

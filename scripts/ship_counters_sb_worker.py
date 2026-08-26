@@ -150,7 +150,7 @@ def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
     }
 
 
-def _scrape_single_capital_flow(sb, cap_id: str, season_id: str, is_first: bool = False, d_members: str = "") -> list:
+def _scrape_single_capital_flow(sb, cap_id: str, season_id: str, is_first: bool = False, d_members: str = "", d_reinforcements: str = "") -> list:
     """Scrape les pages 1 a 5 d'un capital ship dans la session Chrome active."""
     from bs4 import BeautifulSoup
 
@@ -162,6 +162,10 @@ def _scrape_single_capital_flow(sb, cap_id: str, season_id: str, is_first: bool 
         base_url += f"&season_id={season_id}"
     if d_members:
         base_url += f"&d_member={d_members}"
+    if d_reinforcements:
+        base_url += f"&d_reinforcement={d_reinforcements}"
+    if d_reinforcements:
+        base_url += f"&d_reinforcement={d_reinforcements}"
 
     for page in range(1, 6):
         page_url = f"{base_url}&page={page}"
@@ -205,7 +209,7 @@ def _scrape_single_capital_flow(sb, cap_id: str, season_id: str, is_first: bool 
     return counters_data
 
 
-def scrape_ship_counters(target_arg: str, output_path: str, season_id: str = "current", d_members: str = ""):
+def scrape_ship_counters(target_arg: str, output_path: str, season_id: str = "current", d_members: str = "", d_reinforcements: str = ""):
     project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     if not os.path.exists(project_dir):
         project_dir = os.getcwd()
@@ -257,7 +261,7 @@ def scrape_ship_counters(target_arg: str, output_path: str, season_id: str = "cu
             # 2. Scraping des vaisseaux dans la MEME session Chrome
             all_results = {}
             for i, cap_id in enumerate(capitals_to_scrape):
-                c_data = _scrape_single_capital_flow(sb, cap_id, target_season, is_first=(i == 0), d_members=d_members if not is_batch else "")
+                c_data = _scrape_single_capital_flow(sb, cap_id, target_season, is_first=(i == 0), d_members=d_members if not is_batch else "", d_reinforcements=d_reinforcements if not is_batch else "")
                 all_results[cap_id] = {
                     "def_capital": cap_id,
                     "season_id": target_season,
@@ -305,5 +309,6 @@ if __name__ == "__main__":
     out_target = sys.argv[2]
     season_arg = sys.argv[3] if len(sys.argv) > 3 else "current"
     d_mems_arg = sys.argv[4] if len(sys.argv) > 4 else ""
+    d_reinf_arg = sys.argv[5] if len(sys.argv) > 5 else ""
 
-    scrape_ship_counters(target_cmd, out_target, season_arg, d_mems_arg)
+    scrape_ship_counters(target_cmd, out_target, season_arg, d_mems_arg, d_reinf_arg)

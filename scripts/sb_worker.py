@@ -85,12 +85,11 @@ def scrape(target_url, ally_code):
                     print("[WORKER] ✅ Pas de Cloudflare")
                     wait_time = 2  # Attente courte pour rendu JS
                 
-                # Attente adaptive : poll au lieu de sleep fixe
-                for _ in range(wait_time * 2):  # Check toutes les 500ms
-                    sb.sleep(0.5)
+                # Attente adaptive : poll réactif rapide (toutes les 150ms)
+                for _ in range(int(wait_time * 6.5)):  # Check rapide 150ms
+                    sb.sleep(0.15)
                     source = sb.get_page_source()
-                    # On check soit le bloc stat, soit l'accueil des historiques
-                    if "gac-counters-battle-summary" in source or "class=\"col-sm-6 col-md-6\"" in source:
+                    if "gac-counters-battle-summary" in source or "class=\"col-sm-6 col-md-6\"" in source or "data-unit-def-tooltip-app" in source:
                         print("[WORKER] ✅ Contenu GAC détecté, stop de l'attente !")
                         break
                 

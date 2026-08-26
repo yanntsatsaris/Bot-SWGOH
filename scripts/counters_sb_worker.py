@@ -154,28 +154,28 @@ def scrape(targets, format_type="5v5", season_id="current"):
                             pass
                         wait_time = 10
                     elif page == 1:
-                        wait_time = 4
+                        wait_time = 3
                     else:
-                        wait_time = 2  # Cookies déjà actifs pour les pages suivantes
+                        wait_time = 1.2  # Cookies déjà actifs pour les pages suivantes
     
-                    for _ in range(int(wait_time * 5)):
-                        sb.sleep(0.2)
+                    for _ in range(int(wait_time * 7)):
+                        sb.sleep(0.15)
                         source_check = sb.get_page_source()
-                        if "data-unit-def-tooltip-app" in source_check or "panel--size-sm" in source_check:
+                        if "data-unit-def-tooltip-app" in source_check or "panel--size-sm" in source_check or "div.panel" in source_check:
                             break
     
                     panels_found = False
-                    for _ in range(5):
+                    for _ in range(8):
                         if sb.is_element_present("div.panel"):
                             panels_found = True
                             break
-                        sb.sleep(0.2)
+                        sb.sleep(0.1)
     
                     if not panels_found:
                         dprint(f"[WORKER] Page {page} : Fin des contres disponibles.")
                         break
                         
-                    sb.sleep(0.5)
+                    sb.sleep(0.2)
                     page_source = sb.get_page_source()
 
                     from bs4 import BeautifulSoup

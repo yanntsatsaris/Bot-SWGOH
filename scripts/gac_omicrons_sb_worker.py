@@ -69,7 +69,11 @@ def scrape_gac_omicrons(output_json_path: str) -> bool:
                         pass
                     sb.sleep(8)
                 else:
-                    sb.sleep(2)
+                    for _ in range(15):
+                        if sb.is_element_present("table") or sb.is_element_present("tr"):
+                            break
+                        sb.sleep(0.15)
+                    sb.sleep(0.2)
 
                 html = sb.get_page_source()
                 soup = BeautifulSoup(html, "html.parser")

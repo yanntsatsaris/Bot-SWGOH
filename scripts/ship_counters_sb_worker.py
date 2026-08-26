@@ -1,12 +1,14 @@
 """
 scripts/ship_counters_sb_worker.py
 Scrape les counters de vaisseaux sur swgoh.gg/gac/ship-counters/{CAPITAL_ID}/
+Supporte le mode single ('CAPITALLEVIATHAN') et le mode batch ('ALL') pour une vitesse maximale.
 """
 import sys
 import os
 import json
 import platform
 import re
+import time
 
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
@@ -148,7 +150,60 @@ def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
     }
 
 
-def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str = "current"):
+def _scrape_single_capital_flow(sb, cap_id: str, season_id: str, is_first: bool = False) -> list:
+    """Scrape les pages 1 a 5 d'un capital ship dans la session Chrome active."""
+    from bs4 import BeautifulSoup
+
+    capital_slug = cap_id.upper()
+    counters_data = []
+
+    base_url = f"https://swgoh.gg/gac/ship-counters/{capital_slug}/?cutoff=0"
+    if season_id and season_id != "current":
+        base_url += f"&season_id={season_id}"
+
+    for page in range(1, 6):
+        page_url = f"{base_url}&page={page}"
+        print(f"[SHIP-COUNTERS] [{cap_id}] Page {page}: {page_url}", flush=True)
+        sb.uc_open_with_reconnect(page_url, reconnect_time=2)
+
+        quick_check = sb.get_page_source()
+        if is_first and page == 1 and any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
+            print("[SHIP-COUNTERS] Cloudflare detecte au demarrage...", flush=True)
+            try:
+                sb.uc_gui_click_captcha()
+            except:
+                pass
+            sb.sleep(8)
+        else:
+            # Attente reactive rapide (0.15s interval) des que les panels apparaissent
+            for _ in range(20):
+                if sb.is_element_present("div.panel"):
+                    break
+                sb.sleep(0.15)
+            sb.sleep(0.3)  # Pause legere et naturelle anti-Cloudflare
+
+        page_source = sb.get_page_source()
+        soup = BeautifulSoup(page_source, "html.parser")
+
+        counter_panels = soup.select("div.panel.panel--size-sm") or soup.select("div.panel")
+        page_counters = []
+        for panel in counter_panels:
+            parsed = parse_ship_counter_panel(panel, cap_id)
+            if parsed and parsed["atk_capital"]:
+                page_counters.append(parsed)
+
+        if not page_counters:
+            break
+
+        counters_data.extend(page_counters)
+        if len(page_counters) < 40:
+            break
+
+    print(f"[SHIP-COUNTERS] [{cap_id}] OK: {len(counters_data)} counters", flush=True)
+    return counters_data
+
+
+def scrape_ship_counters(target_arg: str, output_path: str, season_id: str = "current"):
     project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     if not os.path.exists(project_dir):
         project_dir = os.getcwd()
@@ -160,6 +215,7 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
 
     display = None
     exit_code = 1
+    start_time = time.time()
 
     try:
         if not is_windows:
@@ -168,111 +224,65 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
             display.start()
 
         profile_dir = os.path.join(project_dir, "chrome_profile")
-        out_dir = os.path.dirname(os.path.abspath(output_file))
-        os.makedirs(out_dir, exist_ok=True)
+        is_batch = (target_arg.upper() == "ALL")
+        capitals_to_scrape = ALL_CAPITAL_IDS if is_batch else [target_arg.upper()]
 
-        capital_slug = def_capital_id.upper()
-        print(f"[SHIP-COUNTERS] Capital: {def_capital_id} -> URL slug: {capital_slug}", flush=True)
-
-        counters_data = []
-        detected_seasons = []
+        print(f"[SHIP-COUNTERS] Mode: {'BATCH (11 vaisseaux)' if is_batch else target_arg} -> {output_path}", flush=True)
 
         with SB(uc=True, headless=False, user_data_dir=profile_dir) as sb:
             from bs4 import BeautifulSoup
 
-            # 1. Détection saison si 'current'
+            # 1. Detection saison
             target_season = season_id
             if season_id == "current":
-                init_url = f"https://swgoh.gg/gac/ship-counters/{capital_slug}/?cutoff=0"
-                print(f"[SHIP-COUNTERS] Detection saison via {init_url}...", flush=True)
-                sb.uc_open_with_reconnect(init_url, reconnect_time=4)
-
+                init_url = "https://swgoh.gg/gac/ship-counters/CAPITALLEVIATHAN/?cutoff=0"
+                sb.uc_open_with_reconnect(init_url, reconnect_time=3)
                 quick_check = sb.get_page_source()
                 if any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
-                    print("[SHIP-COUNTERS] Cloudflare detecte...", flush=True)
                     try:
                         sb.uc_gui_click_captcha()
                     except:
                         pass
-                    sb.sleep(10)
+                    sb.sleep(8)
                 else:
-                    sb.sleep(4)
+                    sb.sleep(3)
 
                 soup = BeautifulSoup(sb.get_page_source(), "html.parser")
-                detected_seasons = extract_seasons_from_dropdown(soup)
-                
-                if detected_seasons:
-                    target_season = detected_seasons[0]
-                    print(f"[SHIP-COUNTERS] Saison detectee: {target_season}", flush=True)
-                else:
-                    target_season = ""
+                detected = extract_seasons_from_dropdown(soup)
+                target_season = detected[0] if detected else "current"
+                print(f"[SHIP-COUNTERS] Saison active: {target_season}", flush=True)
 
-            base_url = f"https://swgoh.gg/gac/ship-counters/{capital_slug}/?cutoff=0"
-            if target_season:
-                base_url += f"&season_id={target_season}"
+            # 2. Scraping des vaisseaux dans la MEME session Chrome
+            all_results = {}
+            for i, cap_id in enumerate(capitals_to_scrape):
+                c_data = _scrape_single_capital_flow(sb, cap_id, target_season, is_first=(i == 0))
+                all_results[cap_id] = {
+                    "def_capital": cap_id,
+                    "season_id": target_season,
+                    "counters": c_data
+                }
 
-            for page in range(1, 6):
-                page_url = f"{base_url}&page={page}"
-                print(f"[SHIP-COUNTERS] Page {page}: {page_url}", flush=True)
-                sb.uc_open_with_reconnect(page_url, reconnect_time=3)
+        # 3. Sauvegarde des fichiers de sortie
+        if is_batch:
+            os.makedirs(output_path, exist_ok=True)
+            for cap_id, res in all_results.items():
+                fpath = os.path.join(output_path, f"ship_counters_{cap_id}.json")
+                with open(fpath, "w", encoding="utf-8") as f:
+                    json.dump(res, f, ensure_ascii=False, indent=2)
+        else:
+            out_dir = os.path.dirname(os.path.abspath(output_path))
+            os.makedirs(out_dir, exist_ok=True)
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(all_results.get(target_arg.upper(), {}), f, ensure_ascii=False, indent=2)
 
-                quick_check = sb.get_page_source()
-                if page == 1 and any(cf in quick_check for cf in ["Just a moment", "Un instant", "cf-turnstile", "Checking your browser"]):
-                    try:
-                        sb.uc_gui_click_captcha()
-                    except:
-                        pass
-                    sb.sleep(10)
-                else:
-                    sb.sleep(3 if page == 1 else 2)
-
-                panels_found = False
-                for _ in range(15):
-                    if sb.is_element_present("div.panel"):
-                        panels_found = True
-                        break
-                    sb.sleep(0.4)
-
-                if not panels_found:
-                    print(f"[SHIP-COUNTERS] Page {page}: fin des panels.", flush=True)
-                    break
-
-                page_source = sb.get_page_source()
-                soup = BeautifulSoup(page_source, "html.parser")
-
-                counter_panels = soup.select("div.panel.panel--size-sm") or soup.select("div.panel")
-                print(f"[SHIP-COUNTERS] Page {page}: {len(counter_panels)} panneaux trouves.", flush=True)
-
-                page_counters = []
-                for panel in counter_panels:
-                    parsed = parse_ship_counter_panel(panel, def_capital_id)
-                    if parsed and parsed["atk_capital"]:
-                        page_counters.append(parsed)
-
-                if not page_counters:
-                    print(f"[SHIP-COUNTERS] Page {page}: 0 counters extraits.", flush=True)
-                    break
-
-                counters_data.extend(page_counters)
-                print(f"[SHIP-COUNTERS] Page {page}: +{len(page_counters)} counters. Total: {len(counters_data)}", flush=True)
-
-                if len(page_counters) < 40:
-                    break
-
-        final = {
-            "def_capital": def_capital_id,
-            "season_id":   target_season or "current",
-            "counters":    counters_data,
-        }
-        with open(output_file, "w", encoding="utf-8") as f:
-            json.dump(final, f, ensure_ascii=False, indent=2)
-
-        print(f"[SHIP-COUNTERS] Total: {len(counters_data)} counters sauvegardes -> {output_file}", flush=True)
+        elapsed = time.time() - start_time
+        total_counters = sum(len(r.get("counters", [])) for r in all_results.values())
+        print(f"[SHIP-COUNTERS] Termine en {elapsed:.1f}s ! Total: {total_counters} counters.", flush=True)
         exit_code = 0
 
     except Exception as e:
         import traceback
-        print(f"[SHIP-COUNTERS] ERREUR CRITIQUE: {e}", flush=True)
+        print(f"[SHIP-COUNTERS] ERREUR: {e}", flush=True)
         traceback.print_exc()
         exit_code = 1
     finally:
@@ -286,12 +296,11 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python ship_counters_sb_worker.py <def_capital_id> <output_file> [season_id]")
+        print("Usage: python ship_counters_sb_worker.py <CAPITAL_ID|ALL> <output_file|output_dir> [season_id]")
         sys.exit(1)
 
-    capital_id = sys.argv[1].upper()
-    out_file = sys.argv[2]
-    season = sys.argv[3] if len(sys.argv) > 3 else "current"
+    target_cmd = sys.argv[1].upper()
+    out_target = sys.argv[2]
+    season_arg = sys.argv[3] if len(sys.argv) > 3 else "current"
 
-    print(f"[SHIP-COUNTERS] Lancement capital={capital_id} season={season} -> {out_file}", flush=True)
-    scrape_ship_counters(capital_id, out_file, season)
+    scrape_ship_counters(target_cmd, out_target, season_arg)

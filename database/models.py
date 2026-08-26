@@ -320,9 +320,38 @@ CREATE_TABLES_SQL: list[str] = [
     """
     CREATE INDEX IF NOT EXISTS idx_ship_counters_def ON ship_counters(def_capital, season_id)
     """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_locked_rosters (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        ally_code      TEXT    NOT NULL,
+        player_name    TEXT,
+        season_id      TEXT    NOT NULL,
+        event_id       TEXT    NOT NULL DEFAULT 'current',
+        roster_json    TEXT    NOT NULL,
+        datacrons_json TEXT    NOT NULL DEFAULT '[]',
+        locked_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(ally_code, season_id, event_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_locked_rosters_code ON gac_locked_rosters(ally_code, season_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_brackets (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        owner_code    TEXT    NOT NULL,
+        season_id     TEXT    NOT NULL,
+        round_number  INTEGER DEFAULT 1,
+        opponent_code TEXT    NOT NULL,
+        opponent_name TEXT,
+        created_at    TEXT    DEFAULT (datetime('now')),
+        UNIQUE(owner_code, season_id, round_number, opponent_code)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_brackets_owner ON gac_brackets(owner_code, season_id)
+    """,
 ]
-
-
 CREATE_TABLES_PG_SQL: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS players (
@@ -638,5 +667,36 @@ CREATE_TABLES_PG_SQL: list[str] = [
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_ship_counters_def_pg ON ship_counters(def_capital, season_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_locked_rosters (
+        id             SERIAL PRIMARY KEY,
+        ally_code      TEXT    NOT NULL,
+        player_name    TEXT,
+        season_id      TEXT    NOT NULL,
+        event_id       TEXT    NOT NULL DEFAULT 'current',
+        roster_json    TEXT    NOT NULL,
+        datacrons_json TEXT    NOT NULL DEFAULT '[]',
+        locked_at      TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(ally_code, season_id, event_id)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_locked_rosters_code_pg ON gac_locked_rosters(ally_code, season_id)
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS gac_brackets (
+        id            SERIAL PRIMARY KEY,
+        owner_code    TEXT    NOT NULL,
+        season_id     TEXT    NOT NULL,
+        round_number  INTEGER DEFAULT 1,
+        opponent_code TEXT    NOT NULL,
+        opponent_name TEXT,
+        created_at    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(owner_code, season_id, round_number, opponent_code)
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_brackets_owner_pg ON gac_brackets(owner_code, season_id)
     """,
 ]

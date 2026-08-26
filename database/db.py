@@ -1496,3 +1496,129 @@ async def get_known_def_capitals() -> list[str]:
         )
         rows = await cursor.fetchall()
     return [r["def_capital"] for r in rows]
+
+
+# ─── GAC LOCKED ROSTERS & BRACKETS ──────────────────────────────────────────
+
+async def save_locked_roster(ally_code: str, player_name: str, season_id: str, event_id: str, profile_dict: dict) -> bool:
+    """Sauvegarde le snapshot verrouille du profil d'un joueur."""
+    clean = str(ally_code).replace("-", "").strip()
+    roster_json = json.dumps(profile_dict.get("rosterUnit", []))
+    datacrons_json = json.dumps(profile_dict.get("datacron", []))
+    
+    async with get_db() as db:
+        await db.execute(
+            """
+            INSERT INTO gac_locked_rosters (
+                ally_code, player_name, season_id, event_id,
+                roster_json, datacrons_json, locked_at
+            ) VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            ON CONFLICT(ally_code, season_id, event_id)
+            DO UPDATE SET
+                player_name    = excluded.player_name,
+                roster_json    = excluded.roster_json,
+                datacrons_json = excluded.datacrons_json,
+                locked_at      = excluded.locked_at
+            """,
+            (clean, player_name, season_id, event_id, roster_json, datacrons_json)
+        )
+    return True
+
+
+async def get_locked_roster(ally_code: str, season_id: str = None) -> dict | None:
+    """Recupere le snapshot verrouille d'un joueur (reconstruit le profil pour scouting)."""
+    clean = str(ally_code).replace("-", "").strip()
+    async with get_db() as db:
+        if season_id:
+            cursor = await db.execute(
+                """
+                SELECT ally_code, player_name, season_id, event_id, roster_json, datacrons_json, locked_at
+                FROM gac_locked_rosters
+                WHERE ally_code = ? AND season_id = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (clean, season_id)
+            )
+        else:
+            cursor = await db.execute(
+                """
+                SELECT ally_code, player_name, season_id, event_id, roster_json, datacrons_json, locked_at
+                FROM gac_locked_rosters
+                WHERE ally_code = ?
+                ORDER BY id DESC LIMIT 1
+                """,
+                (clean,)
+            )
+        row = await cursor.fetchone()
+
+    if not row:
+        return None
+
+    return {
+        "name": row["player_name"],
+        "allyCode": row["ally_code"],
+        "rosterUnit": json.loads(row["roster_json"] or "[]"),
+        "datacron": json.loads(row["datacrons_json"] or "[]"),
+        "is_locked_snapshot": True,
+        "locked_at": row["locked_at"],
+        "season_id": row["season_id"],
+    }
+
+
+async def save_bracket_opponents(owner_code: str, season_id: str, round_num: int, opponents: list[dict]) -> int:
+    """Sauvegarde la liste des adversaires d'une poule de GAC."""
+    clean_owner = str(owner_code).replace("-", "").strip()
+    saved = 0
+    async with get_db() as db:
+        for opp in opponents:
+            opp_code = str(opp.get("ally_code", "")).replace("-", "").strip()
+            if not opp_code:
+                continue
+            await db.execute(
+                """
+                INSERT INTO gac_brackets (owner_code, season_id, round_number, opponent_code, opponent_name, created_at)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(owner_code, season_id, round_number, opponent_code)
+                DO UPDATE SET opponent_name = excluded.opponent_name
+                """,
+                (clean_owner, season_id, round_num, opp_code, opp.get("name", ""))
+            )
+            saved += 1
+    return saved
+
+
+async def get_bracket_opponents(owner_code: str, season_id: str = None) -> list[dict]:
+    """Recupere les adversaires de la poule GAC d'un joueur."""
+    clean_owner = str(owner_code).replace("-", "").strip()
+    async with get_db() as db:
+        if season_id:
+            cursor = await db.execute(
+                """
+                SELECT opponent_code, opponent_name, season_id, round_number, created_at
+                FROM gac_brackets
+                WHERE owner_code = ? AND season_id = ?
+                ORDER BY id ASC
+                """,
+                (clean_owner, season_id)
+            )
+        else:
+            cursor = await db.execute(
+                """
+                SELECT opponent_code, opponent_name, season_id, round_number, created_at
+                FROM gac_brackets
+                WHERE owner_code = ?
+                ORDER BY id DESC LIMIT 8
+                """,
+                (clean_owner,)
+            )
+        rows = await cursor.fetchall()
+
+    return [dict(r) for r in rows]
+
+
+async def get_all_registered_players() -> list[dict]:
+    """Retourne la liste de tous les joueurs enregistres sur le bot."""
+    async with get_db() as db:
+        cursor = await db.execute("SELECT discord_id, ally_code, username FROM players")
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]

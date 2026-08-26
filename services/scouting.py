@@ -943,7 +943,13 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
 async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | None = None, progress_callback=None, discord_id: str | None = None) -> dict:
     clean_code = str(enemy_ally_code).replace("-", "").strip()
 
-    profile = await get_player(clean_code)
+    # Verifier si un snapshot verrouille existe en BDD pour cet adversaire
+    from database.db import get_locked_roster
+    profile = await get_locked_roster(clean_code)
+    if profile:
+        log.info(f"[Scout] 🔒 Utilisation du profil VERROUILLE (Lock GAC) pour {clean_code}")
+    else:
+        profile = await get_player(clean_code)
     
     if not profile:
         raise ValueError(f"Profil introuvable pour {clean_code}")
@@ -1079,7 +1085,8 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     
     if my_ally_code:
         my_clean = str(my_ally_code).replace("-", "").strip()
-        my_profile = await get_player(my_clean)
+        from database.db import get_locked_roster
+        my_profile = await get_locked_roster(my_clean) or await get_player(my_clean)
         if my_profile:
             my_index = _build_roster_index(my_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids, gac_omicron_units)
             
@@ -1507,7 +1514,8 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 row = await cursor.fetchone()
                 if row and row["ally_code"]:
                     p_code = str(row["ally_code"]).replace("-", "").strip()
-                    p_prof = await get_player(p_code)
+                    from database.db import get_locked_roster
+                    p_prof = await get_locked_roster(p_code) or await get_player(p_code)
                     if p_prof:
                         my_datacrons = p_prof.get("datacron", [])
         if my_datacrons:

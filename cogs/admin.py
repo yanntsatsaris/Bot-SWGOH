@@ -50,12 +50,16 @@ class AdminCog(commands.Cog, name="Admin"):
             log.warning("Erreur vérification initiale Omicrons/Datacrons GAC : %s", e)
 
     # ------------------------------------------------------------------
-    # Tâche récurrente : Synchronisation quotidienne des Omicrons & Datacrons GAC
+    # Tâche récurrente : Synchronisation hebdomadaire des Omicrons & Datacrons (Mercredi)
     # ------------------------------------------------------------------
     @tasks.loop(time=datetime.time(hour=4, minute=30, tzinfo=datetime.timezone.utc))  # 06h30 Paris
     async def periodic_sync_gac_omicrons(self) -> None:
-        """Actualisation automatique quotidienne des Omicrons GAC et des Datacrons."""
-        log.info("⏰ [CRON] Synchronisation automatique quotidienne des Omicrons et Datacrons GAC...")
+        """Actualisation automatique hebdomadaire (Mercredi) des Omicrons GAC et des Datacrons."""
+        weekday = datetime.datetime.utcnow().weekday()
+        if weekday != 2:  # 2 = Mercredi
+            return
+
+        log.info("⏰ [CRON] Synchronisation automatique hebdomadaire des Omicrons et Datacrons GAC (Mercredi)...")
         try:
             from services.gac_omicron_scraper import GacOmicronScraper
             count = await GacOmicronScraper().scrape_and_sync()

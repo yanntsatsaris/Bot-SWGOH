@@ -344,6 +344,17 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         - Mardi 23h (Fin Combat R3 / Fin Event)
         """
         weekday = datetime.datetime.utcnow().weekday()
+        # Mercredi 23h (Paris) -> Fin des Inscriptions / Lock GAC
+        if weekday == 2:
+            log.info("⏰ 23h00 (Paris) — Mercredi : Lock GAC détecté. Verrouillage automatique des rosters & Datacrons de tous les joueurs inscrits...")
+            try:
+                from services.gac_lock_service import auto_lock_all_registered_players
+                await auto_lock_all_registered_players()
+                log.info("✅ Verrouillage automatique GAC terminé.")
+            except Exception as e:
+                log.exception(f"Erreur lors du verrouillage automatique GAC: {e}")
+
+        # Fin de phase de combat : Vendredi (4), Dimanche (6), Mardi (1)
         if weekday in [4, 6, 1]:
             log.info("⏰ 23h00 (Paris) — Fin de phase de combat GAC détectée. Réinitialisation des unités brûlées...")
             await clear_used_units()

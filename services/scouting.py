@@ -1039,16 +1039,21 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                                 }
     if my_ally_code:
         try:
-            # 1. Déclenchement du scraping ciblé pour la Flotte ennemie exacte (Amiral + 3 de départ)
+            # 1. Déclenchement et attente du scraping ciblé pour la Flotte ennemie (Amiral + 3 départ + renforts)
             for f_team in enemy_zones.get("Fleet", []):
                 f_cap = f_team.get("leader_id")
                 if f_cap and f_cap not in ["USED", "None", "EMPTY"]:
-                    f_members = [m for m in f_team.get("members_ids", []) if m and m != f_cap][:3]
-                    f_d_str = ",".join(f_members)
+                    f_all = [m for m in f_team.get("members_ids", []) if m and m != f_cap]
+                    front_3 = f_all[:3]
+                    reinforcements = f_all[3:]
+                    f_d_str = ",".join(front_3)
+                    f_r_str = ",".join(reinforcements)
                     from services.gac_ship_counters_scraper import GacShipCountersScraper
                     f_scraper = GacShipCountersScraper()
-                    asyncio.create_task(f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str))
-                    log.info(f"[Scout] 🚀 Scraping ciblé lancé pour flotte ennemie : {f_cap} avec départ [{f_d_str}]")
+                    log.info(f"[Scout] 🚀 Scraping et attente flotte : {f_cap} (départ: [{f_d_str}], renforts: [{f_r_str}])...")
+                    if progress_callback:
+                        await progress_callback("⏳ **[■■■■■■■■□□] 80%** : Analyse et scraping des contres de flotte sur swgoh.gg...")
+                    await f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str, d_reinforcements=f_r_str)
 
             # 2. Personnages
             leaders_to_scrape = {}

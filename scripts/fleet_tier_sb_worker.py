@@ -35,6 +35,8 @@ CAPITAL_SHIP_NAME_TO_ID = {
     "VENATOR":           "CAPITALVENATOR",
 }
 
+ALL_CAPITALS = set(CAPITAL_SHIP_NAME_TO_ID.values()) | set(CAPITAL_SHIP_NAME_TO_ID.keys())
+
 
 def normalize_ship_id(raw_str: str) -> str:
     if not raw_str:
@@ -54,83 +56,89 @@ def parse_tier_list_page(page_source: str, side: str, league: str) -> list:
     results = []
     rank = 0
     processed_capitals = set()
-    current_tier = "S"
 
-    # Trouver les lignes/sections : chercher les blocs qui contiennent un capital ship
-    # Sur swgoh.gg, chaque ligne de tier list est un élément dans une grille ou un tableau
-    # Chercher les éléments feuilles contenant une image ou un tooltip capital
+    # Stratégie robuste : trouver tous les éléments/liens/tooltips d'unités dans l'ordre du DOM
+    # Chaque capital ship annonce une nouvelle composition
     
-    # 1. Scanner tous les containers de tier
-    tier_sections = soup.select("[class*='tier'], [data-tier], .panel")
-    if not tier_sections:
-        tier_sections = [soup]
+    # 1. Identifier tous les éléments d'unités sur la page
+    unit_elements = []
+    # Recherche large de tous les divs avec tooltip ou liens /ships/ ou images de vaisseaux
+    for tag in soup.find_all(True):
+        u_id = ""
+        if tag.has_attr("data-unit-def-tooltip-app"):
+            u_id = tag["data-unit-def-tooltip-app"]
+        elif tag.name == "a" and "/ships/" in tag.get("href", ""):
+            u_id = tag["href"].rstrip("/").split("/")[-1].upper()
+        elif tag.name == "img" and tag.get("alt"):
+            norm = normalize_ship_id(tag.get("alt"))
+            if norm in ALL_CAPITALS or "CAPITAL" in norm:
+                u_id = norm
 
-    for section in tier_sections:
-        # Detecter le tier
-        sec_text = section.get_text()[:50]
-        m_tier = re.search(r"\b([SABCD])\s*(?:Tier)?\b", sec_text, re.I)
-        if m_tier:
-            current_tier = m_tier.group(1).upper()
+        if u_id:
+            norm_id = normalize_ship_id(u_id)
+            if norm_id:
+                # Stocker le tag et son id
+                unit_elements.append((norm_id, tag))
 
-        # Chercher chaque groupe/ligne d'équipe individuel
-        # Une équipe a typiquement un container avec 1 capital + 1-3 vaisseaux
-        rows = section.select("tr, [class*='grid-cols'], [class*='flex-row'], .tier-list-row, .tier-row, div.border-b")
-        if not rows:
-            rows = [section]
+    # Regrouper les compositions : un capital ship + les 3 unités suivantes
+    i = 0
+    current_tier = "S"
+    while i < len(unit_elements):
+        uid, tag = unit_elements[i]
+        is_cap = (uid in CAPITAL_SHIP_NAME_TO_ID.values()) or ("CAPITAL" in uid)
+        
+        if is_cap and uid not in processed_capitals:
+            processed_capitals.add(uid)
+            cap_id = uid
+            
+            # Prendre les 3 unités suivantes qui ne sont pas des capital ships
+            members = []
+            j = i + 1
+            while j < len(unit_elements) and len(members) < 3:
+                next_uid, next_tag = unit_elements[j]
+                next_is_cap = (next_uid in CAPITAL_SHIP_NAME_TO_ID.values()) or ("CAPITAL" in next_uid)
+                if next_is_cap:
+                    break  # Prochaine équipe
+                if next_uid not in members and next_uid != cap_id:
+                    members.append(next_uid)
+                j += 1
 
-        for row in rows:
-            units = []
-            # Tooltips
-            for div in row.select("[data-unit-def-tooltip-app]"):
-                u = div.get("data-unit-def-tooltip-app")
-                if u and u not in units:
-                    units.append(u)
-
-            # Liens /ships/
-            if not units:
-                for a in row.select("a[href*='/ships/']"):
-                    href = a.get("href", "")
-                    part = href.rstrip("/").split("/")[-1].upper()
-                    if part and part not in units:
-                        units.append(part)
-
-            if not units:
-                continue
-
-            cap_id = normalize_ship_id(units[0])
-            if not cap_id or cap_id in processed_capitals:
-                continue
-
-            is_known_cap = (cap_id in CAPITAL_SHIP_NAME_TO_ID.values()) or ("CAPITAL" in cap_id)
-            if not is_known_cap:
-                continue
-
-            processed_capitals.add(cap_id)
-            members = units[1:4]
-
-            # Stats
+            # Chercher le conteneur parent pour extraire stats et tier
+            parent = tag.parent
             win_pct = None
             hold_pct = None
             elo = None
             battles = None
-
-            for text_el in row.select(".font-bold, span, td"):
-                t = text_el.get_text(strip=True)
-                if "%" in t:
-                    try:
-                        val = float(t.replace("%", "").replace(",", ".").strip())
-                        if side == "defense" and hold_pct is None:
-                            hold_pct = val
-                        elif win_pct is None:
-                            win_pct = val
-                    except:
-                        pass
-                elif re.match(r"^\d{3,6}$", t):
-                    n = int(t)
-                    if n > 500 and elo is None:
-                        elo = n
-                    elif battles is None:
-                        battles = n
+            
+            # Remonter 3-4 niveaux de parents pour trouver les stats
+            for _ in range(5):
+                if not parent:
+                    break
+                p_text = parent.get_text()
+                # Tier
+                m_t = re.search(r"\b([SABCD])\s*(?:Tier)?\b", p_text, re.I)
+                if m_t:
+                    current_tier = m_t.group(1).upper()
+                
+                # Stats
+                for txt in parent.select(".font-bold, span, td, div"):
+                    t = txt.get_text(strip=True)
+                    if "%" in t and len(t) <= 8:
+                        try:
+                            v = float(t.replace("%", "").replace(",", ".").strip())
+                            if side == "defense" and hold_pct is None:
+                                hold_pct = v
+                            elif win_pct is None:
+                                win_pct = v
+                        except:
+                            pass
+                    elif re.match(r"^\d{3,6}$", t):
+                        n = int(t)
+                        if n > 500 and elo is None:
+                            elo = n
+                        elif battles is None:
+                            battles = n
+                parent = parent.parent
 
             rank += 1
             results.append({
@@ -148,6 +156,9 @@ def parse_tier_list_page(page_source: str, side: str, league: str) -> list:
                 "battles":      battles,
                 "builds_count": None,
             })
+            i = j
+        else:
+            i += 1
 
     return results
 

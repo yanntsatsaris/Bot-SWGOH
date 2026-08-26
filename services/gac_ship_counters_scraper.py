@@ -117,6 +117,7 @@ class GacShipCountersScraper:
         self,
         def_capital_id: str,
         season_id: str = "current",
+        d_members: str = "",
     ) -> int:
         """Lance le scraping des counters pour un capital ship defensif.
         Retourne le nombre de counters sauvegardes (-1 en cas d'erreur)."""
@@ -132,13 +133,13 @@ class GacShipCountersScraper:
 
         log.info(f"[ShipCounters] Scraping counters pour {def_capital_id}...")
 
+        cmd_args = [sys.executable, worker_path, def_capital_id, out_file, season_id]
+        if d_members:
+            cmd_args.append(d_members)
+
         async with self.semaphore:
             process = await asyncio.create_subprocess_exec(
-                sys.executable,
-                worker_path,
-                def_capital_id,
-                out_file,
-                season_id,
+                *cmd_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=project_dir,

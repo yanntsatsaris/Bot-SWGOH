@@ -419,7 +419,7 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
         }
     return roster
 
-async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_ids: set, habits: dict = None) -> dict:
+async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_ids: set, habits: dict = None, league: str = "KYBER") -> dict:
     zones = {"North": [], "South": [], "Back": [], "Fleet": []}
     used_base_ids = set()
     expected_size = 3 if fmt == "3v3" else 5
@@ -705,41 +705,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         if not placed:
             zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 8})
 
-    # 2.5 BOUCHAGE FLOTTES
-    # On filtre sur combat_type ET sur ship_base_ids (double sécurité)
-    # pour éviter qu'un perso mal typé se retrouve dans la zone Fleet.
-    leftover_capitals = [
-        m for m, data in enemy_index.items()
-        if m not in used_base_ids
-        and data.get("combat_type", 1) == 2
-        and m in ship_base_ids
-        and "CAPITAL" in m
-    ]
-    leftover_ships = [
-        m for m, data in enemy_index.items()
-        if m not in used_base_ids
-        and data.get("combat_type", 1) == 2
-        and m in ship_base_ids
-        and "CAPITAL" not in m
-        and data.get("combat_type", 1) != 1  # Exclure explicitement les persos
-    ]
-    
-    leftover_capitals.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-    leftover_ships.sort(key=lambda m: enemy_index[m].get("relic_tier", 0) * 10 + enemy_index[m].get("gear_tier", 0), reverse=True)
-    
-    for f in zones["Fleet"]:
-        if f["source"] == "empty" and leftover_capitals:
-            cap = leftover_capitals.pop(0)
-            f["leader_id"] = cap
-            f["members_ids"].append(cap)
-            used_base_ids.add(cap)
-            f["source"] = "leftover"
-            
-        while len(f["members_ids"]) < f.get("target_size", 8) and leftover_ships:
-            filler = leftover_ships.pop(0)
-            f["members_ids"].append(filler)
-            used_base_ids.add(filler)
-
+    # 2.5 Vaisseaux sans bourrage anarchique : on conserve uniquement les vaisseaux synergiques
     return zones
 
 async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: str, ship_base_ids: set, enemy_zones: dict = None, league: str = "KYBER") -> dict:
@@ -920,17 +886,53 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                 if filler:
                     used_base_ids.add(filler)
 
-    # 2. FLOTTES (identique à _predict_zones)
+    # 2. FLOTTES DU JOUEUR (Priorité absolue à la Tier List Défense swgoh.gg en BDD)
+    CAP_NORM = {
+        "NEGOTIATOR": "CAPITALNEGOTIATOR",
+        "PROFUNDITY": "CAPITALPROFUNDITY",
+        "LEVIATHAN": "CAPITALLEVIATHAN",
+        "EXECUTOR": "CAPITALEXECUTOR",
+        "HOMEONE": "CAPITALMONCALAMARICRUISER",
+        "CHIMAERA": "CAPITALCHIMAERA",
+        "FINALIZER": "CAPITALFINALIZER",
+        "EXECUTRIX": "CAPITALSTARDESTROYER",
+        "MALEVOLENCE": "CAPITALMALEVOLENCE",
+        "RADDUS": "CAPITALRADDUS",
+        "ENDURANCE": "CAPITALJEDICRUISER",
+    }
     available_fleets = []
-    for cap_id, team_data in GAC_FLEETS.items():
-        if my_index.get(cap_id) and my_index[cap_id].get("rarity", 0) >= 5:
-            score = my_index[cap_id].get("relic_tier", 0) * 10 + my_index[cap_id].get("gear_tier", 0)
-            available_fleets.append({
-                "leader_id": cap_id,
-                "members": team_data["members"],
-                "defense": team_data.get("defense", 5),
-                "score": score
-            })
+    tier_fleets = []
+    try:
+        from database.db import get_fleet_tier_list
+        tier_fleets = await get_fleet_tier_list(side="defense", league=league.lower(), format_type=fmt)
+        if not tier_fleets and league.lower() != "kyber":
+            tier_fleets = await get_fleet_tier_list(side="defense", league="kyber", format_type=fmt)
+    except Exception as e:
+        log.warning(f"Impossible de lire la tier list fleet joueur: {e}")
+        tier_fleets = []
+
+    if tier_fleets:
+        for tf in tier_fleets:
+            cap_id = (tf.get("capital_ship") or "").upper()
+            cap_id = CAP_NORM.get(cap_id, cap_id)
+            if my_index.get(cap_id) and my_index[cap_id].get("rarity", 0) >= 5:
+                score = my_index[cap_id].get("relic_tier", 0) * 10 + my_index[cap_id].get("gear_tier", 0)
+                available_fleets.append({
+                    "leader_id": cap_id,
+                    "members": [m.upper() for m in tf.get("members_ids", []) if m],
+                    "defense": tf.get("hold_pct", 50.0) or (100 - tf.get("rank", 10)),
+                    "score": score
+                })
+    else:
+        for cap_id, team_data in GAC_FLEETS.items():
+            if my_index.get(cap_id) and my_index[cap_id].get("rarity", 0) >= 5:
+                score = my_index[cap_id].get("relic_tier", 0) * 10 + my_index[cap_id].get("gear_tier", 0)
+                available_fleets.append({
+                    "leader_id": cap_id,
+                    "members": team_data["members"],
+                    "defense": team_data.get("defense", 5),
+                    "score": score
+                })
             
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
     
@@ -940,11 +942,12 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         placed = False
         for f in available_fleets:
             if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
-                valid_members = [m for m in f["members"] if m not in used_base_ids and m in my_index]
+                # Conserver UNIQUEMENT les vaisseaux synergiques réels que le joueur possède
+                valid_members = [m for m in f["members"] if m not in used_base_ids and m in my_index and m != f["leader_id"]]
                 zones["Fleet"].append({
                     "leader_id": f["leader_id"],
                     "members_ids": valid_members,
-                    "source": "predictive",
+                    "source": "Prédiction (Meta)",
                     "target_size": 8
                 })
                 used_base_ids.update(valid_members)
@@ -953,26 +956,6 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                 break
         if not placed:
             zones["Fleet"].append({"leader_id": None, "members_ids": [], "source": "empty", "target_size": 8})
-
-    # 2.5 BOUCHAGE FLOTTES
-    leftover_capitals = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and m in ship_base_ids and "CAPITAL" in m]
-    leftover_ships = [m for m, data in my_index.items() if m not in used_base_ids and data.get("combat_type", 1) == 2 and m in ship_base_ids and "CAPITAL" not in m]
-    
-    leftover_capitals.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
-    leftover_ships.sort(key=lambda m: my_index[m].get("relic_tier", 0) * 10 + my_index[m].get("gear_tier", 0), reverse=True)
-    
-    for f in zones["Fleet"]:
-        if f["source"] == "empty" and leftover_capitals:
-            cap = leftover_capitals.pop(0)
-            f["leader_id"] = cap
-            f["members_ids"].append(cap)
-            used_base_ids.add(cap)
-            f["source"] = "leftover"
-            
-        while len(f["members_ids"]) < f.get("target_size", 8) and leftover_ships:
-            filler = leftover_ships.pop(0)
-            f["members_ids"].append(filler)
-            used_base_ids.add(filler)
 
     return zones
 
@@ -1025,7 +1008,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     from services.gac_scout_analyzer import GacScoutAnalyzer
     habits = await GacScoutAnalyzer.get_defensive_habits(clean_code, fmt)
     
-    enemy_zones = await _predict_zones(enemy_index, quotas, fmt, ship_base_ids, habits)
+    enemy_zones = await _predict_zones(enemy_index, quotas, fmt, ship_base_ids, habits, league=league_name)
     
     # ── Association intelligente des Datacrons adverses aux escouades défensives ──
     try:
@@ -1053,6 +1036,18 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                                 }
     if my_ally_code:
         try:
+            # 1. Déclenchement du scraping ciblé pour la Flotte ennemie exacte (Amiral + 3 de départ)
+            for f_team in enemy_zones.get("Fleet", []):
+                f_cap = f_team.get("leader_id")
+                if f_cap and f_cap not in ["USED", "None", "EMPTY"]:
+                    f_members = [m for m in f_team.get("members_ids", []) if m and m != f_cap][:3]
+                    f_d_str = ",".join(f_members)
+                    from services.gac_ship_counters_scraper import GacShipCountersScraper
+                    f_scraper = GacShipCountersScraper()
+                    asyncio.create_task(f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str))
+                    log.info(f"[Scout] 🚀 Scraping ciblé lancé pour flotte ennemie : {f_cap} avec départ [{f_d_str}]")
+
+            # 2. Personnages
             leaders_to_scrape = {}
             for zone, teams in enemy_zones.items():
                 if zone == "Fleet": continue

@@ -694,7 +694,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         placed = False
         for f in available_fleets:
             if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
-                valid_members = [m for m in f["members"] if m not in used_base_ids]
+                valid_members = [m for m in f["members"] if m not in used_base_ids and m != f["leader_id"]][:7]
                 zones["Fleet"].append({
                     "leader_id": f["leader_id"],
                     "members_ids": valid_members,
@@ -946,7 +946,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         for f in available_fleets:
             if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
                 # Conserver UNIQUEMENT les vaisseaux synergiques réels que le joueur possède
-                valid_members = [m for m in f["members"] if m not in used_base_ids and m in my_index and m != f["leader_id"]]
+                valid_members = [m for m in f["members"] if m not in used_base_ids and m in my_index and m != f["leader_id"]][:7]
                 zones["Fleet"].append({
                     "leader_id": f["leader_id"],
                     "members_ids": valid_members,
@@ -1039,21 +1039,19 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                                 }
     if my_ally_code:
         try:
-            # 1. Déclenchement et attente du scraping ciblé pour la Flotte ennemie (Amiral + 3 départ + renforts)
+            # 1. Déclenchement et attente du scraping ciblé pour la Flotte ennemie (Amiral + 3 départ)
             for f_team in enemy_zones.get("Fleet", []):
                 f_cap = f_team.get("leader_id")
                 if f_cap and f_cap not in ["USED", "None", "EMPTY"]:
                     f_all = [m for m in f_team.get("members_ids", []) if m and m != f_cap]
                     front_3 = f_all[:3]
-                    reinforcements = f_all[3:]
                     f_d_str = ",".join(front_3)
-                    f_r_str = ",".join(reinforcements)
                     from services.gac_ship_counters_scraper import GacShipCountersScraper
                     f_scraper = GacShipCountersScraper()
-                    log.info(f"[Scout] 🚀 Scraping et attente flotte : {f_cap} (départ: [{f_d_str}], renforts: [{f_r_str}])...")
+                    log.info(f"[Scout] 🚀 Scraping et attente flotte : {f_cap} (départ: [{f_d_str}])...")
                     if progress_callback:
                         await progress_callback("⏳ **[■■■■■■■■□□] 80%** : Analyse et scraping des contres de flotte sur swgoh.gg...")
-                    await f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str, d_reinforcements=f_r_str)
+                    await f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str)
 
             # 2. Personnages
             leaders_to_scrape = {}

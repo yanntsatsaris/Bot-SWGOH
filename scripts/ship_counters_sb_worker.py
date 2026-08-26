@@ -164,8 +164,6 @@ def _scrape_single_capital_flow(sb, cap_id: str, season_id: str, is_first: bool 
         base_url += f"&d_member={d_members}"
     if d_reinforcements:
         base_url += f"&d_reinforcement={d_reinforcements}"
-    if d_reinforcements:
-        base_url += f"&d_reinforcement={d_reinforcements}"
 
     for page in range(1, 6):
         page_url = f"{base_url}&page={page}"

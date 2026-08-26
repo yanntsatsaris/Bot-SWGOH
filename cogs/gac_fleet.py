@@ -1,19 +1,21 @@
 """
-cogs/gac_fleet.py -- Commande /gac-fleet
+cogs/gac_fleet.py -- Commande /gac-fleet & Tâche Hebdomadaire (Mercredi)
 Gestion de la tier list de vaisseaux et des ship counters en GAC.
 
 Sous-commandes:
-  /gac-fleet tier      -- Affiche la Tier List Fleet (Attaque ou Defense, par Ligue)
-  /gac-fleet counter   -- Counters pour un vaisseau mere ennemi (filtre par roster)
-  /gac-fleet sync-tier -- (Admin) Force la mise a jour de la tier list
-  /gac-fleet sync-counters -- (Admin) Force le scraping des ship counters
+  /gac-fleet tier          -- Affiche la Tier List Fleet (Attaque ou Defense, par Ligue)
+  /gac-fleet counter       -- Counters pour un vaisseau mere ennemi (filtre par roster)
+  /gac-fleet sync-tier     -- (Admin) Force la mise a jour de la tier list
+  /gac-fleet sync-counters -- (Admin) Force le scraping des ship counters pour 1 capital
+  /gac-fleet sync-all      -- (Admin) Lance le scraping de TOUS les vaisseaux amiraux
 """
 import logging
 import asyncio
+import datetime
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from database.db import (
     get_db,
@@ -112,7 +114,7 @@ async def _get_player_ships(discord_id: str) -> dict:
 def _filter_counters_by_roster(counters: list[dict], player_ships: dict) -> list[dict]:
     """Filtre les counters pour ne garder que ceux que le joueur peut utiliser."""
     if not player_ships:
-        return counters  # Pas de filtre si pas de roster
+        return counters
 
     filtered = []
     for c in counters:
@@ -126,10 +128,8 @@ def _filter_counters_by_roster(counters: list[dict], player_ships: dict) -> list
 
 def _format_ship_name(base_id: str) -> str:
     """Retourne le nom affiche d'un vaisseau."""
-    # D'abord les capitals
     if base_id in CAPITAL_DISPLAY_NAMES:
         return CAPITAL_DISPLAY_NAMES[base_id]
-    # Sinon via le cache des noms
     name = get_name(base_id)
     return name if name else base_id
 
@@ -149,7 +149,6 @@ def _build_tier_embed(entries: list[dict], side: str, league: str) -> discord.Em
         embed.description = "❌ Aucune donnée disponible. Utilisez `/gac-fleet sync-tier` pour mettre à jour."
         return embed
 
-    # Grouper par tier
     tiers: dict[str, list[dict]] = {}
     for e in entries:
         t = e.get("tier", "?")
@@ -162,12 +161,11 @@ def _build_tier_embed(entries: list[dict], side: str, league: str) -> discord.Em
         emoji = TIER_EMOJIS.get(tier_letter, "•")
 
         lines = []
-        for e in tier_entries[:6]:  # Max 6 par tier dans l'embed
+        for e in tier_entries[:6]:
             cap = _format_ship_name(e.get("capital_ship", ""))
             members = e.get("members_ids", [])
             members_str = " + ".join(_format_ship_name(m) for m in members[:3]) if members else "?"
             
-            # Stats
             stat_parts = []
             if side == "offense" and e.get("win_pct") is not None:
                 stat_parts.append(f"{e['win_pct']:.1f}% Win")
@@ -207,7 +205,7 @@ def _build_counter_embed(
     if not counters:
         embed.description = (
             "❌ Aucun counter disponible pour ce vaisseau.\n"
-            "Utilise `/gac-fleet sync-counters` pour lancer le scraping."
+            "Utilise `/gac-fleet sync-counters` ou `/gac-fleet sync-all` pour lancer le scraping."
         )
         return embed
 
@@ -216,7 +214,6 @@ def _build_counter_embed(
         atk_members = c.get("atk_members_ids", [])
         members_str = " + ".join(_format_ship_name(m) for m in atk_members[:6]) if atk_members else "?"
 
-        # Indicateur "tu as les vaisseaux"
         all_ships = [c.get("atk_capital", "")] + atk_members
         has_all = all(s in player_ships for s in all_ships if s) if player_ships else None
         has_icon = "✅ " if has_all else ("❌ " if has_all is False else "")
@@ -245,6 +242,37 @@ def _build_counter_embed(
 class GacFleet(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.weekly_fleet_update.start()
+
+    def cog_unload(self):
+        self.weekly_fleet_update.cancel()
+
+    # ─── Tâche Hebdomadaire (Mercredi soir ~23h30 Paris) ──────────────────────
+    @tasks.loop(time=datetime.time(hour=21, minute=30, tzinfo=datetime.timezone.utc))
+    async def weekly_fleet_update(self):
+        """
+        Scrape automatiquement tous les counters de vaisseaux et la tier list
+        tous les Mercredis soir (jour d'inscription GAC / début de round).
+        """
+        weekday = datetime.datetime.utcnow().weekday()
+        if weekday != 2:  # 2 = Mercredi
+            return
+
+        log.info("[FleetTask] 🚀 Démarrage du scraping hebdomadaire des flottes (Mercredi)...")
+        try:
+            # 1. Tier list Kyber Attaque + Défense
+            await _ship_scraper.refresh_fleet_tier_list(side="offense", league="kyber")
+            await _ship_scraper.refresh_fleet_tier_list(side="defense", league="kyber")
+
+            # 2. Counters pour tous les 11 vaisseaux amiraux
+            results = await _ship_scraper.refresh_all_ship_counters()
+            log.info(f"[FleetTask] ✅ Scraping hebdomadaire terminé avec succès : {results}")
+        except Exception as e:
+            log.exception(f"[FleetTask] ❌ Erreur lors du scraping hebdomadaire des flottes: {e}")
+
+    @weekly_fleet_update.before_loop
+    async def before_weekly_fleet_update(self):
+        await self.bot.wait_until_ready()
 
     fleet = app_commands.Group(
         name="gac-fleet",
@@ -268,7 +296,6 @@ class GacFleet(commands.Cog):
         entries = await get_fleet_tier_list(side=side, league=league, format_type="5v5")
 
         if not entries:
-            # Proposer de lancer le scraping
             embed = discord.Embed(
                 title="🚀 Tier List Fleet — Pas de données",
                 description=(
@@ -294,32 +321,27 @@ class GacFleet(commands.Cog):
     ):
         await interaction.response.defer(thinking=True)
 
-        # Charger le roster du joueur (vaisseaux seulement)
         player_ships = await _get_player_ships(str(interaction.user.id))
         has_roster = bool(player_ships)
 
-        # Recuperer les counters
         counters = await get_ship_counters(capital.upper())
 
         if not counters:
-            # Proposer le scraping
             cap_name = _format_ship_name(capital.upper())
             embed = discord.Embed(
                 title=f"⚔️ Ship Counters — {cap_name}",
                 description=(
                     f"Aucun counter disponible pour **{cap_name}**.\n\n"
                     f"Lance le scraping avec :\n"
-                    f"`/gac-fleet sync-counters capital:{capital}`"
+                    f"`/gac-fleet sync-counters capital:{capital}` ou `/gac-fleet sync-all`"
                 ),
                 color=0xff4444,
             )
             await interaction.followup.send(embed=embed)
             return
 
-        # Filtrer par roster si disponible
         filtered_counters = _filter_counters_by_roster(counters, player_ships) if has_roster else counters
         if not filtered_counters and has_roster:
-            # Montrer quand meme les tops sans filtre
             filtered_counters = counters
             filtered = False
         else:
@@ -389,8 +411,45 @@ class GacFleet(commands.Cog):
         else:
             await msg.edit(content=f"✅ **{count}** counters sauvegardes pour **{cap_name}** !")
 
+    @fleet.command(name="sync-all", description="(Admin) Scrape TOUS les 11 vaisseaux amiraux en arrière-plan")
+    @app_commands.checks.has_permissions(administrator=True)
+    async def sync_all(
+        self,
+        interaction: discord.Interaction,
+    ):
+        await interaction.response.defer(thinking=True, ephemeral=True)
+
+        msg = await interaction.followup.send(
+            "⏳ Lancement du scraping de **tous les 11 vaisseaux amiraux** en arrière-plan (~2-3 minutes)...\nTu peux continuer à utiliser le bot.",
+            ephemeral=True,
+            wait=True,
+        )
+
+        # Lancer en arrière-plan
+        async def _run_all():
+            try:
+                # Tier list
+                await _ship_scraper.refresh_fleet_tier_list(side="offense", league="kyber")
+                await _ship_scraper.refresh_fleet_tier_list(side="defense", league="kyber")
+                # Tous les ship counters
+                res = await _ship_scraper.refresh_all_ship_counters()
+                total = sum(v for v in res.values() if v > 0)
+                await interaction.followup.send(
+                    f"✅ **Scraping Flotte terminé !**\nTotal de **{total}** counters sauvegardés pour les 11 vaisseaux amiraux.",
+                    ephemeral=True,
+                )
+            except Exception as e:
+                log.exception(f"[sync-all] Erreur: {e}")
+                await interaction.followup.send(
+                    f"❌ Une erreur est survenue pendant le scraping complet des flottes: {e}",
+                    ephemeral=True,
+                )
+
+        asyncio.create_task(_run_all())
+
     @sync_tier.error
     @sync_counters.error
+    @sync_all.error
     async def admin_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message("❌ Commande reservee aux administrateurs.", ephemeral=True)

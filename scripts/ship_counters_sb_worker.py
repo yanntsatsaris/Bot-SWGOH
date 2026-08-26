@@ -1,11 +1,6 @@
 """
 scripts/ship_counters_sb_worker.py
-Scrape les counters de vaisseaux sur swgoh.gg/gac/ship-counters/{capital_slug}/
-Usage:
-    python ship_counters_sb_worker.py <def_capital_id> <output_file> [season_id]
-    def_capital_id: ex CAPITALLEVIATHAN, CAPITALPROFUNDITY, etc.
-    output_file   : chemin du JSON de sortie
-    season_id     : current | CHAMPIONSHIPS_GRAND_ARENA_GA2_EVENT_SEASON_XX
+Scrape les counters de vaisseaux sur swgoh.gg/gac/ship-counters/{CAPITAL_ID}/
 """
 import sys
 import os
@@ -18,26 +13,22 @@ sys.stderr.reconfigure(line_buffering=True)
 
 from seleniumbase import SB
 
-# Mapping capital base_id -> slug pour construire l'URL swgoh.gg/gac/ship-counters/
-CAPITAL_ID_TO_SLUG = {
-    "CAPITALLEVIATHAN":   "leviathan",
-    "CAPITALPROFUNDITY":  "profundity",
-    "CAPITALEXECUTOR":    "executor",
-    "CAPITALNEGOTIATOR":  "negotiator",
-    "CAPITALHOMEONE":     "home-one",
-    "CAPITALCHIMAERA":    "chimaera",
-    "CAPITALFINALIZER":   "finalizer",
-    "CAPITALMACE":        "executrix",
-    "CAPITALMALEVOLENCE": "malevolence",
-    "CAPITALRADDUS":      "raddus",
-    "CAPITALVENATOR":     "venator",
-}
-
-# Tous les capital ships connus pour l'iteration
-ALL_CAPITAL_IDS = list(CAPITAL_ID_TO_SLUG.keys())
+ALL_CAPITAL_IDS = [
+    "CAPITALLEVIATHAN",
+    "CAPITALPROFUNDITY",
+    "CAPITALEXECUTOR",
+    "CAPITALNEGOTIATOR",
+    "CAPITALHOMEONE",
+    "CAPITALCHIMAERA",
+    "CAPITALFINALIZER",
+    "CAPITALMACE",
+    "CAPITALMALEVOLENCE",
+    "CAPITALRADDUS",
+    "CAPITALVENATOR",
+]
 
 
-def extract_seasons_from_dropdown(soup, format_type="fleet"):
+def extract_seasons_from_dropdown(soup):
     import urllib.parse
     discovered = []
     dropdown_menu = soup.select_one("details.dropdown ul.dropdown-content")
@@ -54,13 +45,9 @@ def extract_seasons_from_dropdown(soup, format_type="fleet"):
 
 
 def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
-    """
-    Parse un panneau de counter vaisseau.
-    """
     # 1. Equipe attaquante (droite)
     atk_container = panel.select_one("div.justify-center.lg\\:justify-end")
     if not atk_container:
-        # Fallback multi-classes
         for div in panel.find_all("div"):
             cls = div.get("class", [])
             if any("justify-end" in c for c in cls):
@@ -68,7 +55,6 @@ def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
                 break
                 
     if not atk_container:
-        # Fallback général : si 2 containers justify-center existent, le 2ème est l'attaque
         j_divs = panel.select("div.justify-center")
         if len(j_divs) >= 2:
             atk_container = j_divs[1]
@@ -84,7 +70,6 @@ def parse_ship_counter_panel(panel, def_capital_id: str) -> dict | None:
         if div.get("data-unit-def-tooltip-app")
     ]
     if not atk_units:
-        # Fallback via liens /ships/
         for a in atk_container.find_all("a"):
             href = a.get("href", "")
             if "/ships/" in href:
@@ -186,11 +171,8 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
         out_dir = os.path.dirname(os.path.abspath(output_file))
         os.makedirs(out_dir, exist_ok=True)
 
-        slug = CAPITAL_ID_TO_SLUG.get(def_capital_id.upper())
-        if not slug:
-            slug = def_capital_id.lower().replace("capital", "").replace("_", "-").strip("-")
-        
-        print(f"[SHIP-COUNTERS] Capital: {def_capital_id} -> slug: {slug}", flush=True)
+        capital_slug = def_capital_id.upper()
+        print(f"[SHIP-COUNTERS] Capital: {def_capital_id} -> URL slug: {capital_slug}", flush=True)
 
         counters_data = []
         detected_seasons = []
@@ -201,7 +183,7 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
             # 1. Détection saison si 'current'
             target_season = season_id
             if season_id == "current":
-                init_url = f"https://swgoh.gg/gac/ship-counters/{slug}/?cutoff=0"
+                init_url = f"https://swgoh.gg/gac/ship-counters/{capital_slug}/?cutoff=0"
                 print(f"[SHIP-COUNTERS] Detection saison via {init_url}...", flush=True)
                 sb.uc_open_with_reconnect(init_url, reconnect_time=4)
 
@@ -225,7 +207,7 @@ def scrape_ship_counters(def_capital_id: str, output_file: str, season_id: str =
                 else:
                     target_season = ""
 
-            base_url = f"https://swgoh.gg/gac/ship-counters/{slug}/?cutoff=0"
+            base_url = f"https://swgoh.gg/gac/ship-counters/{capital_slug}/?cutoff=0"
             if target_season:
                 base_url += f"&season_id={target_season}"
 

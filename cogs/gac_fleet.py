@@ -32,17 +32,17 @@ _ship_scraper = GacShipCountersScraper()
 
 # ─── Mapping capital_id -> nom affiche ────────────────────────────────────────
 CAPITAL_DISPLAY_NAMES = {
-    "CAPITALLEVIATHAN":   "Leviathan",
-    "CAPITALPROFUNDITY":  "Profundity",
-    "CAPITALEXECUTOR":    "Executor",
-    "CAPITALNEGOTIATOR":  "Negotiator",
-    "CAPITALHOMEONE":     "Home One",
-    "CAPITALCHIMAERA":    "Chimaera",
-    "CAPITALFINALIZER":   "Finalizer",
-    "CAPITALMACE":        "Executrix",
-    "CAPITALMALEVOLENCE": "Malevolence",
-    "CAPITALRADDUS":      "Raddus",
-    "CAPITALVENATOR":     "Venator",
+    "CAPITALLEVIATHAN":          "Leviathan",
+    "CAPITALPROFUNDITY":         "Profundity",
+    "CAPITALEXECUTOR":           "Executor",
+    "CAPITALNEGOTIATOR":         "Negotiator",
+    "CAPITALMONCALAMARICRUISER": "Home One",
+    "CAPITALCHIMAERA":           "Chimaera",
+    "CAPITALFINALIZER":          "Finalizer",
+    "CAPITALSTARDESTROYER":      "Executrix",
+    "CAPITALMALEVOLENCE":        "Malevolence",
+    "CAPITALRADDUS":             "Raddus",
+    "CAPITALJEDICRUISER":        "Endurance",
 }
 
 # Ordre des tiers pour affichage

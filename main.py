@@ -119,6 +119,16 @@ class SwgohBot(commands.Bot):
     async def on_command_error(self, ctx: commands.Context, error: Exception) -> None:
         log.error("Erreur commande texte : %s", error)
 
+    async def close(self) -> None:
+        """Arrêt propre des workers et des pools de connexions."""
+        log.info("Fermeture du bot et arrêt propre des scrapers...")
+        if hasattr(self, "gac_scraper") and self.gac_scraper:
+            try:
+                await self.gac_scraper.stop()
+            except Exception as e:
+                log.warning("Erreur lors de l'arrêt du scraper GAC : %s", e)
+        await super().close()
+
 
 # ---------------------------------------------------------------------------
 # Point d'entrée

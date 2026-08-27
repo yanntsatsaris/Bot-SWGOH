@@ -79,6 +79,56 @@ def _get_fleet_max_reinforcements(capital_rarity: int) -> int:
     else:  # 7★
         return 4
 
+CAPITAL_ALLOWED_SHIPS = {
+    "CAPITALNEGOTIATOR": {
+        "JEDISTARFIGHTERANAKIN", "UMBARANSTARFIGHTER", "YWINGCLONEWARS", "BTLBYWING",
+        "MARAUDER", "BLADEOFDORIN", "JEDISTARFIGHTERAHSOKATANO", "JEDISTARFIGHTERAHSOKA",
+        "ARC170REX", "ARC170CLONESERGEANT", "JEDISTARFIGHTERCONSULAR", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALJEDICRUISER": {
+        "JEDISTARFIGHTERANAKIN", "UMBARANSTARFIGHTER", "YWINGCLONEWARS", "BTLBYWING",
+        "MARAUDER", "BLADEOFDORIN", "JEDISTARFIGHTERAHSOKATANO", "JEDISTARFIGHTERAHSOKA",
+        "ARC170REX", "ARC170CLONESERGEANT", "JEDISTARFIGHTERCONSULAR", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALPROFUNDITY": {
+        "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "GHOST", "PHANTOM2", "CASSIANSUWING",
+        "BISTANSUWING", "BWINGREBEL", "XWINGRED2", "XWINGRED3", "UWINGHERO", "UWING", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALMONCALAMARICRUISER": {
+        "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "GHOST", "PHANTOM2", "CASSIANSUWING",
+        "BISTANSUWING", "BWINGREBEL", "XWINGRED2", "XWINGRED3", "UWINGHERO", "UWING", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALRADDUS": {
+        "REYSMILLENNIUMFALCON", "RESISTANCEYWING", "POEDAMERONXWING", "XWINGRESISTANCE",
+        "COMEUPPANCE", "MEONECROW", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALEXECUTOR": {
+        "PUNISHINGONE", "RAZORCREST", "HOUNDSTOOTH", "XANADUBLOOD", "SLAVE1", "IG2000",
+        "EBONHAWK", "TIEBOMBER", "TIEFIGHTER", "TIEADVANCED"
+    },
+    "CAPITALLEVIATHAN": {
+        "FURYCLASSINTERCEPTOR", "SITHBOMBER", "SITHFIGHTER", "MKVIINTERCEPTOR", "TIEDAGGER",
+        "SITHINFILTRATOR", "SITHASSASSIN", "EBONHAWK"
+    },
+    "CAPITALMALEVOLENCE": {
+        "VULTUREDROID", "HYENABOMBER", "GEONOSIANSTARFIGHTERSUNFAC", "GEONOSIANSTARFIGHTERSPY",
+        "GEONOSIANSTARFIGHTER", "IG2000", "EBONHAWK"
+    },
+    "CAPITALCHIMAERA": {
+        "TIEDEFENDER", "TIEINTERCEPTOR", "TIEADVANCED", "TIEBOMBER", "TIEFIGHTER",
+        "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE", "TIEINQUISITOR", "SCYTHE", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALSTARDESTROYER": {
+        "TIEDEFENDER", "TIEINTERCEPTOR", "TIEADVANCED", "TIEBOMBER", "TIEFIGHTER",
+        "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE", "TIEINQUISITOR", "SCYTHE", "EBONHAWK", "HOUNDSTOOTH"
+    },
+    "CAPITALFINALIZER": {
+        "TIESILENCER", "FIRSTORDER_ECHELON", "FIRSTORDERECHELON", "TIEECHELON",
+        "KYLORENSCOMMANDSHUTTLE", "FIRSTORDERSPECIALFORCESTIEFIGHTER", "FIRSTORDERTIEFIGHTER",
+        "HOUNDSTOOTH", "EBONHAWK"
+    },
+}
+
 async def get_db_meta_fleets(mode: str = "defense") -> dict:
     """
     Récupère les compositions de flottes méta dynamiquement depuis la BDD (fleet_tier_list et ship_counters).
@@ -781,7 +831,10 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                 max_members = 3 + max_reinforcements
                 valid_members = [
                     m for m in f["members"] 
-                    if m not in used_base_ids and m in enemy_index and m != cap
+                    if m not in used_base_ids 
+                    and m in enemy_index 
+                    and m != cap
+                    and (cap not in CAPITAL_ALLOWED_SHIPS or m.upper() in CAPITAL_ALLOWED_SHIPS[cap])
                 ][:max_members]
                 zones["Fleet"].append({
                     "leader_id": cap,
@@ -1020,7 +1073,10 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                 max_members = 3 + max_reinforcements
                 valid_members = [
                     m for m in f["members"] 
-                    if m not in used_base_ids and m in my_index and m != cap
+                    if m not in used_base_ids 
+                    and m in my_index 
+                    and m != cap
+                    and (cap not in CAPITAL_ALLOWED_SHIPS or m.upper() in CAPITAL_ALLOWED_SHIPS[cap])
                 ][:max_members]
                 zones["Fleet"].append({
                     "leader_id": cap,

@@ -105,31 +105,33 @@ async def fetch_bracket_from_swgoh_gg(ally_code: str) -> list[str]:
     except Exception as e:
         log.debug(f"[GacLock] HTTP direct echoue pour bracket {clean_code}: {e}")
 
-    # 2. Si protection Cloudflare, passage par le scraper SeleniumBase
+    # 2. Si protection Cloudflare, passage par le scraper SeleniumBase dédié
     try:
         import sys
         import os
         project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-        worker_path = os.path.join(project_dir, "scripts", "sb_worker.py")
-        temp_html = os.path.join(project_dir, "temp_bracket.html")
+        worker_path = os.path.join(project_dir, "scripts", "bracket_sb_worker.py")
+        temp_json = os.path.join(project_dir, "temp_bracket", f"bracket_{clean_code}.json")
 
         process = await asyncio.create_subprocess_exec(
             sys.executable,
             worker_path,
-            target_url,
-            temp_html,
+            clean_code,
+            temp_json,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=project_dir
         )
-        await process.communicate()
-        if os.path.exists(temp_html):
-            content = open(temp_html, "r", encoding="utf-8", errors="ignore").read()
+        await asyncio.wait_for(process.communicate(), timeout=120)
+        if os.path.exists(temp_json):
+            import json
+            with open(temp_json, "r", encoding="utf-8") as f:
+                data = json.load(f)
             try:
-                os.remove(temp_html)
+                os.remove(temp_json)
             except:
                 pass
-            opps = parse_bracket_html(content, clean_code)
+            opps = data.get("opponents", [])
             if opps:
                 log.info(f"[GacLock] 🎯 {len(opps)} adversaires extraits via SB pour {clean_code}")
                 return opps

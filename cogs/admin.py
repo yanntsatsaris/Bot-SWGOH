@@ -578,6 +578,43 @@ class AdminCog(commands.Cog, name="Admin"):
             log.exception("Erreur liste alias : %s", e)
             await interaction.followup.send(f"❌ Erreur : {e}", ephemeral=True)
 
+    @app_commands.command(
+        name="admin-gac-lock",
+        description="[Admin] Déclenche immédiatement le verrouillage (Lock) des rosters et brackets GAC.",
+    )
+    @app_commands.describe(
+        ally_code="Ally code d'un joueur spécifique (optionnel, sinon tous les joueurs enregistrés)"
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def admin_gac_lock(self, interaction: discord.Interaction, ally_code: str | None = None) -> None:
+        await interaction.response.defer(ephemeral=True)
+        from services.gac_lock_service import lock_player_and_bracket, auto_lock_all_registered_players
+
+        try:
+            if ally_code:
+                clean = ally_code.replace("-", "").strip()
+                res = await lock_player_and_bracket(clean)
+                opp_list = [f"{o['name']} ({o['ally_code']})" for o in res.get('opponents', [])]
+                await interaction.followup.send(
+                    f"🔒 **Lock GAC effectué pour `{clean}`** :\n"
+                    f"• Joueurs verrouillés : **{res.get('locked_count', 0)}**\n"
+                    f"• Saison : `{res.get('season_id', 'N/A')}`\n"
+                    f"• Adversaires de poule : {', '.join(opp_list) or 'Aucun extrait'}",
+                    ephemeral=True
+                )
+            else:
+                results = await auto_lock_all_registered_players()
+                total_players = len(results)
+                total_locked = sum(r.get("locked_count", 0) for r in results.values())
+                await interaction.followup.send(
+                    f"🔒 **Lock GAC terminé pour tous les joueurs enregistrés ({total_players})** :\n"
+                    f"• Total profils verrouillés en BDD : **{total_locked}**",
+                    ephemeral=True
+                )
+        except Exception as e:
+            log.exception("Erreur admin_gac_lock: %s", e)
+            await interaction.followup.send(f"❌ Erreur lors du lock : {e}", ephemeral=True)
+
 
 async def setup(bot: commands.Bot) -> None:
     # Autocomplétion sur admin_add_alias

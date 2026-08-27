@@ -139,6 +139,42 @@ class AdminCog(commands.Cog, name="Admin"):
             )
 
     # ------------------------------------------------------------------
+    # /admin-reload — Recharger tous les modules & cogs en mémoire
+    # ------------------------------------------------------------------
+    @app_commands.command(
+        name="admin-reload",
+        description="[Admin] Recharge tous les cogs et services en mémoire sans redémarrer le bot.",
+    )
+    @app_commands.default_permissions(administrator=True)
+    async def admin_reload(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        import sys
+        import importlib
+        reloaded_services = []
+        for mod_name, mod in list(sys.modules.items()):
+            if mod and (mod_name.startswith("services.") or mod_name.startswith("database.")):
+                try:
+                    importlib.reload(mod)
+                    reloaded_services.append(mod_name)
+                except Exception as e:
+                    log.warning(f"Impossible de recharger {mod_name}: {e}")
+
+        reloaded_cogs = []
+        for ext in list(self.bot.extensions.keys()):
+            try:
+                await self.bot.reload_extension(ext)
+                reloaded_cogs.append(ext)
+            except Exception as e:
+                log.error(f"Erreur reload extension {ext}: {e}")
+
+        await interaction.followup.send(
+            f"🔄 **Rechargement à chaud effectué !**\n"
+            f"• **Cogs rechargés ({len(reloaded_cogs)})** : {', '.join(reloaded_cogs)}\n"
+            f"• **Services rechargés ({len(reloaded_services)})** : {len(reloaded_services)} modules actualisés.",
+            ephemeral=True
+        )
+
+    # ------------------------------------------------------------------
     # /admin-inspect-history — Inspecter les données brutes d'historique en BDD
     # ------------------------------------------------------------------
     @app_commands.command(

@@ -107,16 +107,15 @@ class GacScoutAnalyzer:
                             m.defender_team,
                             COALESCE(m.zone, 'unknown') as zone,
                             COUNT(DISTINCT r.id) as frequency,
-                            (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
+                            MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) as last_seen_round
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
                           AND r.format = ?
                           AND r.player_code = ?
-                          AND m.zone != 'fleet'
+                          AND (m.zone IS NULL OR m.zone != 'fleet')
+                          AND NOT (m.defender_team LIKE '%CAPITAL%')
                         GROUP BY m.defender_team, COALESCE(m.zone, 'unknown')
-                        ORDER BY score DESC, frequency DESC
                     """
                     
                     # On récupère les flottes (SUR TOUS LES FORMATS confondus) car une flotte 5v5 ou 3v3 c'est pareil !
@@ -125,23 +124,31 @@ class GacScoutAnalyzer:
                             m.defender_team,
                             'fleet' as zone,
                             COUNT(DISTINCT r.id) as frequency,
-                            (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
+                            MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) as last_seen_round
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
                           AND r.player_code = ?
                           AND (m.zone = 'fleet' OR m.defender_team LIKE '%CAPITAL%')
                         GROUP BY m.defender_team
-                        ORDER BY score DESC, frequency DESC
                     """
                     
-                    async with db.execute(query_scraped_land, (threshold_val, effective_format, ally_code)) as cur:
+                    async with db.execute(query_scraped_land, (effective_format, ally_code)) as cur:
                         scraped_land_rows = await cur.fetchall()
                         
-                    async with db.execute(query_scraped_fleet, (threshold_val, ally_code)) as cur:
+                    async with db.execute(query_scraped_fleet, (ally_code,)) as cur:
                         scraped_fleet_rows = await cur.fetchall()
                         
+                    logger.info(f"[Analyzer] 🎯 {len(scraped_land_rows)} équipes terrestres et {len(scraped_fleet_rows)} flottes trouvées en BDD pour {ally_code} ({total_rounds} rounds)")
+
+                    def _calc_score(r):
+                        freq = r["frequency"]
+                        lsr = r.get("last_seen_round") or ""
+                        bonus = 10000 if (threshold_val and lsr >= threshold_val) else 0
+                        return (freq * 10) + bonus
+
+                    scraped_land_rows = sorted(scraped_land_rows, key=_calc_score, reverse=True)
+                    scraped_fleet_rows = sorted(scraped_fleet_rows, key=_calc_score, reverse=True)
                     scraped_rows = scraped_land_rows + scraped_fleet_rows
 
                     

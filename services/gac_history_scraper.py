@@ -227,21 +227,23 @@ class GACHistoryScraper:
                                                         links_to_scrape.append(link)
                                         
                                         if links_to_scrape:
-                                            logger.info(f"🔗 {len(links_to_scrape)} nouveaux rounds à scraper. Création du batch...")
+                                            logger.info(f"🔗 {len(links_to_scrape)} nouveaux rounds à scraper pour {clean_code}. Création du batch...")
                                             batch_file = f"batch_{clean_code}.txt"
-                                            with open(batch_file, "w") as bf:
+                                            with open(batch_file, "w", encoding="utf-8") as bf:
                                                 bf.write("\n".join(links_to_scrape))
                                                 
-                                            # On met le fichier texte dans la file
-                                            await self.queue_scrape(batch_file, interaction=interaction, format_filter=format_filter)
+                                            # On incrémente pending_tasks pour garder la tâche active pendant le traitement du batch
+                                            self.pending_tasks[clean_code] = self.pending_tasks.get(clean_code, 0) + 1
+                                            self.total_tasks[clean_code] = self.total_tasks.get(clean_code, 0) + 1
+                                            await self.queue.put((batch_file, interaction, format_filter))
                                             
                                             if interaction:
                                                 try:
-                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(links_to_scrape)} nouveaux rounds trouvés ! Lancement de l'extraction continue...")
+                                                    await interaction.edit_original_response(content=f"⏳ **[■■■■■■□□□□] 60%** : {len(links_to_scrape)} nouveaux rounds trouvés ! Extraction continue en cours...")
                                                 except:
                                                     pass
                                         else:
-                                            logger.info("✅ Aucun nouveau round à scraper (tous déjà en BDD).")
+                                            logger.info(f"✅ Aucun nouveau round à scraper pour {clean_code} (tous déjà en BDD).")
                                             if interaction:
                                                 try:
                                                     await interaction.edit_original_response(content=f"⏳ **[■■■■■■■■■□] 90%** : Historique déjà à jour !")
@@ -408,17 +410,45 @@ class GACHistoryScraper:
                                                 
                         parent = block.parent
                         if parent:
-                            squad_containers = parent.find_all('div', class_='gac-battle-portrait-layout')
-                            if squad_containers and len(squad_containers) >= 2:
-                                a_units = squad_containers[0].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                                match_data["attacker_team"] = [u['data-unit-def-tooltip-app'] for u in a_units]
-                                if match_data["attacker_team"]:
-                                    match_data["attacker_lead"] = match_data["attacker_team"][0]
-                                    
-                                d_units = squad_containers[1].find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app'))
-                                match_data["defender_team"] = [u['data-unit-def-tooltip-app'] for u in d_units]
-                                if match_data["defender_team"]:
-                                    match_data["defender_lead"] = match_data["defender_team"][0]
+                            side_attack = parent.find('div', class_=lambda c: c and 'side--attack' in str(c)) or parent.find('div', class_=lambda c: c and 'portrait-layout--attack' in str(c))
+                            side_defense = parent.find('div', class_=lambda c: c and 'side--defense' in str(c)) or parent.find('div', class_=lambda c: c and 'portrait-layout--defense' in str(c))
+                            
+                            def _extract_units_from_container(container):
+                                if not container:
+                                    return []
+                                u_list = []
+                                for u in container.find_all(lambda tag: tag.has_attr('data-unit-def-tooltip-app') or tag.has_attr('data-unit-base-id') or tag.has_attr('data-unit-id')):
+                                    uid = u.get('data-unit-def-tooltip-app') or u.get('data-unit-base-id') or u.get('data-unit-id')
+                                    if uid and uid not in u_list:
+                                        u_list.append(uid.upper())
+                                if u_list:
+                                    return u_list
+                                for a in container.find_all('a', href=True):
+                                    href = a['href']
+                                    m = re.search(r'/(?:characters|ships)/([^/]+)/?', href)
+                                    if m:
+                                        slug = m.group(1).upper().replace("-", "")
+                                        if slug and slug not in u_list:
+                                            u_list.append(slug)
+                                return u_list
+
+                            if side_attack:
+                                match_data["attacker_team"] = _extract_units_from_container(side_attack)
+                            if side_defense:
+                                match_data["defender_team"] = _extract_units_from_container(side_defense)
+                                
+                            if not match_data["attacker_team"] or not match_data["defender_team"]:
+                                squad_containers = parent.find_all('div', class_='gac-battle-portrait-layout')
+                                if squad_containers and len(squad_containers) >= 2:
+                                    if not match_data["attacker_team"]:
+                                        match_data["attacker_team"] = _extract_units_from_container(squad_containers[0])
+                                    if not match_data["defender_team"]:
+                                        match_data["defender_team"] = _extract_units_from_container(squad_containers[1])
+
+                            if match_data["attacker_team"]:
+                                match_data["attacker_lead"] = match_data["attacker_team"][0]
+                            if match_data["defender_team"]:
+                                match_data["defender_lead"] = match_data["defender_team"][0]
                                     
                         matches.append(match_data)
 

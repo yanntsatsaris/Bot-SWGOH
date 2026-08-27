@@ -73,9 +73,11 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
         cur_x = x
         
         def get_unit_details(uid):
-            if not uid or not roster_index or uid.upper() not in roster_index:
+            if not uid or not roster_index:
                 return None, None, 0, 0, 7
-            u = roster_index[uid.upper()]
+            u = roster_index.get(uid.upper()) or roster_index.get(uid)
+            if not u:
+                return None, None, 0, 0, 7
             return u.get("relic_tier"), u.get("gear_tier"), u.get("zetas", 0), u.get("omicrons", 0), u.get("rarity", 7)
         
         def _draw_scaled(cvs, px, py, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, zts=0, omis=0, stars_=7):
@@ -314,7 +316,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             x_def = PADDING + 15
             y_portraits = current_y + 24
             for bid in all_e_ids[:zone_slots_per_row]:
-                e_data = enemy_roster_index.get(bid.upper()) if enemy_roster_index else None
+                e_data = (enemy_roster_index.get(bid.upper()) or enemy_roster_index.get(bid)) if enemy_roster_index else None
                 e_rel  = e_data.get("relic_tier") if e_data else None
                 e_gr   = e_data.get("gear_tier")  if e_data else None
                 e_zts  = e_data.get("zetas", 0)   if e_data else 0
@@ -380,7 +382,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     all_c_ids = [c_leader] + [m for m in c_members if m and m != c_leader]
                     
                     for bid in all_c_ids[:zone_slots_per_row]:
-                        u_data = my_roster_index.get(bid.upper()) if my_roster_index else None
+                        u_data = (my_roster_index.get(bid.upper()) or my_roster_index.get(bid)) if my_roster_index else None
                         rel    = u_data.get("relic_tier") if u_data else None
                         gr     = u_data.get("gear_tier")  if u_data else None
                         zts    = u_data.get("zetas", 0)   if u_data else 0

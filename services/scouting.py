@@ -407,10 +407,10 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             if zeta_dict and skill_id in zeta_dict and actual_skill_tier >= int(zeta_dict[skill_id]):
                 zetas_count += 1
                 
-        combat_type = 2 if base_id in ship_base_ids else unit.get("combatType", 1)
+        combat_type = 2 if base_id.upper() in ship_base_ids or base_id in ship_base_ids else unit.get("combatType", 1)
 
-        roster[base_id] = {
-            "base_id": base_id,
+        unit_entry = {
+            "base_id": base_id.upper(),
             "gear_tier": unit.get("currentTier", 0),
             "relic_tier": relic_tier,
             "rarity": unit.get("currentRarity", 0),
@@ -420,6 +420,8 @@ def _build_roster_index(raw_roster: list, omicron_dict: dict, zeta_dict: dict, s
             "zetas": zetas_count,
             "combat_type": combat_type
         }
+        roster[base_id.upper()] = unit_entry
+        roster[base_id] = unit_entry
     return roster
 
 async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_ids: set, habits: dict = None, league: str = "KYBER") -> dict:

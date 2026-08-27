@@ -79,6 +79,63 @@ def _get_fleet_max_reinforcements(capital_rarity: int) -> int:
     else:  # 7★
         return 4
 
+async def get_db_meta_fleets(mode: str = "defense") -> dict:
+    """
+    Récupère les compositions de flottes méta dynamiquement depuis la BDD (fleet_tier_list et ship_counters).
+    GAC_FLEETS ne sert qu'en cas de secours extrême si la base est vide.
+    """
+    fleets = {}
+    try:
+        async with get_db() as db:
+            # 1. D'abord depuis fleet_tier_list (scrapée depuis swgoh.gg)
+            cursor = await db.execute(
+                """
+                SELECT capital_ship, members_ids, hold_pct, win_pct, rank
+                FROM fleet_tier_list
+                WHERE side = ? OR side = 'defense'
+                ORDER BY rank ASC
+                """,
+                (mode,)
+            )
+            rows = await cursor.fetchall()
+            for r in rows:
+                cap = (r["capital_ship"] or "").upper()
+                mems = json.loads(r["members_ids"] or "[]")
+                if cap and mems and cap not in fleets:
+                    fleets[cap] = {
+                        "members": [cap] + [m for m in mems if m.upper() != cap],
+                        "defense": max(1, int((r["hold_pct"] or 50) / 10))
+                    }
+
+            # 2. Compléter depuis ship_counters (compositions défensives les plus jouées)
+            cursor = await db.execute(
+                """
+                SELECT def_capital, def_members_ids, SUM(seen) as total_seen
+                FROM ship_counters
+                WHERE def_members_ids IS NOT NULL AND def_members_ids != '[]' AND def_members_ids != ''
+                GROUP BY def_capital, def_members_ids
+                ORDER BY total_seen DESC
+                """
+            )
+            rows = await cursor.fetchall()
+            for r in rows:
+                cap = (r["def_capital"] or "").upper()
+                mems = json.loads(r["def_members_ids"] or "[]")
+                if cap and mems and cap not in fleets:
+                    fleets[cap] = {
+                        "members": [cap] + [m for m in mems if m.upper() != cap],
+                        "defense": 8
+                    }
+    except Exception as e:
+        log.warning(f"[MetaFleets] Erreur lecture flottes BDD: {e}")
+
+    # Secours si BDD totalement vide
+    if not fleets:
+        from services.gac_meta import GAC_FLEETS
+        fleets = GAC_FLEETS
+
+    return fleets
+
 async def get_ship_base_ids() -> set:
     ships = set()
     try:
@@ -89,6 +146,7 @@ async def get_ship_base_ids() -> set:
     except Exception as e:
         log.warning(f"Erreur chargement des vaisseaux: {e}")
     return ships
+
 
 def attach_datacrons_to_scouted_zones(zones: dict, player_datacrons: list[dict], roster_index: dict = None) -> None:
     """
@@ -695,8 +753,10 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         "RADDUS": "CAPITALRADDUS",
         "ENDURANCE": "CAPITALJEDICRUISER",
     }
+    # 2. FLOTTES (Dynamique BDD via fleet_tier_list / ship_counters)
+    db_fleets = await get_db_meta_fleets(mode="defense")
     available_fleets = []
-    for cap_id, team_data in GAC_FLEETS.items():
+    for cap_id, team_data in db_fleets.items():
         norm_cap = CAP_NORM.get(cap_id, cap_id)
         if enemy_index.get(norm_cap) and enemy_index[norm_cap].get("rarity", 0) >= 5:
             score = enemy_index[norm_cap].get("relic_tier", 0) * 10 + enemy_index[norm_cap].get("gear_tier", 0)
@@ -716,15 +776,18 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         for f in available_fleets:
             cap = f["leader_id"]
             if cap not in used_base_ids and cap != "USED":
+                cap_rarity = enemy_index.get(cap, {}).get("rarity", 7)
+                max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
+                max_members = 3 + max_reinforcements
                 valid_members = [
                     m for m in f["members"] 
                     if m not in used_base_ids and m in enemy_index and m != cap
-                ][:7]
+                ][:max_members]
                 zones["Fleet"].append({
                     "leader_id": cap,
                     "members_ids": valid_members,
-                    "source": "Prédiction (Meta)",
-                    "target_size": 8
+                    "source": "Prédiction (Meta BDD)",
+                    "target_size": 1 + max_members
                 })
                 used_base_ids.update(valid_members)
                 f["leader_id"] = "USED"
@@ -928,8 +991,10 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         "RADDUS": "CAPITALRADDUS",
         "ENDURANCE": "CAPITALJEDICRUISER",
     }
+    # 2. FLOTTES DU JOUEUR (Dynamique BDD via fleet_tier_list / ship_counters)
+    db_fleets = await get_db_meta_fleets(mode="defense")
     available_fleets = []
-    for cap_id, team_data in GAC_FLEETS.items():
+    for cap_id, team_data in db_fleets.items():
         norm_cap = CAP_NORM.get(cap_id, cap_id)
         if my_index.get(norm_cap) and my_index[norm_cap].get("rarity", 0) >= 5:
             score = my_index[norm_cap].get("relic_tier", 0) * 10 + my_index[norm_cap].get("gear_tier", 0)
@@ -960,7 +1025,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                 zones["Fleet"].append({
                     "leader_id": cap,
                     "members_ids": valid_members,
-                    "source": "Prédiction (Meta)",
+                    "source": "Prédiction (Meta BDD)",
                     "target_size": 1 + max_members  # capital + membres
                 })
                 used_base_ids.add(cap)

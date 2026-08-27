@@ -356,8 +356,14 @@ async def save_gac_history_to_db(parsed_data: dict, ally_code: str):
         existing = await cursor.fetchone()
         
         if existing:
-            log.info(f"⏭️ Historique déjà présent en BDD pour {real_ally_code} (Saison: {season_id}, Round: {round_number}). On ignore.")
-            return
+            c_check = await db.execute("SELECT COUNT(*) FROM gac_matches WHERE round_id = ?", (existing["id"],))
+            m_cnt = await c_check.fetchone()
+            if m_cnt and m_cnt[0] > 0:
+                log.info(f"⏭️ Historique déjà présent en BDD pour {real_ally_code} (Saison: {season_id}, Round: {round_number}). On ignore.")
+                return
+            else:
+                log.info(f"🧹 Round existant mais vide (0 combats) pour {real_ally_code} -> Réinsertion propre...")
+                await db.execute("DELETE FROM gac_rounds WHERE id = ?", (existing["id"],))
         
         # 2. Insertion du Round
         # On utilise le format détecté dans _parse_html (défaut '5v5')

@@ -17,7 +17,7 @@ class GacScoutAnalyzer:
         async with get_db() as db:
             # 0. Pré-calcul du threshold pour les 3 derniers rounds
             threshold_query = """
-                SELECT MIN(season_id || '-' || round_number) FROM (
+                SELECT MIN(season_id || '-' || CAST(round_number AS TEXT)) FROM (
                     SELECT season_id, round_number FROM gac_rounds 
                     WHERE (player_code = ? OR opponent_code = ?) AND format = ?
                     ORDER BY season_id DESC, round_number DESC LIMIT 3
@@ -31,7 +31,7 @@ class GacScoutAnalyzer:
             query_land = """
                 SELECT t.zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
                     (COUNT(*) * 10) + 
-                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
+                    CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
                 FROM gac_round_teams t
                 JOIN gac_rounds r ON t.round_id = r.id
                 WHERE t.side = 'defense'
@@ -45,7 +45,7 @@ class GacScoutAnalyzer:
             query_fleet = """
                 SELECT 'fleet' as zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
                     (COUNT(*) * 10) + 
-                    CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
+                    CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
                 FROM gac_round_teams t
                 JOIN gac_rounds r ON t.round_id = r.id
                 WHERE t.side = 'defense'
@@ -108,7 +108,7 @@ class GacScoutAnalyzer:
                             COALESCE(m.zone, 'unknown') as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
+                            CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
@@ -126,7 +126,7 @@ class GacScoutAnalyzer:
                             'fleet' as zone,
                             COUNT(DISTINCT r.id) as frequency,
                             (COUNT(DISTINCT r.id) * 10) + 
-                            CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
+                            CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
                         WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)

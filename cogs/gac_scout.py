@@ -335,18 +335,19 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         if self.daily_gac_round_reset.is_running():
             self.daily_gac_round_reset.cancel()
 
-    @tasks.loop(time=datetime.time(hour=21, minute=0, tzinfo=datetime.timezone.utc))  # 23h00 Heure de Paris
+    @tasks.loop(time=[
+        datetime.time(hour=21, minute=0, tzinfo=datetime.timezone.utc),   # 23h00 Paris (Lock officiel & 1er essai poule)
+        datetime.time(hour=21, minute=30, tzinfo=datetime.timezone.utc),  # 23h30 Paris (Rattrapage si swgoh.gg a eu du retard)
+    ])
     async def daily_gac_round_reset(self) -> None:
         """
-        Réinitialise automatiquement les unités brûlées des joueurs à la fin de chaque journée de combat :
-        - Vendredi 23h (Fin Combat R1)
-        - Dimanche 23h (Fin Combat R2)
-        - Mardi 23h (Fin Combat R3 / Fin Event)
+        Gère le verrouillage GAC (Mercredi 23h & 23h30) et la réinitialisation des unités brûlées.
         """
-        weekday = datetime.datetime.utcnow().weekday()
-        # Mercredi 23h (Paris) -> Fin des Inscriptions / Lock GAC
+        now = datetime.datetime.utcnow()
+        weekday = now.weekday()
+        # Mercredi (2) -> Fin des Inscriptions & Lock GAC
         if weekday == 2:
-            log.info("⏰ 23h00 (Paris) — Mercredi : Lock GAC détecté. Verrouillage automatique des rosters & Datacrons de tous les joueurs inscrits...")
+            log.info(f"⏰ {now.strftime('%H:%M')} UTC — Mercredi : Lock GAC. Verrouillage automatique des profils & extraction poules swgoh.gg...")
             try:
                 from services.gac_lock_service import auto_lock_all_registered_players
                 await auto_lock_all_registered_players()
@@ -354,8 +355,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             except Exception as e:
                 log.exception(f"Erreur lors du verrouillage automatique GAC: {e}")
 
-        # Fin de phase de combat : Vendredi (4), Dimanche (6), Mardi (1)
-        if weekday in [4, 6, 1]:
+        # Fin de phase de combat : Vendredi (4), Dimanche (6), Mardi (1) uniquement à 23h00 Paris (21h00 UTC)
+        if weekday in [4, 6, 1] and now.minute == 0:
             log.info("⏰ 23h00 (Paris) — Fin de phase de combat GAC détectée. Réinitialisation des unités brûlées...")
             await clear_used_units()
             log.info("✅ Réinitialisation automatique terminée.")

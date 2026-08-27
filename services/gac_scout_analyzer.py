@@ -14,6 +14,7 @@ class GacScoutAnalyzer:
         Retourne un dictionnaire structuré par zone (top, bottom, back, fleet).
         """
         clean_code = str(ally_code).replace("-", "").strip()
+        logger.info(f"[Analyzer] 🔍 Recherche historique pour player_code='{clean_code}', format='{format_type}'")
         async with get_db() as db:
             # 1. Vérifier s'il y a des rounds pour ce joueur dans le format demandé (sinon fallback autre format)
             cur = await db.execute(
@@ -22,9 +23,18 @@ class GacScoutAnalyzer:
             )
             r_cnt = await cur.fetchone()
             total_rounds = r_cnt[0] if r_cnt else 0
+            logger.info(f"[Analyzer] 📊 COUNT gac_rounds pour '{clean_code}' format='{format_type}' → {total_rounds} rounds")
             
             effective_format = format_type
             if total_rounds == 0:
+                # Debug: voir tous les player_codes disponibles
+                cur_all = await db.execute(
+                    "SELECT player_code, format, COUNT(*) as cnt FROM gac_rounds GROUP BY player_code, format ORDER BY cnt DESC LIMIT 10",
+                    ()
+                )
+                all_rows = await cur_all.fetchall()
+                logger.info(f"[Analyzer] 🗂️ Top 10 player_codes en BDD: {[(r['player_code'], r['format'], r['cnt']) for r in all_rows]}")
+                
                 cur = await db.execute(
                     "SELECT COUNT(*), format FROM gac_rounds WHERE player_code = ? GROUP BY format ORDER BY COUNT(*) DESC LIMIT 1",
                     (clean_code,)
@@ -36,7 +46,7 @@ class GacScoutAnalyzer:
                     logger.info(f"⚠️ Pas de rounds {format_type} pour {clean_code} — fallback sur {effective_format} ({total_rounds} rounds)")
 
             if total_rounds == 0:
-                logger.info(f"[Analyzer] 0 round trouvé pour {clean_code}")
+                logger.info(f"[Analyzer] ❌ 0 round trouvé pour '{clean_code}' — aucun historique disponible")
                 return {"total_rounds": 0, "zones": {"top": [], "bottom": [], "back": [], "fleet": []}}
 
             # 2. Récupérer le threshold des 3 derniers rounds

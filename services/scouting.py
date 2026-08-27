@@ -522,11 +522,13 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
     available_teams = filtered_teams
 
     # 0. INJECTION DE L'HISTORIQUE RÉEL (Avec logique d'Upgrade)
+    log.info(f"[PredictZones] 📖 Habits reçus: total_rounds={habits.get('total_rounds', 0) if habits else 'N/A'}, zones_keys={list(habits['zones'].keys()) if habits else 'N/A'}")
     if habits and habits.get("total_rounds", 0) > 0:
         mapping = {"top": "North", "bottom": "South", "back": "Back", "fleet": "Fleet"}
         for hz, h_name in mapping.items():
             teams = habits["zones"].get(hz, [])
             quota = quotas.get(h_name, 0)
+            log.info(f"[PredictZones] Zone {hz}/{h_name}: {len(teams)} équipes historiques, quota={quota}")
             
             placed_in_zone = 0
             for t in teams:
@@ -562,9 +564,11 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                             
                             # Si c'est une horreur générée auto (0 synergie avec la vraie compo), on la jette !
                             if not has_synergy and len(valid_members) > 0 and percent < 5.0:
+                                log.info(f"[PredictZones] ⛔ Historique {hz} | Leader={leader} | Filtre anti-garbage (synergy={has_synergy}, percent={percent}%)")
                                 continue
 
                     # Ajout direct et fidèle de l'équipe historique du joueur
+                    log.info(f"[PredictZones] ✅ Historique {hz} | Leader={leader} | {len(valid_members)} membres | {percent}%")
                     zones[h_name].append({
                         "leader_id": leader,
                         "members_ids": valid_members,
@@ -574,6 +578,10 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                     used_base_ids.add(leader)
                     used_base_ids.update(valid_members)
                     placed_in_zone += 1
+                else:
+                    log.info(f"[PredictZones] ⏭️ Historique {hz} | Leader={leader} DÉJÀ UTILISÉ")
+    else:
+        log.info(f"[PredictZones] ⚠️ Pas d'historique disponible (habits total_rounds={habits.get('total_rounds', 0) if habits else 'None'})")
     
     # Remplir les slots vides UNIQUEMENT avec de vraies équipes meta disponibles (pas de leftovers aléatoires)
     for zone in ["North", "South", "Back"]:

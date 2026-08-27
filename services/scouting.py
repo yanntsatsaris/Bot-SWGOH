@@ -61,6 +61,24 @@ async def get_zeta_dict() -> dict:
 def _is_gac_ready(unit: dict) -> bool:
     return unit.get("relic_tier", 0) > 0 or unit.get("gear_tier", 0) >= 11
 
+def _get_fleet_max_reinforcements(capital_rarity: int) -> int:
+    """
+    Retourne le nombre maximum de renforts autorisés en fonction des étoiles du vaisseau capital.
+    Règle officielle SWGOH :
+      1★ à 2★ : 1 renfort max
+      3★ à 5★ : 2 renforts max
+      6★     : 3 renforts max
+      7★     : 4 renforts max (limite absolue)
+    """
+    if capital_rarity <= 2:
+        return 1
+    elif capital_rarity <= 5:
+        return 2
+    elif capital_rarity == 6:
+        return 3
+    else:  # 7★
+        return 4
+
 async def get_ship_base_ids() -> set:
     ships = set()
     try:
@@ -567,6 +585,14 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                                 log.info(f"[PredictZones] ⛔ Historique {hz} | Leader={leader} | Filtre anti-garbage (synergy={has_synergy}, percent={percent}%)")
                                 continue
 
+                    # Pour la flotte : limiter les renforts selon les étoiles du capital
+                    if hz == "fleet":
+                        cap_rarity = (enemy_index.get(leader.upper()) or enemy_index.get(leader, {})).get("rarity", 7)
+                        max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
+                        # Total membres = 3 vaisseaux de départ + max_reinforcements
+                        valid_members = valid_members[:3 + max_reinforcements]
+                        log.info(f"[PredictZones] 🚀 Flotte {leader} | Rareté={cap_rarity}★ | Max renforts={max_reinforcements} | Membres retenus={len(valid_members)}")
+
                     # Ajout direct et fidèle de l'équipe historique du joueur
                     log.info(f"[PredictZones] ✅ Historique {hz} | Leader={leader} | {len(valid_members)} membres | {percent}%")
                     zones[h_name].append({
@@ -923,15 +949,19 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         for f in available_fleets:
             cap = f["leader_id"]
             if cap not in used_base_ids and cap != "USED":
+                cap_rarity = my_index.get(cap, {}).get("rarity", 7)
+                max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
+                # 3 vaisseaux de départ + max_reinforcements selon les étoiles du capital
+                max_members = 3 + max_reinforcements
                 valid_members = [
                     m for m in f["members"] 
                     if m not in used_base_ids and m in my_index and m != cap
-                ][:7]
+                ][:max_members]
                 zones["Fleet"].append({
                     "leader_id": cap,
                     "members_ids": valid_members,
                     "source": "Prédiction (Meta)",
-                    "target_size": 8
+                    "target_size": 1 + max_members  # capital + membres
                 })
                 used_base_ids.add(cap)
                 used_base_ids.update(valid_members)

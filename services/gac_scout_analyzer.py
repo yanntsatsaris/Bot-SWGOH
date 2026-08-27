@@ -9,256 +9,155 @@ class GacScoutAnalyzer:
     @staticmethod
     async def get_defensive_habits(ally_code: str, format_type: str = '5v5') -> dict:
         """
-        Analyse les habitudes défensives d'un joueur.
-        Retourne un dictionnaire groupé par zone (Top, Bottom, Back, Fleet).
-        Si aucune donnée n'est trouvée dans gac_round_teams, interroge gac_matches
-        (données issues du scraping de swgoh.gg) comme fallback.
+        Analyse les habitudes défensives d'un joueur en extrayant ses vrais matchs de défense
+        depuis la base de données (gac_matches et gac_rounds).
+        Retourne un dictionnaire structuré par zone (top, bottom, back, fleet).
         """
+        clean_code = str(ally_code).replace("-", "").strip()
         async with get_db() as db:
-            # 0. Pré-calcul du threshold pour les 3 derniers rounds
-            threshold_query = """
+            # 1. Vérifier s'il y a des rounds pour ce joueur dans le format demandé (sinon fallback autre format)
+            cur = await db.execute(
+                "SELECT COUNT(*) FROM gac_rounds WHERE player_code = ? AND format = ?",
+                (clean_code, format_type)
+            )
+            r_cnt = await cur.fetchone()
+            total_rounds = r_cnt[0] if r_cnt else 0
+            
+            effective_format = format_type
+            if total_rounds == 0:
+                cur = await db.execute(
+                    "SELECT COUNT(*), format FROM gac_rounds WHERE player_code = ? GROUP BY format ORDER BY COUNT(*) DESC LIMIT 1",
+                    (clean_code,)
+                )
+                r_fallback = await cur.fetchone()
+                if r_fallback and r_fallback[0]:
+                    total_rounds = r_fallback[0]
+                    effective_format = r_fallback[1]
+                    logger.info(f"⚠️ Pas de rounds {format_type} pour {clean_code} — fallback sur {effective_format} ({total_rounds} rounds)")
+
+            if total_rounds == 0:
+                logger.info(f"[Analyzer] 0 round trouvé pour {clean_code}")
+                return {"total_rounds": 0, "zones": {"top": [], "bottom": [], "back": [], "fleet": []}}
+
+            # 2. Récupérer le threshold des 3 derniers rounds
+            cur = await db.execute(
+                """
                 SELECT MIN(season_id || '-' || CAST(round_number AS TEXT)) FROM (
                     SELECT season_id, round_number FROM gac_rounds 
-                    WHERE (player_code = ? OR opponent_code = ?) AND format = ?
+                    WHERE player_code = ? AND format = ?
                     ORDER BY season_id DESC, round_number DESC LIMIT 3
                 ) AS sub
-            """
-            async with db.execute(threshold_query, (ally_code, ally_code, format_type)) as cur:
-                t_row = await cur.fetchone()
-                threshold_val = t_row[0] if t_row and t_row[0] else ""
+                """,
+                (clean_code, effective_format)
+            )
+            t_row = await cur.fetchone()
+            threshold_val = t_row[0] if t_row and t_row[0] else ""
 
-            # 1. On cherche toutes les équipes de défense dans gac_round_teams (saisie manuelle/brackets)
-            query_land = """
-                SELECT t.zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
-                    (COUNT(*) * 10) + 
-                    CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
-                FROM gac_round_teams t
-                JOIN gac_rounds r ON t.round_id = r.id
-                WHERE t.side = 'defense'
+            # 3. Récupérer les équipes terrestres de défense
+            query_scraped_land = """
+                SELECT 
+                    m.defender_team,
+                    COALESCE(m.zone, 'unknown') as zone,
+                    COUNT(DISTINCT r.id) as frequency,
+                    MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) as last_seen_round
+                FROM gac_matches m
+                JOIN gac_rounds r ON m.round_id = r.id
+                WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
                   AND r.format = ?
-                  AND t.zone != 'fleet'
-                  AND ((r.player_code = ? AND t.owner = 'player') OR (r.opponent_code = ? AND t.owner = 'opponent'))
-                GROUP BY t.zone, t.leader_id, t.members_ids
-                ORDER BY t.zone, score DESC, frequency DESC
+                  AND r.player_code = ?
+                  AND (m.zone IS NULL OR m.zone != 'fleet')
+                  AND NOT (m.defender_team LIKE '%CAPITAL%')
+                GROUP BY m.defender_team, COALESCE(m.zone, 'unknown')
             """
             
-            query_fleet = """
-                SELECT 'fleet' as zone, t.leader_id, t.members_ids, COUNT(*) as frequency,
-                    (COUNT(*) * 10) + 
-                    CASE WHEN MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) >= ? THEN 10000 ELSE 0 END as score
-                FROM gac_round_teams t
-                JOIN gac_rounds r ON t.round_id = r.id
-                WHERE t.side = 'defense'
-                  AND (t.zone = 'fleet' OR t.leader_id LIKE '%CAPITAL%')
-                  AND ((r.player_code = ? AND t.owner = 'player') OR (r.opponent_code = ? AND t.owner = 'opponent'))
-                GROUP BY t.leader_id, t.members_ids
-                ORDER BY score DESC, frequency DESC
+            # 4. Récupérer les flottes de défense (tous formats confondus)
+            query_scraped_fleet = """
+                SELECT 
+                    m.defender_team,
+                    'fleet' as zone,
+                    COUNT(DISTINCT r.id) as frequency,
+                    MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) as last_seen_round
+                FROM gac_matches m
+                JOIN gac_rounds r ON m.round_id = r.id
+                WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
+                  AND r.player_code = ?
+                  AND (m.zone = 'fleet' OR m.defender_team LIKE '%CAPITAL%')
+                GROUP BY m.defender_team
             """
+
+            cur = await db.execute(query_scraped_land, (effective_format, clean_code))
+            scraped_land_rows = await cur.fetchall()
+
+            cur = await db.execute(query_scraped_fleet, (clean_code,))
+            scraped_fleet_rows = await cur.fetchall()
+
+            logger.info(f"[Analyzer] 🎯 {len(scraped_land_rows)} équipes terrestres et {len(scraped_fleet_rows)} flottes trouvées en BDD pour {clean_code} ({total_rounds} rounds)")
+
+            def _calc_score(r):
+                freq = r["frequency"]
+                lsr = r.get("last_seen_round") or ""
+                bonus = 10000 if (threshold_val and lsr >= threshold_val) else 0
+                return (freq * 10) + bonus
+
+            scraped_land_rows = sorted(scraped_land_rows, key=_calc_score, reverse=True)
+            scraped_fleet_rows = sorted(scraped_fleet_rows, key=_calc_score, reverse=True)
+            scraped_rows = scraped_land_rows + scraped_fleet_rows
+
+            land_teams = []
+            fleet_teams = []
             
-            async with db.execute(query_land, (threshold_val, format_type, ally_code, ally_code)) as cur:
-                land_rows = await cur.fetchall()
-                
-            async with db.execute(query_fleet, (threshold_val, ally_code, ally_code)) as cur:
-                fleet_rows = await cur.fetchall()
-                
-            rows = land_rows + fleet_rows
-
-            # On compte le nombre total de rounds où le joueur a joué en défense dans ce format dans gac_round_teams
-            count_query = """
-                SELECT COUNT(DISTINCT r.id) as total_rounds
-                FROM gac_rounds r
-                JOIN gac_round_teams t ON t.round_id = r.id
-                WHERE t.side = 'defense'
-                  AND r.format = ?
-                  AND ((r.player_code = ? AND t.owner = 'player') OR (r.opponent_code = ? AND t.owner = 'opponent'))
-            """
-            async with db.execute(count_query, (format_type, ally_code, ally_code)) as cur:
-                count_row = await cur.fetchone()
-                total_rounds = count_row[0] if count_row else 0
-
-        # 2. Si aucune donnée dans gac_round_teams, on interroge gac_matches (données scrapées)
-        if total_rounds == 0:
-            async with get_db() as db:
-                # Vérifier s'il y a des rounds dans le bon format
-                async with db.execute(
-                    "SELECT COUNT(*) FROM gac_rounds WHERE player_code = ? AND format = ?",
-                    (ally_code, format_type)
-                ) as cur:
-                    row = await cur.fetchone()
-                    total_rounds = row[0] if row else 0
-                    
-                # Si aucun round dans le bon format, chercher dans tous les formats (ex: joueur n'a joué qu'en 3v3)
-                effective_format = format_type
-                if total_rounds == 0:
-                    async with db.execute(
-                        "SELECT COUNT(*), format FROM gac_rounds WHERE player_code = ? GROUP BY format ORDER BY COUNT(*) DESC LIMIT 1",
-                        (ally_code,)
-                    ) as cur:
-                        row = await cur.fetchone()
-                        if row and row[0]:
-                            total_rounds = row[0]
-                            effective_format = row[1]  # format disponible le plus fréquent
-                            logger.info(f"⚠️ Pas de rounds {format_type} pour {ally_code} — fallback sur {effective_format} ({total_rounds} rounds)")
-                    
-                if total_rounds > 0:
-                    # On récupère les équipes terrestres (sur le format effectif)
-                    query_scraped_land = """
-                        SELECT 
-                            m.defender_team,
-                            COALESCE(m.zone, 'unknown') as zone,
-                            COUNT(DISTINCT r.id) as frequency,
-                            MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) as last_seen_round
-                        FROM gac_matches m
-                        JOIN gac_rounds r ON m.round_id = r.id
-                        WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
-                          AND r.format = ?
-                          AND r.player_code = ?
-                          AND (m.zone IS NULL OR m.zone != 'fleet')
-                          AND NOT (m.defender_team LIKE '%CAPITAL%')
-                        GROUP BY m.defender_team, COALESCE(m.zone, 'unknown')
-                    """
-                    
-                    # On récupère les flottes (SUR TOUS LES FORMATS confondus) car une flotte 5v5 ou 3v3 c'est pareil !
-                    query_scraped_fleet = """
-                        SELECT 
-                            m.defender_team,
-                            'fleet' as zone,
-                            COUNT(DISTINCT r.id) as frequency,
-                            MAX(r.season_id || '-' || CAST(r.round_number AS TEXT)) as last_seen_round
-                        FROM gac_matches m
-                        JOIN gac_rounds r ON m.round_id = r.id
-                        WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
-                          AND r.player_code = ?
-                          AND (m.zone = 'fleet' OR m.defender_team LIKE '%CAPITAL%')
-                        GROUP BY m.defender_team
-                    """
-                    
-                    async with db.execute(query_scraped_land, (effective_format, ally_code)) as cur:
-                        scraped_land_rows = await cur.fetchall()
-                        
-                    async with db.execute(query_scraped_fleet, (ally_code,)) as cur:
-                        scraped_fleet_rows = await cur.fetchall()
-                        
-                    logger.info(f"[Analyzer] 🎯 {len(scraped_land_rows)} équipes terrestres et {len(scraped_fleet_rows)} flottes trouvées en BDD pour {ally_code} ({total_rounds} rounds)")
-
-                    def _calc_score(r):
-                        freq = r["frequency"]
-                        lsr = r.get("last_seen_round") or ""
-                        bonus = 10000 if (threshold_val and lsr >= threshold_val) else 0
-                        return (freq * 10) + bonus
-
-                    scraped_land_rows = sorted(scraped_land_rows, key=_calc_score, reverse=True)
-                    scraped_fleet_rows = sorted(scraped_fleet_rows, key=_calc_score, reverse=True)
-                    scraped_rows = scraped_land_rows + scraped_fleet_rows
-
-                    
-                    # Extraire et séparer terre/flottes
-                    land_teams = []
-                    fleet_teams = []
-                    
-                    habits = {
-                        "total_rounds": total_rounds,
-                        "zones": {
-                            "top": [],
-                            "bottom": [],
-                            "back": [],
-                            "fleet": fleet_teams
-                        }
-                    }
-                    
-                    for r_row in scraped_rows:
-                        try:
-                            members = json.loads(r_row["defender_team"])
-                        except:
-                            members = []
-                            
-                        if not members:
-                            continue
-                            
-                        leader_id = members[0]
-                        members_ids = members[1:]
-                        freq = r_row["frequency"]
-                        percent = round((freq / total_rounds) * 100, 1)
-                        zone_val = r_row["zone"]
-                        
-                        is_fleet = leader_id in GAC_FLEETS or "CAPITAL" in leader_id
-                        
-                        # Sécurité absolue : ignorer les équipes qui ne respectent pas la taille du format (ex: équipes de 4 ou 5 personnages taggées par erreur en 3v3)
-                        if format_type == "3v3" and not is_fleet and len(members) > 3:
-                            continue
-                        if format_type == "5v5" and not is_fleet and len(members) > 5:
-                            continue
-                        
-                        team_info = {
-                            "leader_id": leader_id,
-                            "members": members_ids,
-                            "frequency": freq,
-                            "percent": percent
-                        }
-                        
-                        if is_fleet:
-                            fleet_teams.append(team_info)
-                        else:
-                            if zone_val in ["top", "bottom", "back"]:
-                                habits["zones"][zone_val].append(team_info)
-                            else:
-                                land_teams.append(team_info)
-                                
-                    # Répartir les équipes terrestres de manière équitable (round-robin) POUR CELLES DONT LA ZONE EST UNKNOWN
-                    zones_cycle = ["top", "bottom", "back"]
-                    for idx, team in enumerate(land_teams):
-                        zone_name = zones_cycle[idx % 3]
-                        habits["zones"][zone_name].append(team)
-                        
-                    return habits
-
-        if total_rounds == 0:
-            return {"total_rounds": 0, "zones": {}}
-
-        # 3. Traiter le résultat de gac_round_teams
-        habits = {
-            "total_rounds": total_rounds,
-            "zones": {
-                "top": [],
-                "bottom": [],
-                "back": [],
-                "fleet": []
+            habits = {
+                "total_rounds": total_rounds,
+                "zones": {
+                    "top": [],
+                    "bottom": [],
+                    "back": [],
+                    "fleet": fleet_teams
+                }
             }
-        }
-
-        for row in rows:
-            zone_raw = row["zone"]
-            if not zone_raw:
-                continue
+            
+            for r_row in scraped_rows:
+                try:
+                    raw_dt = r_row["defender_team"]
+                    members = json.loads(raw_dt) if isinstance(raw_dt, str) else list(raw_dt)
+                except Exception:
+                    members = []
+                    
+                if not members:
+                    continue
+                    
+                leader_id = str(members[0]).upper()
+                members_ids = [str(m).upper() for m in members[1:]]
+                freq = r_row["frequency"]
+                percent = round((freq / total_rounds) * 100, 1)
+                zone_val = str(r_row.get("zone", "unknown")).lower()
                 
-            zone = str(zone_raw).lower()
-            if "top" in zone or "north" in zone:
-                z = "top"
-            elif "bottom" in zone or "south" in zone:
-                z = "bottom"
-            elif "back" in zone:
-                z = "back"
-            elif "fleet" in zone or "ship" in zone:
-                z = "fleet"
-            else:
-                z = zone
-
-            try:
-                members = json.loads(row["members_ids"])
-            except:
-                members = []
-
-            freq = row["frequency"]
-            percent = round((freq / total_rounds) * 100, 1)
-
-            if z not in habits["zones"]:
-                habits["zones"][z] = []
-
-            habits["zones"][z].append({
-                "leader_id": row["leader_id"],
-                "members": members,
-                "frequency": freq,
-                "percent": percent
-            })
-
-        return habits
+                is_fleet = leader_id in GAC_FLEETS or "CAPITAL" in leader_id
+                
+                if format_type == "3v3" and not is_fleet and len(members) > 3:
+                    continue
+                if format_type == "5v5" and not is_fleet and len(members) > 5:
+                    continue
+                
+                team_info = {
+                    "leader_id": leader_id,
+                    "members": members_ids,
+                    "frequency": freq,
+                    "percent": percent
+                }
+                
+                if is_fleet:
+                    fleet_teams.append(team_info)
+                else:
+                    if zone_val in ["top", "bottom", "back"]:
+                        habits["zones"][zone_val].append(team_info)
+                    else:
+                        land_teams.append(team_info)
+                        
+            # Répartir les équipes terrestres (round-robin si zone inconnue)
+            zones_cycle = ["top", "bottom", "back"]
+            for idx, team in enumerate(land_teams):
+                zone_name = zones_cycle[idx % 3]
+                habits["zones"][zone_name].append(team)
+                
+            return habits

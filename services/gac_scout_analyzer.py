@@ -111,7 +111,7 @@ class GacScoutAnalyzer:
                             CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
-                        WHERE m.is_attack = 0
+                        WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
                           AND r.format = ?
                           AND r.player_code = ?
                           AND m.zone != 'fleet'
@@ -129,7 +129,7 @@ class GacScoutAnalyzer:
                             CASE WHEN MAX(r.season_id || '-' || r.round_number) >= ? THEN 10000 ELSE 0 END as score
                         FROM gac_matches m
                         JOIN gac_rounds r ON m.round_id = r.id
-                        WHERE m.is_attack = 0
+                        WHERE (m.is_attack = FALSE OR m.is_attack = 0 OR m.is_attack IS FALSE)
                           AND r.player_code = ?
                           AND (m.zone = 'fleet' OR m.defender_team LIKE '%CAPITAL%')
                         GROUP BY m.defender_team

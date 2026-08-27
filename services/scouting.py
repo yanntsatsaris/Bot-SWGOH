@@ -490,7 +490,14 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         # On accepte l'équipe telle quelle
         def_score = team_data.get("defense", 5)
         off_score = team_data.get("offense", 5)
-        score = def_score + len(core_ready) # Bonus si équipe très complète
+        
+        relic_sum = sum(
+            (enemy_index.get(m.upper()) or enemy_index.get(m, {})).get("relic_tier", 0)
+            for m in core_ready
+        )
+        ldr_relic = (enemy_index.get(leader_id.upper()) or enemy_index.get(leader_id, {})).get("relic_tier", 0)
+        # Bonus d'investissement : les équipes avec de vraies reliques (R7, R8, R9) priment sur les compos G12/non-relique
+        score = (def_score * 15) + (ldr_relic * 5) + (relic_sum * 2) + (len(core_ready) * 5)
         
         available_teams.append({
             "leader_id": leader_id,
@@ -502,8 +509,8 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
             "id": leader_id
         })
                 
-    # Trier par "Biais Défensif" (defense - offense), puis par défense absolue, puis puissance
-    available_teams.sort(key=lambda x: (x["defense"] - x["offense"], x["defense"], x["score"]), reverse=True)
+    # Trier par score pondéré par reliques réelles puis par défense
+    available_teams.sort(key=lambda x: (x["score"], x["defense"]), reverse=True)
 
     # Filtrer les doublons de leader (si le joueur a les unités pour la Variation 1 et Variation 2)
     filtered_teams = []
@@ -1005,19 +1012,52 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                                 }
     if my_ally_code:
         try:
-            # 1. Déclenchement et attente du scraping ciblé pour la Flotte ennemie (Amiral + 3 départ)
+            # 1. Déclenchement et attente du scraping ciblé pour la Flotte ennemie (Amiral + 3 départ + renforts)
             for f_team in enemy_zones.get("Fleet", []):
                 f_cap = f_team.get("leader_id")
                 if f_cap and f_cap not in ["USED", "None", "EMPTY"]:
                     f_all = [m for m in f_team.get("members_ids", []) if m and m != f_cap]
                     front_3 = f_all[:3]
+                    reinforcements = f_all[3:]
                     f_d_str = ",".join(front_3)
-                    from services.gac_ship_counters_scraper import GacShipCountersScraper
-                    f_scraper = GacShipCountersScraper()
-                    log.info(f"[Scout] 🚀 Scraping et attente flotte : {f_cap} (départ: [{f_d_str}])...")
-                    if progress_callback:
-                        await progress_callback("⏳ **[■■■■■■■■□□] 80%** : Analyse et scraping des contres de flotte sur swgoh.gg...")
-                    await f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str)
+                    f_r_str = ",".join(reinforcements) if reinforcements else ""
+
+                    # Vérification en BDD si on a déjà des contres récents (< 7 jours) pour cette flotte
+                    needs_ship_scrape = True
+                    from database.db import get_db
+                    import datetime
+                    async with get_db() as db:
+                        cursor = await db.execute(
+                            "SELECT last_updated FROM ship_counters WHERE UPPER(def_capital) = UPPER(?) ORDER BY last_updated DESC LIMIT 1",
+                            (f_cap,)
+                        )
+                        s_row = await cursor.fetchone()
+                        if s_row and s_row["last_updated"]:
+                            try:
+                                raw_date = s_row["last_updated"]
+                                if isinstance(raw_date, datetime.datetime):
+                                    l_upd = raw_date.replace(tzinfo=None) if raw_date.tzinfo else raw_date
+                                elif isinstance(raw_date, str):
+                                    try:
+                                        l_upd = datetime.datetime.fromisoformat(raw_date.replace("Z", "+00:00").replace("T", " "))
+                                    except Exception:
+                                        l_upd = datetime.datetime.strptime(raw_date, "%Y-%m-%d %H:%M:%S")
+                                else:
+                                    l_upd = datetime.datetime.utcnow()
+
+                                if (datetime.datetime.utcnow() - l_upd).days <= 7:
+                                    needs_ship_scrape = False
+                                    log.info(f"[Scout] ⚡ Contres récents déjà en BDD pour la flotte {f_cap} (dernière MAJ: {l_upd}) -> Pas de re-scraping")
+                            except Exception:
+                                needs_ship_scrape = True
+
+                    if needs_ship_scrape:
+                        from services.gac_ship_counters_scraper import GacShipCountersScraper
+                        f_scraper = GacShipCountersScraper()
+                        log.info(f"[Scout] 🚀 Scraping et attente flotte : {f_cap} (départ: [{f_d_str}], renforts: [{f_r_str}])...")
+                        if progress_callback:
+                            await progress_callback(f"⏳ **[■■■■■■■■□□] 80%** : Extraction swgoh.gg des contres pour {f_cap}...")
+                        await f_scraper.refresh_ship_counters(f_cap, d_members=f_d_str, d_reinforcements=f_r_str)
 
             # 2. Personnages
             leaders_to_scrape = {}

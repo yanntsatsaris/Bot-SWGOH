@@ -594,23 +594,39 @@ class AdminCog(commands.Cog, name="Admin"):
             if ally_code:
                 clean = ally_code.replace("-", "").strip()
                 res = await lock_player_and_bracket(clean)
-                opp_list = [f"{o['name']} ({o['ally_code']})" for o in res.get('opponents', [])]
+                opp_list = [f"{o['name']} (`{o['ally_code']}`)" for o in res.get('opponents', [])]
                 await interaction.followup.send(
                     f"🔒 **Lock GAC effectué pour `{clean}`** :\n"
                     f"• Joueurs verrouillés : **{res.get('locked_count', 0)}**\n"
                     f"• Saison : `{res.get('season_id', 'N/A')}`\n"
-                    f"• Adversaires de poule : {', '.join(opp_list) or 'Aucun extrait'}",
+                    f"• Adversaires de poule ({len(opp_list)}) :\n" + ("\n".join([f"  └ {o}" for o in opp_list]) if opp_list else "  └ Aucun extrait"),
                     ephemeral=True
                 )
             else:
-                results = await auto_lock_all_registered_players()
+                async def progress(msg: str):
+                    try:
+                        await interaction.edit_original_response(content=msg)
+                    except Exception:
+                        pass
+
+                results = await auto_lock_all_registered_players(progress_callback=progress)
                 total_players = len(results)
                 total_locked = sum(r.get("locked_count", 0) for r in results.values())
-                await interaction.followup.send(
+
+                report_lines = []
+                for ac, r in results.items():
+                    cnt = r.get("locked_count", 0)
+                    opps = r.get("opponents", [])
+                    status = f"✅ {cnt} joueurs" if cnt > 1 else f"⚠️ {cnt} joueur (poule non trouvée)"
+                    report_lines.append(f"• `{ac}` ➔ {status} ({len(opps)} adversaires)")
+
+                summary_text = (
                     f"🔒 **Lock GAC terminé pour tous les joueurs enregistrés ({total_players})** :\n"
-                    f"• Total profils verrouillés en BDD : **{total_locked}**",
-                    ephemeral=True
+                    f"• **Total profils verrouillés en BDD : {total_locked}**\n\n"
+                    + "\n".join(report_lines)
                 )
+
+                await interaction.edit_original_response(content=summary_text)
         except Exception as e:
             log.exception("Erreur admin_gac_lock: %s", e)
             await interaction.followup.send(f"❌ Erreur lors du lock : {e}", ephemeral=True)

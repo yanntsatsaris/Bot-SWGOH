@@ -191,7 +191,7 @@ async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str
     }
 
 
-async def auto_lock_all_registered_players() -> dict:
+async def auto_lock_all_registered_players(progress_callback=None) -> dict:
     """
     Tâche automatique : parcourt tous les joueurs enregistrés sur le bot et verrouille leurs profils.
     """
@@ -199,10 +199,16 @@ async def auto_lock_all_registered_players() -> dict:
     log.info(f"[GacAutoLock] 🚀 Démarrage du verrouillage automatique pour {len(players)} joueurs enregistrés...")
     
     results = {}
-    for p in players:
+    for i, p in enumerate(players, 1):
         ac = p.get("ally_code")
         if not ac:
             continue
+        p_name = p.get("name") or ac
+        if progress_callback:
+            try:
+                await progress_callback(f"⏳ **[{i}/{len(players)}]** Verrouillage de **{p_name}** (`{ac}`) & extraction poule swgoh.gg...")
+            except Exception:
+                pass
         res = await lock_player_and_bracket(ac)
         results[ac] = res
         await asyncio.sleep(0.5)

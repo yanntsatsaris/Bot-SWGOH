@@ -901,6 +901,15 @@ async def load_user_defense_zones(discord_id: str, used_type: str = "defense") -
     return zones
 
 
+async def load_manual_enemy_slots(discord_id: str) -> dict:
+    """Charge UNIQUEMENT les slots de défense adverse modifiés manuellement via /gac-edit-slot.
+    Ces slots ont used_type='enemy_defense_manual' et ne doivent pas être confondus avec
+    les zones enemy_defense auto-sauvegardées lors d'un scout précédent."""
+    return await load_user_defense_zones(discord_id, used_type="enemy_defense_manual")
+
+
+
+
 async def save_active_gac_session(discord_id: str, enemy_code: str, enemy_name: str, my_name: str, league: str, fmt: str, enemy_roster_index: dict = None):
     """Enregistre en mémoire active le profil et les reliques de l'adversaire pour les conserver lors des réactualisations d'image."""
     if not discord_id:

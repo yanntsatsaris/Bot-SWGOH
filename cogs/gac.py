@@ -177,7 +177,7 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
     cote_raw = str(getattr(interaction.namespace, "cote", "") or "").lower()
     
     if "record-battle" in cmd_name or "enemy" in cote_raw or "adverse" in cote_raw:
-        used_type_target = "enemy_defense"
+        used_type_target = "enemy_defense_manual"
     else:
         used_type_target = "defense"
 
@@ -376,7 +376,7 @@ class GacCog(commands.Cog, name="GAC"):
         from database.db import save_user_defense_slot
         
         is_my = (cote.value == "my")
-        used_type = "defense" if is_my else "enemy_defense"
+        used_type = "defense" if is_my else "enemy_defense_manual"
         await save_user_defense_slot(str(interaction.user.id), zone.value, slot, leader_id, members_list, used_type=used_type)
         side_str = "Ta Défense" if is_my else "Défense Adverse"
             

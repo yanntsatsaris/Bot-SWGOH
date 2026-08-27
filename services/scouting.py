@@ -1000,12 +1000,15 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
     except Exception as e:
         log.warning(f"Erreur association Datacrons ennemis: {e}")
 
-    # ── Intégration des slots de défense adverse modifiés par l'utilisateur ──
+    # ── Intégration des slots de défense adverse MODIFIÉS MANUELLEMENT (via /gac-edit-slot) ──
+    # IMPORTANT : On ne charge PAS les zones "enemy_defense" auto-sauvegardées d'un scout précédent
+    # car elles écraserait l'analyse basée sur l'historique frais. On charge UNIQUEMENT
+    # les slots modifiés manuellement, identifiés par la table active_manual_enemy_slots.
     if discord_id:
-        from database.db import load_user_defense_zones
-        saved_enemy_zones = await load_user_defense_zones(str(discord_id), "enemy_defense")
-        if saved_enemy_zones:
-            for zone_name, saved_teams in saved_enemy_zones.items():
+        from database.db import load_manual_enemy_slots
+        manual_slots = await load_manual_enemy_slots(str(discord_id))
+        if manual_slots:
+            for zone_name, saved_teams in manual_slots.items():
                 if zone_name in enemy_zones:
                     for s_team in saved_teams:
                         s_idx = s_team.get("slot_index", 1) - 1
@@ -1018,6 +1021,7 @@ async def get_scout_data(enemy_ally_code: str, fmt: str, my_ally_code: str | Non
                                     "source": "Modifié manuellement",
                                     "target_size": enemy_zones[zone_name][s_idx].get("target_size", 5)
                                 }
+
     if my_ally_code:
         try:
             # 1. Déclenchement et attente du scraping ciblé pour la Flotte ennemie (Amiral + 3 départ + renforts)

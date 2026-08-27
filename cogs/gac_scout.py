@@ -471,8 +471,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                     from database.db import save_user_defense_zones, save_active_gac_session
                     if "my_zones" in scout_data:
                         await save_user_defense_zones(str(inter.user.id), scout_data["my_zones"], "defense")
-                    if "zones" in scout_data:
-                        await save_user_defense_zones(str(inter.user.id), scout_data["zones"], "enemy_defense")
+                    # NOTE: On ne sauvegarde PAS les zones ennemies automatiquement (enemy_defense)
+                    # car cela écraserait l'historique lors du prochain scout.
+                    # Les modifications manuelles (/gac-edit-slot) sont stockées dans enemy_defense_manual.
+
 
                     await save_active_gac_session(
                         str(inter.user.id),
@@ -691,8 +693,20 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 enemy_roster_index = _build_roster_index(e_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
                 enemy_name = e_profile.get("name", enemy_name)
 
-        enemy_zones = await load_user_defense_zones(discord_id, "enemy_defense")
+        # Reconstruire les zones ennemies depuis l'historique (fresh) + overrides manuels
+        if enemy_code:
+            try:
+                from services.scouting import get_scout_data
+                fresh_scout = await get_scout_data(enemy_code, fmt, my_ally_code=ally_code, discord_id=discord_id)
+                enemy_zones = fresh_scout.get("zones", {})
+            except Exception as e:
+                log.warning(f"Impossible de reconstruire les zones ennemies pour le plan d'attaque: {e}")
+                enemy_zones = await load_user_defense_zones(discord_id, "enemy_defense")
+        else:
+            enemy_zones = {"North": [], "South": [], "Back": [], "Fleet": []}
+        
         my_zones = await load_user_defense_zones(discord_id, "defense")
+
         
         # Si aucun leader personnalisé n'a été spécifié, récupérer le contre actuellement proposé pour ce slot
         if not all_atk:

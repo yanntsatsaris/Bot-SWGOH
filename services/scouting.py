@@ -638,7 +638,7 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                 used_base_ids.add(filler)
 
 
-    # 2. FLOTTES (Priorité absolue à la Tier List Défense swgoh.gg en BDD)
+    # 2. FLOTTES (Synergies complètes et dédoublonnage strict des Amiraux)
     CAP_NORM = {
         "NEGOTIATOR": "CAPITALNEGOTIATOR",
         "PROFUNDITY": "CAPITALPROFUNDITY",
@@ -653,38 +653,16 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         "ENDURANCE": "CAPITALJEDICRUISER",
     }
     available_fleets = []
-    tier_fleets = []
-    try:
-        from database.db import get_fleet_tier_list
-        tier_fleets = await get_fleet_tier_list(side="defense", league=league.lower(), format_type=fmt)
-        if not tier_fleets and league.lower() != "kyber":
-            tier_fleets = await get_fleet_tier_list(side="defense", league="kyber", format_type=fmt)
-    except Exception as e:
-        log.warning(f"Impossible de lire la tier list fleet: {e}")
-        tier_fleets = []
-
-    if tier_fleets:
-        for tf in tier_fleets:
-            cap_id = (tf.get("capital_ship") or "").upper()
-            cap_id = CAP_NORM.get(cap_id, cap_id)
-            if enemy_index.get(cap_id) and enemy_index[cap_id].get("rarity", 0) >= 5:
-                score = enemy_index[cap_id].get("relic_tier", 0) * 10 + enemy_index[cap_id].get("gear_tier", 0)
-                available_fleets.append({
-                    "leader_id": cap_id,
-                    "members": [m.upper() for m in tf.get("members_ids", []) if m],
-                    "defense": tf.get("hold_pct", 50.0) or (100 - tf.get("rank", 10)),
-                    "score": score
-                })
-    else:
-        for cap_id, team_data in GAC_FLEETS.items():
-            if enemy_index.get(cap_id) and enemy_index[cap_id].get("rarity", 0) >= 5:
-                score = enemy_index[cap_id].get("relic_tier", 0) * 10 + enemy_index[cap_id].get("gear_tier", 0)
-                available_fleets.append({
-                    "leader_id": cap_id,
-                    "members": team_data["members"],
-                    "defense": team_data.get("defense", 5),
-                    "score": score
-                })
+    for cap_id, team_data in GAC_FLEETS.items():
+        norm_cap = CAP_NORM.get(cap_id, cap_id)
+        if enemy_index.get(norm_cap) and enemy_index[norm_cap].get("rarity", 0) >= 5:
+            score = enemy_index[norm_cap].get("relic_tier", 0) * 10 + enemy_index[norm_cap].get("gear_tier", 0)
+            available_fleets.append({
+                "leader_id": norm_cap,
+                "members": [m for m in team_data["members"] if m != norm_cap],
+                "defense": team_data.get("defense", 5),
+                "score": score
+            })
             
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
     
@@ -693,12 +671,16 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
     for _ in range(remaining_fleet_q):
         placed = False
         for f in available_fleets:
-            if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
-                valid_members = [m for m in f["members"] if m not in used_base_ids and m != f["leader_id"]][:7]
+            cap = f["leader_id"]
+            if cap not in used_base_ids and cap != "USED":
+                valid_members = [
+                    m for m in f["members"] 
+                    if m not in used_base_ids and m in enemy_index and m != cap
+                ][:7]
                 zones["Fleet"].append({
-                    "leader_id": f["leader_id"],
+                    "leader_id": cap,
                     "members_ids": valid_members,
-                    "source": "predictive",
+                    "source": "Prédiction (Meta)",
                     "target_size": 8
                 })
                 used_base_ids.update(valid_members)
@@ -889,7 +871,7 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
                 if filler:
                     used_base_ids.add(filler)
 
-    # 2. FLOTTES DU JOUEUR (Priorité absolue à la Tier List Défense swgoh.gg en BDD)
+    # 2. FLOTTES DU JOUEUR (Synergies complètes et dédoublonnage strict des Amiraux)
     CAP_NORM = {
         "NEGOTIATOR": "CAPITALNEGOTIATOR",
         "PROFUNDITY": "CAPITALPROFUNDITY",
@@ -904,38 +886,16 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         "ENDURANCE": "CAPITALJEDICRUISER",
     }
     available_fleets = []
-    tier_fleets = []
-    try:
-        from database.db import get_fleet_tier_list
-        tier_fleets = await get_fleet_tier_list(side="defense", league=league.lower(), format_type=fmt)
-        if not tier_fleets and league.lower() != "kyber":
-            tier_fleets = await get_fleet_tier_list(side="defense", league="kyber", format_type=fmt)
-    except Exception as e:
-        log.warning(f"Impossible de lire la tier list fleet joueur: {e}")
-        tier_fleets = []
-
-    if tier_fleets:
-        for tf in tier_fleets:
-            cap_id = (tf.get("capital_ship") or "").upper()
-            cap_id = CAP_NORM.get(cap_id, cap_id)
-            if my_index.get(cap_id) and my_index[cap_id].get("rarity", 0) >= 5:
-                score = my_index[cap_id].get("relic_tier", 0) * 10 + my_index[cap_id].get("gear_tier", 0)
-                available_fleets.append({
-                    "leader_id": cap_id,
-                    "members": [m.upper() for m in tf.get("members_ids", []) if m],
-                    "defense": tf.get("hold_pct", 50.0) or (100 - tf.get("rank", 10)),
-                    "score": score
-                })
-    else:
-        for cap_id, team_data in GAC_FLEETS.items():
-            if my_index.get(cap_id) and my_index[cap_id].get("rarity", 0) >= 5:
-                score = my_index[cap_id].get("relic_tier", 0) * 10 + my_index[cap_id].get("gear_tier", 0)
-                available_fleets.append({
-                    "leader_id": cap_id,
-                    "members": team_data["members"],
-                    "defense": team_data.get("defense", 5),
-                    "score": score
-                })
+    for cap_id, team_data in GAC_FLEETS.items():
+        norm_cap = CAP_NORM.get(cap_id, cap_id)
+        if my_index.get(norm_cap) and my_index[norm_cap].get("rarity", 0) >= 5:
+            score = my_index[norm_cap].get("relic_tier", 0) * 10 + my_index[norm_cap].get("gear_tier", 0)
+            available_fleets.append({
+                "leader_id": norm_cap,
+                "members": [m for m in team_data["members"] if m != norm_cap],
+                "defense": team_data.get("defense", 5),
+                "score": score
+            })
             
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
     
@@ -944,15 +904,19 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
     for _ in range(remaining_fleet_q):
         placed = False
         for f in available_fleets:
-            if f["leader_id"] not in used_base_ids and f["leader_id"] != "USED":
-                # Conserver UNIQUEMENT les vaisseaux synergiques réels que le joueur possède
-                valid_members = [m for m in f["members"] if m not in used_base_ids and m in my_index and m != f["leader_id"]][:7]
+            cap = f["leader_id"]
+            if cap not in used_base_ids and cap != "USED":
+                valid_members = [
+                    m for m in f["members"] 
+                    if m not in used_base_ids and m in my_index and m != cap
+                ][:7]
                 zones["Fleet"].append({
-                    "leader_id": f["leader_id"],
+                    "leader_id": cap,
                     "members_ids": valid_members,
                     "source": "Prédiction (Meta)",
                     "target_size": 8
                 })
+                used_base_ids.add(cap)
                 used_base_ids.update(valid_members)
                 f["leader_id"] = "USED"
                 placed = True

@@ -25,40 +25,54 @@ class SectorOutcomeSelectView(discord.ui.View):
     async def btn_win(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         from database.db import set_sector_status, add_used_units
-        await set_sector_status(str(interaction.user.id), self.zone, self.slot_index, "CLEARED")
         
+        # 1. Récupérer l'équipe de contre AVANT de marquer le secteur comme CLEARED
         plan = await self.parent_view.get_plan(interaction.user.id)
         slot_info = None
         for s in plan.get(self.zone, []):
             if s["slot_index"] == self.slot_index:
                 slot_info = s
                 break
+        
+        all_atk = []
         if slot_info and slot_info.get("counter"):
             c = slot_info["counter"]
             all_atk = [c["atk_leader_id"]] + c.get("atk_members_ids", [])
+
+        # 2. Marquer le statut et enregistrer les unités utilisées
+        await set_sector_status(str(interaction.user.id), self.zone, self.slot_index, "CLEARED")
+        if all_atk:
             await add_used_units(str(interaction.user.id), all_atk, used_type="attack", zone=self.zone, slot_index=self.slot_index)
             
-        await interaction.followup.send(f"✅ **Secteur {self.zone} #{self.slot_index} marqué comme VICTOIRE (TOMBÉ) !**\nL'équipe d'attaque a été verrouillée.", ephemeral=True)
+        units_str = f"\n🔥 Unités verrouillées : {', '.join(get_name(u) for u in all_atk)}" if all_atk else ""
+        await interaction.followup.send(f"✅ **Secteur {self.zone} #{self.slot_index} marqué comme VICTOIRE (TOMBÉ) !**{units_str}\nLe plan d'attaque a été rééquilibré.", ephemeral=True)
         await self.parent_view.refresh_plan_message(interaction)
 
     @discord.ui.button(label="❌ Échec (Défaite)", style=discord.ButtonStyle.danger)
     async def btn_loss(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer(ephemeral=True)
         from database.db import set_sector_status, add_used_units
-        await set_sector_status(str(interaction.user.id), self.zone, self.slot_index, "FAILED")
         
+        # 1. Récupérer l'équipe de contre AVANT de marquer le secteur comme FAILED
         plan = await self.parent_view.get_plan(interaction.user.id)
         slot_info = None
         for s in plan.get(self.zone, []):
             if s["slot_index"] == self.slot_index:
                 slot_info = s
                 break
+        
+        all_atk = []
         if slot_info and slot_info.get("counter"):
             c = slot_info["counter"]
             all_atk = [c["atk_leader_id"]] + c.get("atk_members_ids", [])
+
+        # 2. Marquer le statut et enregistrer les unités brûlées
+        await set_sector_status(str(interaction.user.id), self.zone, self.slot_index, "FAILED")
+        if all_atk:
             await add_used_units(str(interaction.user.id), all_atk, used_type="attack", zone=self.zone, slot_index=self.slot_index)
             
-        await interaction.followup.send(f"⚠ **Secteur {self.zone} #{self.slot_index} marqué comme ÉCHEC !**\nUn contre de rattrapage a été réattribué avec tes unités disponibles restantes.", ephemeral=True)
+        units_str = f"\n🔥 Unités brûlées : {', '.join(get_name(u) for u in all_atk)}" if all_atk else ""
+        await interaction.followup.send(f"⚠ **Secteur {self.zone} #{self.slot_index} marqué comme ÉCHEC !**{units_str}\nUn contre de rattrapage a été réattribué avec tes unités disponibles restantes.", ephemeral=True)
         await self.parent_view.refresh_plan_message(interaction)
 
 

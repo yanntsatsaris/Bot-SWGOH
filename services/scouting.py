@@ -112,7 +112,7 @@ CAPITAL_ALLOWED_SHIPS = {
     },
     "CAPITALMALEVOLENCE": {
         "VULTUREDROID", "HYENABOMBER", "GEONOSIANSTARFIGHTERSUNFAC", "GEONOSIANSTARFIGHTERSPY",
-        "GEONOSIANSTARFIGHTER", "IG2000", "EBONHAWK"
+        "GEONOSIANSTARFIGHTER", "GEONOSIANSTARFIGHTERSOLDIER", "IG2000", "EBONHAWK", "HOUNDSTOOTH"
     },
     "CAPITALCHIMAERA": {
         "TIEDEFENDER", "TIEINTERCEPTOR", "TIEADVANCED", "TIEBOMBER", "TIEFIGHTER",
@@ -128,6 +128,144 @@ CAPITAL_ALLOWED_SHIPS = {
         "HOUNDSTOOTH", "EBONHAWK"
     },
 }
+
+SHIP_ALIASES = {
+    "BTLBYWING": "YWINGCLONEWARS",
+    "YWINGCLONEWARS": "BTLBYWING",
+    "FIRSTORDER_ECHELON": "TIEECHELON",
+    "FIRSTORDERECHELON": "TIEECHELON",
+    "TIEECHELON": "FIRSTORDER_ECHELON",
+    "JEDISTARFIGHTERAHSOKA": "JEDISTARFIGHTERAHSOKATANO",
+    "JEDISTARFIGHTERAHSOKATANO": "JEDISTARFIGHTERAHSOKA",
+    "GEONOSIANSTARFIGHTER": "GEONOSIANSTARFIGHTERSOLDIER",
+    "GEONOSIANSTARFIGHTERSOLDIER": "GEONOSIANSTARFIGHTER",
+    "MEONECROW": "COMEUPPANCE",
+    "COMEUPPANCE": "MEONECROW",
+}
+
+FLEET_SYNERGY_PRIORITY = {
+    "CAPITALLEVIATHAN": [
+        "FURYCLASSINTERCEPTOR", "SITHBOMBER", "SITHFIGHTER", "MKVIINTERCEPTOR", "TIEDAGGER",
+        "SITHINFILTRATOR", "SITHASSASSIN", "EBONHAWK"
+    ],
+    "CAPITALEXECUTOR": [
+        "RAZORCREST", "HOUNDSTOOTH", "PUNISHINGONE", "XANADUBLOOD", "SLAVE1", "IG2000",
+        "TIEADVANCED", "TIEBOMBER", "TIEFIGHTER", "EBONHAWK"
+    ],
+    "CAPITALPROFUNDITY": [
+        "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "CASSIANSUWING", "BISTANSUWING",
+        "BWINGREBEL", "GHOST", "PHANTOM2", "XWINGRED3", "XWINGRED2", "UWINGHERO", "UWING", "EBONHAWK"
+    ],
+    "CAPITALMONCALAMARICRUISER": [
+        "MILLENNIUMFALCON", "OUTRIDER", "YWINGREBEL", "CASSIANSUWING", "BISTANSUWING",
+        "BWINGREBEL", "GHOST", "PHANTOM2", "XWINGRED3", "XWINGRED2", "UWINGHERO", "UWING", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+    "CAPITALNEGOTIATOR": [
+        "JEDISTARFIGHTERANAKIN", "MARAUDER", "UMBARANSTARFIGHTER", "YWINGCLONEWARS", "BTLBYWING",
+        "BLADEOFDORIN", "JEDISTARFIGHTERAHSOKATANO", "ARC170REX", "ARC170CLONESERGEANT",
+        "JEDISTARFIGHTERCONSULAR", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+    "CAPITALJEDICRUISER": [
+        "JEDISTARFIGHTERANAKIN", "MARAUDER", "UMBARANSTARFIGHTER", "YWINGCLONEWARS", "BTLBYWING",
+        "BLADEOFDORIN", "JEDISTARFIGHTERAHSOKATANO", "ARC170REX", "ARC170CLONESERGEANT",
+        "JEDISTARFIGHTERCONSULAR", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+    "CAPITALMALEVOLENCE": [
+        "HYENABOMBER", "VULTUREDROID", "GEONOSIANSTARFIGHTERSUNFAC", "GEONOSIANSTARFIGHTERSPY",
+        "GEONOSIANSTARFIGHTER", "GEONOSIANSTARFIGHTERSOLDIER", "IG2000", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+    "CAPITALCHIMAERA": [
+        "TIEDEFENDER", "TIEINTERCEPTOR", "TIEADVANCED", "TIEBOMBER", "TIEFIGHTER",
+        "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE", "TIEINQUISITOR", "SCYTHE", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+    "CAPITALSTARDESTROYER": [
+        "TIEDEFENDER", "TIEINTERCEPTOR", "TIEADVANCED", "TIEBOMBER", "TIEFIGHTER",
+        "GAUNTLETSTARFIGHTER", "EMPERORSSHUTTLE", "TIEINQUISITOR", "SCYTHE", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+    "CAPITALFINALIZER": [
+        "TIESILENCER", "FIRSTORDER_ECHELON", "FIRSTORDERECHELON", "TIEECHELON",
+        "KYLORENSCOMMANDSHUTTLE", "FIRSTORDERSPECIALFORCESTIEFIGHTER", "FIRSTORDERTIEFIGHTER",
+        "HOUNDSTOOTH", "EBONHAWK"
+    ],
+    "CAPITALRADDUS": [
+        "REYSMILLENNIUMFALCON", "RESISTANCEYWING", "POEDAMERONXWING", "XWINGRESISTANCE",
+        "COMEUPPANCE", "MEONECROW", "EBONHAWK", "HOUNDSTOOTH"
+    ],
+}
+
+def _complete_fleet_lineup(
+    cap_id: str,
+    base_members: list[str],
+    roster_index: dict,
+    used_ids: set,
+    max_members: int = 7
+) -> list[str]:
+    """
+    Construit une composition de flotte complète (front + renforts jusqu'à max_members) :
+    1. Conserve les membres de départ valides (possédés, non utilisés, synergiques).
+    2. Complète avec les meilleurs vaisseaux synergiques disponibles dans le roster.
+    """
+    cap_upper = (cap_id or "").upper()
+    roster_upper = {k.upper(): v for k, v in (roster_index or {}).items()}
+    used_upper = {u.upper() for u in used_ids} if used_ids else set()
+
+    def _resolve_owned(bid: str):
+        b = (bid or "").upper()
+        if not b or b == cap_upper:
+            return None
+        if b in roster_upper and b not in used_upper:
+            return b
+        alt = SHIP_ALIASES.get(b)
+        if alt and alt in roster_upper and alt not in used_upper:
+            return alt
+        return None
+
+    result = []
+    seen = set()
+
+    allowed = CAPITAL_ALLOWED_SHIPS.get(cap_upper, set())
+
+    # 1. Ajouter les membres de base valides
+    for m in (base_members or []):
+        resolved = _resolve_owned(m)
+        if resolved and resolved not in seen:
+            if not allowed or resolved in allowed or (SHIP_ALIASES.get(resolved) in allowed):
+                result.append(resolved)
+                seen.add(resolved)
+                if len(result) >= max_members:
+                    return result
+
+    # 2. Compléter jusqu'à max_members avec les vaisseaux prioritaires synergiques
+    priority_list = FLEET_SYNERGY_PRIORITY.get(cap_upper, list(allowed))
+
+    def _ship_power(bid: str):
+        ud = roster_upper.get(bid, {})
+        return (
+            ud.get("rarity", 0),
+            ud.get("relic_tier", 0),
+            ud.get("gear_tier", 0),
+            ud.get("level", 0)
+        )
+
+    candidates = []
+    for s in priority_list:
+        resolved = _resolve_owned(s)
+        if resolved and resolved not in seen:
+            if not allowed or resolved in allowed or (SHIP_ALIASES.get(resolved) in allowed):
+                candidates.append(resolved)
+
+    # Trier les renforts par puissance dans le roster
+    candidates.sort(key=_ship_power, reverse=True)
+
+    for c in candidates:
+        if c not in seen:
+            result.append(c)
+            seen.add(c)
+            if len(result) >= max_members:
+                break
+
+    return result
+
 
 async def get_db_meta_fleets(mode: str = "defense") -> dict:
     """
@@ -693,12 +831,11 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
                                 log.info(f"[PredictZones] ⛔ Historique {hz} | Leader={leader} | Filtre anti-garbage (synergy={has_synergy}, percent={percent}%)")
                                 continue
 
-                    # Pour la flotte : limiter les renforts selon les étoiles du capital
+                    # Pour la flotte : compléter les 3 départs + renforts autorisés selon les étoiles du capital
                     if hz == "fleet":
                         cap_rarity = (enemy_index.get(leader.upper()) or enemy_index.get(leader, {})).get("rarity", 7)
                         max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
-                        # Total membres = 3 vaisseaux de départ + max_reinforcements
-                        valid_members = valid_members[:3 + max_reinforcements]
+                        valid_members = _complete_fleet_lineup(leader, valid_members, enemy_index, used_base_ids, max_members=3 + max_reinforcements)
                         log.info(f"[PredictZones] 🚀 Flotte {leader} | Rareté={cap_rarity}★ | Max renforts={max_reinforcements} | Membres retenus={len(valid_members)}")
 
                     # Ajout direct et fidèle de l'équipe historique du joueur
@@ -826,22 +963,17 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         for f in available_fleets:
             cap = f["leader_id"]
             if cap not in used_base_ids and cap != "USED":
-                cap_rarity = enemy_index.get(cap, {}).get("rarity", 7)
+                cap_rarity = (enemy_index.get(cap.upper()) or enemy_index.get(cap, {})).get("rarity", 7)
                 max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
                 max_members = 3 + max_reinforcements
-                valid_members = [
-                    m for m in f["members"] 
-                    if m not in used_base_ids 
-                    and m in enemy_index 
-                    and m != cap
-                    and (cap not in CAPITAL_ALLOWED_SHIPS or m.upper() in CAPITAL_ALLOWED_SHIPS[cap])
-                ][:max_members]
+                valid_members = _complete_fleet_lineup(cap, f["members"], enemy_index, used_base_ids, max_members=max_members)
                 zones["Fleet"].append({
                     "leader_id": cap,
                     "members_ids": valid_members,
                     "source": "Prédiction (Meta BDD)",
                     "target_size": 1 + max_members
                 })
+                used_base_ids.add(cap)
                 used_base_ids.update(valid_members)
                 f["leader_id"] = "USED"
                 placed = True
@@ -1067,17 +1199,11 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         for f in available_fleets:
             cap = f["leader_id"]
             if cap not in used_base_ids and cap != "USED":
-                cap_rarity = my_index.get(cap, {}).get("rarity", 7)
+                cap_rarity = (my_index.get(cap.upper()) or my_index.get(cap, {})).get("rarity", 7)
                 max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
                 # 3 vaisseaux de départ + max_reinforcements selon les étoiles du capital
                 max_members = 3 + max_reinforcements
-                valid_members = [
-                    m for m in f["members"] 
-                    if m not in used_base_ids 
-                    and m in my_index 
-                    and m != cap
-                    and (cap not in CAPITAL_ALLOWED_SHIPS or m.upper() in CAPITAL_ALLOWED_SHIPS[cap])
-                ][:max_members]
+                valid_members = _complete_fleet_lineup(cap, f["members"], my_index, used_base_ids, max_members=max_members)
                 zones["Fleet"].append({
                     "leader_id": cap,
                     "members_ids": valid_members,
@@ -1382,16 +1508,27 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
     3. Empêche un secteur secondaire d'accaparer un contre vital avec 0% de win_rate si un autre secteur en a besoin.
     4. Maximise le nombre total de secteurs couverts avec le meilleur taux de victoire global.
     """
-    from database.db import get_used_units, get_active_sector_statuses
+    from database.db import get_used_units, get_active_sector_statuses, get_attack_team_by_slot
     from services.gac_attack_planner import get_best_counter_with_memory
 
     used_units = set(await get_used_units(discord_id))
     sector_statuses = await get_active_sector_statuses(discord_id)
+    # Récupérer les teams effectivement utilisées par secteur (pour l'affichage des CLEARED)
+    attack_teams_by_slot = await get_attack_team_by_slot(discord_id)
 
     # 1. Collecter tous les slots actifs et leurs candidats contres
     slots_data = []
 
     # ─── Zone Fleet : ship counters depuis la BDD ─────────────────────────────
+    # Initialisation unique de used_units_fleet AVANT la boucle pour éviter de réutiliser le même vaisseau / flotte
+    used_units_fleet = {u.upper() for u in used_units} if used_units else set()
+
+    # IDs des vaisseaux du joueur disponibles (normalisés en majuscules)
+    player_ship_ids = {
+        bid.upper() for bid, udata in my_index.items()
+        if udata.get("combat_type", 1) == 2
+    }
+
     fleet_slots = []
     for slot_idx, enemy_fleet in enumerate(enemy_zones.get("Fleet", []), 1):
         def_capital = enemy_fleet.get("leader_id")
@@ -1405,17 +1542,26 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
         fleet_offset = sec_info.get("counter_offset", 0)
 
         if fleet_status == "CLEARED":
+            used_team_ids = attack_teams_by_slot.get(("Fleet", slot_idx), [])
+            used_counter = {
+                "atk_leader_id": used_team_ids[0] if used_team_ids else None,
+                "atk_members_ids": used_team_ids[1:] if len(used_team_ids) > 1 else [],
+                "win_pct": 100,
+                "is_used_team": True,
+            } if used_team_ids else None
             fleet_slots.append({
                 "zone": "Fleet",
                 "slot_index": slot_idx,
                 "enemy_team": enemy_fleet,
-                "counter": None,
+                "counter": used_counter,
                 "win_pct": 100,
                 "status": "CLEARED",
                 "counter_offset": 0,
                 "total_options": 0,
                 "candidates": [],
             })
+            if used_team_ids:
+                used_units_fleet.update(u.upper() for u in used_team_ids)
             continue
 
         # Chercher les ship counters depuis la BDD avec normalisation des IDs
@@ -1443,30 +1589,36 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             log.warning(f"[AttackPlan] Erreur get_ship_counters({norm_cap}): {_e}")
             ship_counters_raw = []
 
-        # IDs des vaisseaux du joueur disponibles
-        player_ship_ids = {
-            bid.upper() for bid, udata in my_index.items()
-            if udata.get("combat_type", 1) == 2
-        }
-        used_units_fleet = {u.upper() for u in await get_used_units(discord_id)} if discord_id else set()
-
         converted_fleet = []
         for sc in ship_counters_raw:
             atk_cap = (sc.get("atk_capital") or "").upper()
             atk_members = [m.upper() for m in sc.get("atk_members_ids", []) if m]
             
-            # Le joueur DOIT posséder le vaisseau amiral d'attaque
+            # Le joueur DOIT posséder le vaisseau amiral d'attaque et il ne doit pas être déjà brûlé
             if not atk_cap or atk_cap not in player_ship_ids or atk_cap in used_units_fleet:
                 continue
 
-            # Front ships (les 3 vaisseaux de départ : 100% obligatoires)
-            front_ships = atk_members[:3]
-            if len(front_ships) < 3 or not all(s in player_ship_ids and s not in used_units_fleet for s in front_ships):
-                continue
+            # Front ships (les 3 vaisseaux de départ obligatoires)
+            front_ships = [s for s in atk_members[:3] if s in player_ship_ids and s not in used_units_fleet]
+            if len(front_ships) < 3:
+                # Si atk_members avait moins de 3 ships disponibles, tenter de compléter via la synergie
+                front_ships = _complete_fleet_lineup(atk_cap, atk_members[:3], my_index, used_units_fleet, max_members=3)
+                if len(front_ships) < 3:
+                    continue
 
-            # Renforts (slots 4 à 7) : souples, ne garder que ceux possédés (les manquants restent vides)
-            reinforcements_owned = [s for s in atk_members[3:] if s in player_ship_ids and s not in used_units_fleet]
-            final_members = front_ships + reinforcements_owned
+            # Calculer le nombre max de renforts selon les étoiles du vaisseau capital d'attaque
+            cap_rarity = (my_index.get(atk_cap) or {}).get("rarity", 7)
+            max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
+            max_total_ships = 3 + max_reinforcements
+
+            # Compléter la flotte entière (front + renforts) avec les meilleurs vaisseaux synergiques disponibles
+            final_members = _complete_fleet_lineup(
+                atk_cap,
+                front_ships + atk_members[3:],
+                my_index,
+                used_units_fleet,
+                max_members=max_total_ships
+            )
 
             converted_fleet.append({
                 "atk_leader_id":   atk_cap,
@@ -1492,6 +1644,11 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             "total_options": len(converted_fleet),
             "candidates": converted_fleet,
         })
+
+        # ★ Marquer immédiatement le capital ET tous ses membres comme utilisés pour les slots fleet suivants
+        if best_fleet:
+            used_units_fleet.add(best_fleet["atk_leader_id"].upper())
+            used_units_fleet.update(m.upper() for m in best_fleet.get("atk_members_ids", []))
     # ─────────────────────────────────────────────────────────────────────────────
 
     for zone, teams in enemy_zones.items():
@@ -1510,11 +1667,18 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
             offset = sec_info.get("counter_offset", 0)
 
             if status == "CLEARED":
+                used_team_ids = attack_teams_by_slot.get((zone, slot_idx), [])
+                used_counter = {
+                    "atk_leader_id": used_team_ids[0] if used_team_ids else None,
+                    "atk_members_ids": used_team_ids[1:] if len(used_team_ids) > 1 else [],
+                    "win_pct": 100,
+                    "is_used_team": True,
+                } if used_team_ids else None
                 slots_data.append({
                     "zone": zone,
                     "slot_index": slot_idx,
                     "enemy_team": enemy_team,
-                    "counter": None,
+                    "counter": used_counter,
                     "win_pct": 100,
                     "status": "CLEARED",
                     "counter_offset": 0,

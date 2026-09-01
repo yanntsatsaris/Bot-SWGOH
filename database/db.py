@@ -545,6 +545,30 @@ async def get_used_units(discord_id: str) -> set[str]:
         rows = await cursor.fetchall()
     return {row["base_id"].upper() for row in rows}
 
+async def get_attack_team_by_slot(discord_id: str) -> dict:
+    """
+    Retourne un dictionnaire {(zone, slot_index): [base_id, ...]} avec les unités
+    utilisées en attaque pour chaque secteur (pour afficher la team victorieuse sur les CLEARED).
+    """
+    if not discord_id:
+        return {}
+    async with get_db() as db:
+        cursor = await db.execute(
+            """SELECT base_id, zone, slot_index
+               FROM active_round_units
+               WHERE discord_id = ? AND used_type = 'attack' AND zone IS NOT NULL AND slot_index IS NOT NULL
+               ORDER BY zone, slot_index, id""",
+            (discord_id,)
+        )
+        rows = await cursor.fetchall()
+    result = {}
+    for row in rows:
+        key = (row["zone"], row["slot_index"])
+        if key not in result:
+            result[key] = []
+        result[key].append(row["base_id"].upper())
+    return result
+
 async def clear_used_units(discord_id: str | None = None):
     """Réinitialise les unités brûlées et les états de secteurs pour un joueur ou pour tous les joueurs."""
     async with get_db() as db:

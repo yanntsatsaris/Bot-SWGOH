@@ -237,31 +237,51 @@ def generate_scout_map(zones: dict, quotas: dict, league: str, fmt: str, player_
 def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_name: str, my_name: str, my_roster_index: dict = None, enemy_roster_index: dict = None) -> io.BytesIO:
     """
     Génère l'image PNG du Plan d'Attaque Global GAC (Retina HD).
-    Affiche pour chaque zone et chaque slot l'équipe ennemie et en face le contre assigné.
+    - Chaque côté (ennemi / contre) affiche TOUJOURS le nombre exact de slots (5 en terrestre, 8 en flotte).
+    - Un emplacement Datacron est TOUJOURS réservé (case vide si aucun DTC) pour aligner toutes les lignes.
+    - Le canvas est dimensionné pour que tout rentre sans débordement.
     """
     is_5v5 = fmt == "5v5"
-    # En 5v5 : portraits réduits (72px) et canvas élargi (1360px) pour tenir 5+DTC + séparateur + 5+DTC
-    p_cell = _CELL_5V5 if is_5v5 else PORTRAIT_CELL  # 72 ou 88
-    p_gap  = _GAP_5V5  if is_5v5 else PORTRAIT_GAP   # 6 ou 8
-    width  = 1360 if is_5v5 else 1150
-    slots_per_row = 5 if is_5v5 else 3
-    # Hauteur d'une ligne : portrait + labels ("Slot #N Ennemi" + étoiles)
+    p_cell = _CELL_5V5 if is_5v5 else PORTRAIT_CELL   # 72 ou 88
+    p_gap  = _GAP_5V5  if is_5v5 else PORTRAIT_GAP    # 6 ou 8
+    slots_per_row = 5 if is_5v5 else 3                 # slots terrestres
+    fleet_slots   = 8                                  # toujours 8 pour les flottes
+    # Taille réservée pour l'emplacement Datacron (portrait + gap + petit espace)
+    DTC_W = p_cell + p_gap + 4
+
+    # ── Calcul de la largeur minimale pour faire tenir tout sur une ligne ──
+    # Largeur d'un bloc de N portraits (sans le DTC)
+    def _bloc_w(n_slots: int) -> int:
+        return n_slots * (p_cell + p_gap)
+
+    # Largeur d'un côté : N portraits + réservation DTC
+    land_side_w  = _bloc_w(slots_per_row) + DTC_W
+    fleet_side_w = _bloc_w(fleet_slots)   + DTC_W
+
+    # Séparateur central (⚔ + win%)
+    SEPARATOR_W = 120
+
+    # Largeur totale canvas
+    land_total  = PADDING * 2 + 15 + land_side_w + SEPARATOR_W + land_side_w
+    fleet_total = PADDING * 2 + 15 + fleet_side_w + SEPARATOR_W + fleet_side_w
+    width = max(land_total, fleet_total, 1100)
+
     row_height = p_cell + 50
-    
+
     height = 100 + PADDING
     for zone, slots in attack_plan.items():
         if slots:
             height += H_ZONE_TITLE + (len(slots) * row_height) + PADDING
-            
+
     canvas = Image.new("RGBA", (width, height), C_BG)
     draw = ImageDraw.Draw(canvas)
     datacrons_to_overlay = []
-    
-    title_font = _get_font("bold", 22)
-    sub_font = _get_font("regular", 16)
-    section_font = _get_font("bold", 18)
-    label_font = _get_font("bold", 13)
-    
+
+    title_font  = _get_font("bold", 22)
+    sub_font    = _get_font("regular", 16)
+    section_font= _get_font("bold", 18)
+    label_font  = _get_font("bold", 13)
+
     draw.text((PADDING, 20), f"PLAN D'ATTAQUE GLOBAL GAC — {league} ({fmt})", font=title_font, fill=C_GOLD)
     draw.text((PADDING, 50), f"Stratégie : {my_name} ⚔️ {enemy_name}", font=sub_font, fill=C_TEXT)
 
@@ -274,96 +294,138 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             _draw_portrait_cell(tmp, 0, 0, uid, rel, gr, ready_, owned_, enemy_, miss_omi, ship_, lvl, zts, omis, stars_)
             scaled = tmp.resize((p_cell, p_cell + int(p_cell * 16 / PORTRAIT_CELL)), Image.LANCZOS)
             cvs.paste(scaled, (px, py), scaled)
-    
+
+    def _draw_team_portraits(ids: list, x_start: int, y: int, n_slots: int, is_fleet: bool,
+                              is_enemy: bool, dtc_info=None, status="OPEN", c_missing=None):
+        """
+        Dessine exactement n_slots portraits (rempli avec des vides si nécessaire),
+        puis TOUJOURS une case DTC (vide ou remplie).
+        Retourne l'x après le bloc DTC.
+        """
+        c_missing = c_missing or []
+        cx = x_start
+        drawn = 0
+        for bid in ids:
+            if drawn >= n_slots:
+                break
+            if is_enemy:
+                u_data = (enemy_roster_index.get(bid.upper()) or enemy_roster_index.get(bid)) if enemy_roster_index else None
+            else:
+                u_data = (my_roster_index.get(bid.upper()) or my_roster_index.get(bid)) if my_roster_index else None
+            rel  = u_data.get("relic_tier") if u_data else None
+            gr   = u_data.get("gear_tier")  if u_data else None
+            zts  = u_data.get("zetas", 0)   if u_data else 0
+            omis = u_data.get("omicrons", 0) if u_data else 0
+            stars = u_data.get("rarity", 7) if u_data else 7
+            lvl  = u_data.get("level", 85)  if u_data else 85
+            owned = u_data is not None
+            is_ready = owned and stars == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
+            is_miss_omi = bid.upper() in c_missing
+            _draw_scaled_cell(canvas, cx, y, bid, rel, gr,
+                              is_ready if not is_enemy else True,
+                              owned if not is_enemy else True,
+                              is_enemy, is_miss_omi, is_fleet, lvl, zts, omis, stars)
+            if is_enemy and status == "CLEARED":
+                overlay = Image.new("RGBA", (p_cell, p_cell), (0, 0, 0, 160))
+                canvas.paste(overlay, (cx, y), overlay)
+            cx += p_cell + p_gap
+            drawn += 1
+
+        # Compléter avec des vides jusqu'à n_slots
+        while drawn < n_slots:
+            _draw_scaled_cell(canvas, cx, y, None, None, None, True, True, is_enemy, False, is_fleet)
+            cx += p_cell + p_gap
+            drawn += 1
+
+        # TOUJOURS réserver la place du Datacron (alignement constant)
+        if dtc_info and not is_fleet and status != "CLEARED":
+            datacrons_to_overlay.append((cx + 4, y, dtc_info, p_cell))
+        # Case vide (transparente) pour le DTC — on avance quand même pour aligner
+        cx += DTC_W
+
+        return cx
+
     current_y = 100
-    
+
     for zone, slots in attack_plan.items():
         if not slots:
             continue
 
         is_fleet_zone = (zone == "Fleet")
-        zone_slots_per_row = 8 if is_fleet_zone else slots_per_row
-            
+        n_slots = fleet_slots if is_fleet_zone else slots_per_row
+
         draw.text((PADDING, current_y), f"ZONE : {zone.upper()}", font=section_font, fill=C_GOLD)
         current_y += H_ZONE_TITLE
-        
+
         for slot in slots:
-            s_idx = slot["slot_index"]
-            e_team = slot["enemy_team"]
-            c_info = slot["counter"]
+            s_idx   = slot["slot_index"]
+            e_team  = slot["enemy_team"]
+            c_info  = slot["counter"]
             win_pct = slot["win_pct"]
-            status = slot.get("status", "OPEN")
-            offset = slot.get("counter_offset", 0)
-            
-            panel_fill = (18, 20, 26) if status == "CLEARED" else C_SECTION
+            status  = slot.get("status", "OPEN")
+            offset  = slot.get("counter_offset", 0)
+
+            panel_fill   = (18, 20, 26) if status == "CLEARED" else C_SECTION
             panel_border = C_READY if status == "CLEARED" else (C_ENEMY if status == "FAILED" else C_BORDER)
-            
+
             panel_rect = [PADDING, current_y, width - PADDING, current_y + row_height - 6]
             draw.rounded_rectangle(panel_rect, radius=SECTION_RADIUS, fill=panel_fill, outline=panel_border, width=2 if status != "OPEN" else 1)
-            
-            # Label secteur + badge statut
+
+            # Label secteur
             if status == "CLEARED":
                 draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi — ✔ TOMBÉ", font=label_font, fill=C_READY)
             elif status == "FAILED":
                 draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi — ⚠ ÉCHEC", font=label_font, fill=C_ENEMY)
             else:
                 draw.text((PADDING + 15, current_y + 10), f"Slot #{s_idx} Ennemi", font=label_font, fill=C_ENEMY)
-            
-            e_leader = e_team.get("leader_id")
-            e_members = e_team.get("members_ids", [])
-            all_e_ids = [e_leader] + [m for m in e_members if m and m != e_leader]
-            
-            x_def = PADDING + 15
-            y_portraits = current_y + 24
-            for bid in all_e_ids[:zone_slots_per_row]:
-                e_data = (enemy_roster_index.get(bid.upper()) or enemy_roster_index.get(bid)) if enemy_roster_index else None
-                e_rel  = e_data.get("relic_tier") if e_data else None
-                e_gr   = e_data.get("gear_tier")  if e_data else None
-                e_zts  = e_data.get("zetas", 0)   if e_data else 0
-                e_omis = e_data.get("omicrons", 0) if e_data else 0
-                e_star = e_data.get("rarity", 7)  if e_data else 7
-                e_lvl  = e_data.get("level", 85)   if e_data else 85
-                _draw_scaled_cell(canvas, x_def, y_portraits, bid, e_rel, e_gr, True, True, True, False, is_fleet_zone, e_lvl, e_zts, e_omis, e_star)
-                if status == "CLEARED":
-                    overlay = Image.new("RGBA", (p_cell, p_cell), (0, 0, 0, 160))
-                    canvas.paste(overlay, (x_def, y_portraits), overlay)
-                x_def += p_cell + p_gap
 
-            # Incrustation du Datacron ennemi si présent
-            e_dtc = e_team.get("datacron")
-            if e_dtc and status != "CLEARED":
-                datacrons_to_overlay.append((x_def + 4, y_portraits, e_dtc, p_cell))
-                x_def += p_cell + p_gap + 4
-                
-            x_mid = x_def + 20
-            mid_y_icon  = current_y + max(24, row_height // 2 - 18)
-            mid_y_label = mid_y_icon + 28
+            e_leader  = e_team.get("leader_id")
+            e_members = e_team.get("members_ids", [])
+            all_e_ids = ([e_leader] if e_leader else []) + [m for m in e_members if m and m != e_leader]
+
+            x_def       = PADDING + 15
+            y_portraits = current_y + 24
+            e_dtc       = e_team.get("datacron")
+
+            # ── Côté ennemi : toujours n_slots + case DTC ──
+            x_after_enemy = _draw_team_portraits(
+                all_e_ids, x_def, y_portraits, n_slots,
+                is_fleet_zone, is_enemy=True,
+                dtc_info=e_dtc, status=status
+            )
+
+            # ── Séparateur central ──
+            x_mid      = x_after_enemy + 8
+            mid_y_icon = current_y + max(24, row_height // 2 - 18)
+            mid_y_lbl  = mid_y_icon + 28
+
             if status == "CLEARED":
-                # Badge circulaire vert avec coche '✔' (100% compatible toute police / OS)
                 badge_radius = 12
-                bx = x_mid + 10
-                by = mid_y_icon + 10
+                bx, by = x_mid + 10, mid_y_icon + 10
                 draw.ellipse([bx - badge_radius, by - badge_radius, bx + badge_radius, by + badge_radius], fill=(34, 197, 94))
-                check_font = _get_font("bold", 15)
-                draw.text((bx - 5, by - 10), "✔", font=check_font, fill=(255, 255, 255))
-                draw.text((x_mid - 8, mid_y_label), "Victoire", font=label_font, fill=C_READY)
+                draw.text((bx - 5, by - 10), "✔", font=_get_font("bold", 15), fill=(255, 255, 255))
+                draw.text((x_mid - 8, mid_y_lbl), "Victoire", font=label_font, fill=C_READY)
             else:
-                swords_font = _get_font("bold", 20)
-                draw.text((x_mid + 2, mid_y_icon - 2), "⚔", font=swords_font, fill=C_GOLD)
+                draw.text((x_mid + 2, mid_y_icon - 2), "⚔", font=_get_font("bold", 20), fill=C_GOLD)
                 if c_info:
                     w_col = C_READY if win_pct >= 70 else (C_WARN if win_pct >= 40 else C_ENEMY)
-                    draw.text((x_mid - 15, mid_y_label), f"{win_pct}% Win", font=label_font, fill=w_col)
+                    draw.text((x_mid - 15, mid_y_lbl), f"{win_pct}% Win", font=label_font, fill=w_col)
                 else:
-                    draw.text((x_mid - 20, mid_y_label), "Aucun contre", font=label_font, fill=C_ENEMY)
-                
-            x_counter = x_mid + 80
-            opt_str = f" (Option #{offset + 1})" if offset > 0 else ""
-            c_missing = [m.upper() for m in c_info.get("missing_omicron", [])] if c_info else []
+                    draw.text((x_mid - 20, mid_y_lbl), "Aucun contre", font=label_font, fill=C_ENEMY)
+
+            x_counter = x_mid + SEPARATOR_W - 12
+            opt_str      = f" (Option #{offset + 1})" if offset > 0 else ""
+            c_missing    = [m.upper() for m in c_info.get("missing_omicron", [])] if c_info else []
             omi_warn_str = " (⚠️ Sans Omi)" if c_missing else ""
 
+            # ── Label côté contre ──
+            is_used_team = c_info.get("is_used_team", False) if c_info else False
             if status == "CLEARED":
-                draw.text((x_counter, current_y + 10), "Secteur Vaincu", font=label_font, fill=C_MUTED)
-                draw.text((x_counter, current_y + 30), "✔ Territoire libéré", font=sub_font, fill=C_READY)
+                if c_info and c_info.get("atk_leader_id"):
+                    draw.text((x_counter, current_y + 10), "Team Victorieuse ✔", font=label_font, fill=C_READY)
+                else:
+                    draw.text((x_counter, current_y + 10), "Secteur Vaincu", font=label_font, fill=C_MUTED)
+                    draw.text((x_counter, current_y + 30), "✔ Territoire libéré", font=sub_font, fill=C_READY)
             elif status == "FAILED":
                 draw.text((x_counter, current_y + 10), f"Contre de Rattrapage{opt_str}{omi_warn_str}", font=label_font, fill=C_ENEMY)
             elif not c_info:
@@ -374,38 +436,31 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 draw.text((x_counter, current_y + 10), f"Contre Possible{opt_str}{omi_warn_str}", font=label_font, fill=C_TEXT)
             else:
                 draw.text((x_counter, current_y + 10), f"Contre Recommandé{opt_str}{omi_warn_str}", font=label_font, fill=C_READY)
-            
-            if status != "CLEARED":
-                if c_info:
-                    c_leader = c_info["atk_leader_id"]
-                    c_members = c_info.get("atk_members_ids", [])
-                    all_c_ids = [c_leader] + [m for m in c_members if m and m != c_leader]
-                    
-                    for bid in all_c_ids[:zone_slots_per_row]:
-                        u_data = (my_roster_index.get(bid.upper()) or my_roster_index.get(bid)) if my_roster_index else None
-                        rel    = u_data.get("relic_tier") if u_data else None
-                        gr     = u_data.get("gear_tier")  if u_data else None
-                        zts    = u_data.get("zetas", 0)   if u_data else 0
-                        omis   = u_data.get("omicrons", 0) if u_data else 0
-                        owned  = u_data is not None
-                        rarity = u_data.get("rarity", 0)  if u_data else 0
-                        lvl    = u_data.get("level", 85)   if u_data else 85
-                        is_ready = owned and rarity == 7 and ((rel or 0) > 0 or (gr or 0) >= 12)
-                        is_miss_omi = bid.upper() in c_missing
-                        _draw_scaled_cell(canvas, x_counter, y_portraits, bid, rel, gr, is_ready, owned, False, is_miss_omi, is_fleet_zone, lvl, zts, omis, rarity)
-                        x_counter += p_cell + p_gap
 
-                    # Incrustation du Datacron d'attaque si assigné
-                    c_dtc = c_info.get("datacron")
-                    if c_dtc:
-                        datacrons_to_overlay.append((x_counter + 4, y_portraits, c_dtc, p_cell))
-                        x_counter += p_cell + p_gap + 4
-                else:
-                    if is_fleet_zone:
-                        draw.text((x_counter, current_y + 36), "Aucun counter vaisseau — /gac-fleet sync-counters", font=sub_font, fill=C_MUTED)
-                    else:
-                        draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
-                
+            # ── Côté contre : toujours n_slots + case DTC ──
+            if c_info and c_info.get("atk_leader_id"):
+                c_leader  = c_info["atk_leader_id"]
+                c_members = c_info.get("atk_members_ids", [])
+                all_c_ids = ([c_leader] if c_leader else []) + [m for m in c_members if m and m != c_leader]
+                c_dtc     = c_info.get("datacron")
+                _draw_team_portraits(
+                    all_c_ids, x_counter, y_portraits, n_slots,
+                    is_fleet_zone, is_enemy=False,
+                    dtc_info=c_dtc, status="OPEN",   # On affiche normalement même si CLEARED
+                    c_missing=c_missing
+                )
+                # Overlay vert semi-transparent pour indiquer "déjà utilisé"
+                if status == "CLEARED":
+                    green_overlay = Image.new("RGBA", (n_slots * (p_cell + p_gap), p_cell), (34, 197, 94, 45))
+                    canvas.paste(green_overlay, (x_counter, y_portraits), green_overlay)
+            else:
+                if is_fleet_zone:
+                    draw.text((x_counter, current_y + 36), "Aucun counter vaisseau — /gac-fleet sync-counters", font=sub_font, fill=C_MUTED)
+                elif status != "CLEARED":
+                    draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
+                # Toujours dessiner les slots vides pour conserver l'alignement
+                _draw_team_portraits([], x_counter, y_portraits, n_slots, is_fleet_zone, is_enemy=False)
+
             current_y += row_height
 
         current_y += PADDING
@@ -421,7 +476,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             is_foc = dtc_info.get("is_focused", False)
             char_id = dtc_info.get("character_base_id") or dtc_info.get("target_unit_id")
             cube_tex = dtc_info.get("cube_texture_url") or dtc_info.get("icon_url")
-            
+
             hd_size = dtc_cell * 2
             badge_hd = render_datacron_badge(
                 level=lvl,
@@ -440,4 +495,3 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
     canvas_hd.save(out, format="PNG", optimize=True)
     out.seek(0)
     return out
-

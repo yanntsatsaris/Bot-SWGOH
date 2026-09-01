@@ -437,7 +437,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
             else:
                 draw.text((x_counter, current_y + 10), f"Contre Recommandé{opt_str}{omi_warn_str}", font=label_font, fill=C_READY)
 
-            # ── Côté contre : toujours n_slots + case DTC ──
+            # ── Côté contre ──
             if c_info and c_info.get("atk_leader_id"):
                 c_leader  = c_info["atk_leader_id"]
                 c_members = c_info.get("atk_members_ids", [])
@@ -446,7 +446,7 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                 _draw_team_portraits(
                     all_c_ids, x_counter, y_portraits, n_slots,
                     is_fleet_zone, is_enemy=False,
-                    dtc_info=c_dtc, status="OPEN",   # On affiche normalement même si CLEARED
+                    dtc_info=c_dtc, status="OPEN",
                     c_missing=c_missing
                 )
                 # Overlay vert semi-transparent pour indiquer "déjà utilisé"
@@ -454,12 +454,11 @@ def generate_attack_plan_image(attack_plan: dict, league: str, fmt: str, enemy_n
                     green_overlay = Image.new("RGBA", (n_slots * (p_cell + p_gap), p_cell), (34, 197, 94, 45))
                     canvas.paste(green_overlay, (x_counter, y_portraits), green_overlay)
             else:
+                # Pas de contre ou pas d'escouade : afficher uniquement le texte explicatif sans cercles par-dessus
                 if is_fleet_zone:
-                    draw.text((x_counter, current_y + 36), "Aucun counter vaisseau — /gac-fleet sync-counters", font=sub_font, fill=C_MUTED)
+                    draw.text((x_counter, current_y + 34), "Aucun counter vaisseau — /gac-fleet sync-counters", font=sub_font, fill=C_MUTED)
                 elif status != "CLEARED":
-                    draw.text((x_counter, current_y + 36), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
-                # Toujours dessiner les slots vides pour conserver l'alignement
-                _draw_team_portraits([], x_counter, y_portraits, n_slots, is_fleet_zone, is_enemy=False)
+                    draw.text((x_counter, current_y + 34), "⚠️ Roster insuffisant pour cette équipe", font=sub_font, fill=C_MUTED)
 
             current_y += row_height
 

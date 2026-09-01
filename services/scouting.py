@@ -1881,9 +1881,12 @@ async def generate_attack_plan(discord_id: str, my_index: dict, enemy_zones: dic
                 log.info(f"[AttackPlanSwap] Échange effectué entre {other_slot['zone']} #{other_slot['slot_index']} et {slot['zone']} #{slot['slot_index']}")
                 break
 
-    # 3.9 Vérification finale d'intégrité anti-doublon absolue
+    # 3.9 Vérification finale d'intégrité anti-doublon absolue (uniquement pour les secteurs OPEN/non-cleared)
     final_assigned = set(used_units)
     for s in slots_data:
+        if s.get("status") == "CLEARED":
+            # Les secteurs déjà vaincus conservent légitimement leur équipe victorieuse pour l'affichage
+            continue
         c = s.get("counter")
         if not c:
             continue

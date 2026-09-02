@@ -337,12 +337,19 @@ class GacCog(commands.Cog, name="GAC"):
                         log.info("[Forum] Fil %s supprimé, recréation pour %s", existing_thread_id, discord_id)
                         await set_player_forum_thread(discord_id, "")  # Nettoyage
 
-                # Récupérer la ligue via Comlink (même logique que scouting.py)
+                # Récupérer la ligue et le pseudo en jeu officiel via Comlink
                 league: str | None = None
+                display_player_name = username
                 try:
                     from services.comlink import get_player
                     player_data = await get_player(clean)
                     if player_data:
+                        in_game_name = player_data.get("name")
+                        if in_game_name:
+                            if in_game_name.strip().lower() != username.strip().lower():
+                                display_player_name = f"{in_game_name} ({username})"
+                            else:
+                                display_player_name = in_game_name
                         season_status = player_data.get("seasonStatus", [])
                         if season_status:
                             last_season = season_status[-1]
@@ -350,13 +357,13 @@ class GacCog(commands.Cog, name="GAC"):
                             if isinstance(league_val, str) and league_val:
                                 league = league_val.split("_")[-1].lower()
                 except Exception as e:
-                    log.warning("[Forum] Impossible de récupérer la ligue depuis Comlink : %s", e)
+                    log.warning("[Forum] Impossible de récupérer le profil depuis Comlink : %s", e)
 
                 thread = await create_player_forum_thread(
                     bot=self.bot,
                     discord_id=discord_id,
                     ally_code=clean,
-                    username=username,
+                    username=display_player_name,
                     league=league,
                 )
                 if thread:

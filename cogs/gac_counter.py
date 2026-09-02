@@ -323,6 +323,11 @@ class GACCounterCog(commands.Cog, name="GACCounter"):
         membre_4: str | None = None,
         membre_5: str | None = None,
     ) -> None:
+        # Vérification d'accès au fil Forum
+        from cogs.forum_manager import check_forum_access
+        if not await check_forum_access(interaction):
+            return
+
         await interaction.response.defer()
 
         fmt = format_gac.value

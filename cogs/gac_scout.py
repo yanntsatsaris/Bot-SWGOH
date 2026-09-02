@@ -436,6 +436,11 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         force_sync: bool = False
     ) -> None:
         """Commande principale pour scouter un ennemi."""
+        # Vérification d'accès au fil Forum
+        from cogs.forum_manager import check_forum_access
+        if not await check_forum_access(interaction):
+            return
+
         try:
             await interaction.response.defer(ephemeral=False)
         except (discord.errors.NotFound, discord.errors.HTTPException) as e:
@@ -657,6 +662,11 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         renfort_3: str | None = None,
         renfort_4: str | None = None,
     ) -> None:
+        # Vérification d'accès au fil Forum
+        from cogs.forum_manager import check_forum_access
+        if not await check_forum_access(interaction):
+            return
+
         await interaction.response.defer(ephemeral=False)
         discord_id = str(interaction.user.id)
         

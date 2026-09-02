@@ -299,20 +299,56 @@ class GacCog(commands.Cog, name="GAC"):
         success_msg = f"✅ **Compte enregistré avec succès (Code Allié : `{clean}`) !**\n\n{HELP_MESSAGE}"
         await interaction.followup.send(success_msg, ephemeral=True)
 
-        # Création du fil Forum si configuré
+        # Création / récupération du fil Forum si configuré
         if FORUM_CHANNEL_ID:
             try:
                 from cogs.forum_manager import create_player_forum_thread
+                from database.db import get_player_by_thread_id, set_player_forum_thread
 
-                # Récupérer la ligue via Comlink pour choisir le bon tag
+                # Vérifier si ce joueur a déjà un fil Forum enregistré en BDD
+                async with get_db() as db:
+                    cursor = await db.execute(
+                        "SELECT forum_thread_id FROM players WHERE discord_id = ?",
+                        (discord_id,)
+                    )
+                    row = await cursor.fetchone()
+                    existing_thread_id = row["forum_thread_id"] if row and row["forum_thread_id"] else None
+
+                if existing_thread_id:
+                    # Vérifier si le fil existe encore sur Discord
+                    existing_thread = self.bot.get_channel(int(existing_thread_id))
+                    if existing_thread is None:
+                        try:
+                            existing_thread = await self.bot.fetch_channel(int(existing_thread_id))
+                        except discord.NotFound:
+                            existing_thread = None
+                        except Exception:
+                            existing_thread = None
+
+                    if existing_thread:
+                        # Le fil existe → on pointe juste vers lui sans en recréer un
+                        await interaction.followup.send(
+                            f"📌 Tu as déjà un fil personnel dans le forum : {existing_thread.mention}",
+                            ephemeral=True,
+                        )
+                        return
+                    else:
+                        # Le fil a été supprimé → on nettoie et on en recrée un
+                        log.info("[Forum] Fil %s supprimé, recréation pour %s", existing_thread_id, discord_id)
+                        await set_player_forum_thread(discord_id, "")  # Nettoyage
+
+                # Récupérer la ligue via Comlink (même logique que scouting.py)
                 league: str | None = None
                 try:
                     from services.comlink import get_player
                     player_data = await get_player(clean)
                     if player_data:
-                        league = player_data.get("league", None)
-                        if league:
-                            league = league.lower()
+                        season_status = player_data.get("seasonStatus", [])
+                        if season_status:
+                            last_season = season_status[-1]
+                            league_val = last_season.get("league", "")
+                            if isinstance(league_val, str) and league_val:
+                                league = league_val.split("_")[-1].lower()
                 except Exception as e:
                     log.warning("[Forum] Impossible de récupérer la ligue depuis Comlink : %s", e)
 
@@ -331,6 +367,7 @@ class GacCog(commands.Cog, name="GAC"):
                     )
             except Exception as e:
                 log.error("[Forum] Erreur lors de la création du fil forum : %s", e)
+
 
     # ------------------------------------------------------------------
     # /help — Manuel d'utilisation du bot
@@ -401,6 +438,11 @@ class GacCog(commands.Cog, name="GAC"):
         renfort_3: str | None = None,
         renfort_4: str | None = None,
     ) -> None:
+        # Vérification d'accès au fil Forum
+        from cogs.forum_manager import check_forum_access
+        if not await check_forum_access(interaction):
+            return
+
         await interaction.response.defer(ephemeral=True)
         
         leader_id = leader.strip().upper()

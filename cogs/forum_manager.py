@@ -1,4 +1,4 @@
-﻿"""
+"""
 cogs/forum_manager.py — Gestion du Salon Forum Discord
 Crée automatiquement un fil personnel par joueur lors du /register.
 Met à jour les tags (ligue, statut GAC) automatiquement.
@@ -50,11 +50,33 @@ Bonne GAC ! ⚔️
 """
 
 
-def _find_tag(forum_channel: discord.ForumChannel, name: str) -> discord.ForumTag | None:
-    """Recherche un tag disponible dans le salon Forum par son nom exact."""
+def _normalize_tag_name(text: str) -> str:
+    """Normalise un nom de tag en retirant les émojis et la ponctuation pour comparaison."""
+    # Retirer les émojis et caractères spéciaux, garder mots/chiffres
+    cleaned = re.sub(r'[^\w\d\s]', '', text, flags=re.UNICODE)
+    return " ".join(cleaned.split()).lower()
+
+
+def _find_tag(forum_channel: discord.ForumChannel, target_key_or_name: str) -> discord.ForumTag | None:
+    """
+    Recherche un tag disponible dans le salon Forum de façon flexible :
+    - Correspondance exacte sur tag.name
+    - Correspondance normalisée (sans émojis, ex: 'Kyber' == '🏆 Kyber')
+    - Correspondance partielle
+    """
+    target_norm = _normalize_tag_name(target_key_or_name)
+    
+    # 1. Correspondance exacte
     for tag in forum_channel.available_tags:
-        if tag.name == name:
+        if tag.name.strip().lower() == target_key_or_name.strip().lower():
             return tag
+            
+    # 2. Correspondance normalisée
+    for tag in forum_channel.available_tags:
+        tag_norm = _normalize_tag_name(tag.name)
+        if tag_norm and (tag_norm == target_norm or tag_norm in target_norm or target_norm in tag_norm):
+            return tag
+            
     return None
 
 
@@ -81,17 +103,16 @@ async def create_player_forum_thread(
     # Collecter les tags à appliquer
     applied_tags: list[discord.ForumTag] = []
     if league:
-        league_tag_name = TAG_LEAGUES.get(league.lower())
-        if league_tag_name:
-            tag = _find_tag(forum_channel, league_tag_name)
-            if tag:
-                applied_tags.append(tag)
+        league_target = TAG_LEAGUES.get(league.lower(), league)
+        tag = _find_tag(forum_channel, league_target)
+        if tag and tag not in applied_tags:
+            applied_tags.append(tag)
+            
     if format_gac:
-        fmt_tag_name = TAG_FORMATS.get(format_gac.lower())
-        if fmt_tag_name:
-            tag = _find_tag(forum_channel, fmt_tag_name)
-            if tag:
-                applied_tags.append(tag)
+        fmt_target = TAG_FORMATS.get(format_gac.lower(), format_gac)
+        tag = _find_tag(forum_channel, fmt_target)
+        if tag and tag not in applied_tags:
+            applied_tags.append(tag)
 
     welcome_msg = WELCOME_TEMPLATE.format(username=username, ally_code=ally_code)
 
@@ -102,7 +123,7 @@ async def create_player_forum_thread(
             applied_tags=applied_tags,
         )
         thread = thread_with_msg.thread
-        log.info("[Forum] Fil créé pour %s : %s (ID: %s)", username, thread_name, thread.id)
+        log.info("[Forum] Fil créé pour %s : %s (ID: %s) avec tags: %s", username, thread_name, thread.id, [t.name for t in applied_tags])
         await set_player_forum_thread(discord_id, str(thread.id))
         return thread
     except discord.Forbidden:
@@ -135,18 +156,32 @@ async def update_thread_tags(
             return
 
     all_known = {**TAG_LEAGUES, **TAG_FORMATS, **TAG_STATUS}
-    current_tag_names = {t.name for t in thread.applied_tags}
+    current_tags = list(thread.applied_tags)
+    
+    # Résolution des tags à ajouter
+    tags_to_add = []
+    for key in (add_tags or []):
+        target_name = all_known.get(key, key)
+        tag = _find_tag(forum_channel, target_name)
+        if tag and tag not in current_tags and tag not in tags_to_add:
+            tags_to_add.append(tag)
+            
+    # Résolution des tags à retirer
+    tags_to_remove = set()
+    for key in (remove_tags or []):
+        target_name = all_known.get(key, key)
+        tag = _find_tag(forum_channel, target_name)
+        if tag:
+            tags_to_remove.add(tag.id)
 
-    names_to_add = {all_known[k] for k in (add_tags or []) if k in all_known}
-    names_to_remove = {all_known[k] for k in (remove_tags or []) if k in all_known}
-    final_names = (current_tag_names | names_to_add) - names_to_remove
-    final_tags = [t for t in forum_channel.available_tags if t.name in final_names]
+    final_tags = [t for t in current_tags if t.id not in tags_to_remove] + tags_to_add
 
     try:
         await thread.edit(applied_tags=final_tags)
-        log.info("[Forum] Tags du fil %s : %s", thread_id, [t.name for t in final_tags])
+        log.info("[Forum] Tags du fil %s mis à jour : %s", thread_id, [t.name for t in final_tags])
     except Exception as e:
         log.warning("[Forum] Impossible de mettre à jour les tags : %s", e)
+
 
 
 async def check_forum_access(interaction: discord.Interaction) -> bool:

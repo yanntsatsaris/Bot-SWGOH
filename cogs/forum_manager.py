@@ -4,6 +4,7 @@ Crée automatiquement un fil personnel par joueur lors du /register.
 Met à jour les tags (ligue, statut GAC) automatiquement.
 """
 import logging
+import re
 
 import discord
 from discord.ext import commands

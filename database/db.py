@@ -240,6 +240,8 @@ async def init_db() -> None:
                     "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_alignment TEXT",
                     "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_faction TEXT",
                     "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_role TEXT",
+                    # Forum Discord — fil personnel par joueur
+                    "ALTER TABLE players ADD COLUMN IF NOT EXISTS forum_thread_id TEXT",
                 ]
                 for mig in migrations_pg:
                     try:
@@ -280,6 +282,12 @@ async def init_db() -> None:
                 await db.execute("ALTER TABLE datacron_affixes ADD COLUMN target_faction TEXT")
             if "target_role" not in existing_aff_cols:
                 await db.execute("ALTER TABLE datacron_affixes ADD COLUMN target_role TEXT")
+
+            # Migration forum_thread_id dans players (SQLite)
+            cursor_pl = await db.execute("PRAGMA table_info(players)")
+            existing_pl_cols = {row["name"] for row in await cursor_pl.fetchall()}
+            if "forum_thread_id" not in existing_pl_cols:
+                await db.execute("ALTER TABLE players ADD COLUMN forum_thread_id TEXT")
 
             await db.commit()
         log.info("📁 Base de données SQLite initialisée : %s", DATABASE_PATH)
@@ -1661,3 +1669,28 @@ async def get_all_registered_players() -> list[dict]:
         cursor = await db.execute("SELECT discord_id, ally_code, username FROM players")
         rows = await cursor.fetchall()
     return [dict(r) for r in rows]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Forum Discord — Gestion des fils personnels par joueur
+# ──────────────────────────────────────────────────────────────────────────────
+
+async def get_player_by_thread_id(thread_id: str) -> dict | None:
+    """Retourne le joueur associé à un fil de forum Discord."""
+    async with get_db() as db:
+        cursor = await db.execute(
+            "SELECT discord_id, ally_code, username, forum_thread_id FROM players WHERE forum_thread_id = ?",
+            (str(thread_id),)
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def set_player_forum_thread(discord_id: str, thread_id: str) -> None:
+    """Enregistre l'ID du fil Forum Discord lié à un joueur."""
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE players SET forum_thread_id = ? WHERE discord_id = ?",
+            (str(thread_id), str(discord_id))
+        )
+        await db.commit()

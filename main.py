@@ -43,6 +43,7 @@ INITIAL_EXTENSIONS = [
     "cogs.meta_scanner",  # cron désactivé, /meta-scan-force disponible
     "cogs.gac_global_meta",
     "cogs.gac_fleet",     # /gac-fleet
+    "cogs.forum_manager", # Forum Discord — fil personnel par joueur
 ]
 
 
@@ -52,6 +53,7 @@ INITIAL_EXTENSIONS = [
 class SwgohBot(commands.Bot):
     def __init__(self) -> None:
         intents = discord.Intents.default()
+        intents.message_content = True  # Nécessaire pour lire les messages dans les threads Forum
         super().__init__(
             command_prefix="!",  # Fallback texte ; les slash commands sont prioritaires
             intents=intents,

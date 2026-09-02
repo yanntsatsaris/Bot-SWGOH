@@ -10,6 +10,10 @@ load_dotenv()
 DISCORD_TOKEN: str = os.environ["DISCORD_TOKEN"]
 DISCORD_GUILD_ID: str | None = os.getenv("DISCORD_GUILD_ID") or None
 
+# --- Forum Discord ---
+FORUM_CHANNEL_ID: int | None = int(os.getenv("FORUM_CHANNEL_ID", 0)) or None
+ADMIN_ROLE_ID: int | None = int(os.getenv("ADMIN_ROLE_ID", 0)) or None
+
 # --- API SWGOH ---
 SWGOH_API_URL: str = os.getenv("SWGOH_API_URL", "https://swgoh.gg/api").rstrip("/")
 

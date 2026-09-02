@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from database.db import get_db
 from utils.helpers import format_ally_code
+from config import FORUM_CHANNEL_ID
 
 log = logging.getLogger(__name__)
 
@@ -293,9 +294,43 @@ class GacCog(commands.Cog, name="GAC"):
                 """,
                 (discord_id, clean, username),
             )
+            await db.commit()
 
         success_msg = f"✅ **Compte enregistré avec succès (Code Allié : `{clean}`) !**\n\n{HELP_MESSAGE}"
         await interaction.followup.send(success_msg, ephemeral=True)
+
+        # Création du fil Forum si configuré
+        if FORUM_CHANNEL_ID:
+            try:
+                from cogs.forum_manager import create_player_forum_thread
+
+                # Récupérer la ligue via Comlink pour choisir le bon tag
+                league: str | None = None
+                try:
+                    from services.comlink import get_player
+                    player_data = await get_player(clean)
+                    if player_data:
+                        league = player_data.get("league", None)
+                        if league:
+                            league = league.lower()
+                except Exception as e:
+                    log.warning("[Forum] Impossible de récupérer la ligue depuis Comlink : %s", e)
+
+                thread = await create_player_forum_thread(
+                    bot=self.bot,
+                    discord_id=discord_id,
+                    ally_code=clean,
+                    username=username,
+                    league=league,
+                )
+                if thread:
+                    mention = thread.mention
+                    await interaction.followup.send(
+                        f"📌 Ton fil personnel a été créé dans le forum : {mention}",
+                        ephemeral=True,
+                    )
+            except Exception as e:
+                log.error("[Forum] Erreur lors de la création du fil forum : %s", e)
 
     # ------------------------------------------------------------------
     # /help — Manuel d'utilisation du bot

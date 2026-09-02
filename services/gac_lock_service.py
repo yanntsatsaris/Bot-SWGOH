@@ -13,6 +13,7 @@ from database.db import (
     save_bracket_opponents,
     get_bracket_opponents,
     get_all_registered_players,
+    cleanup_old_gac_locks,
 )
 from services.comlink import get_player
 
@@ -179,6 +180,12 @@ async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str
 
     if locked_opponents:
         await save_bracket_opponents(clean_owner, season_id, round_num=1, opponents=locked_opponents)
+
+    # Nettoyage automatique des anciennes saisons en BDD
+    try:
+        await cleanup_old_gac_locks(current_season_id=season_id)
+    except Exception as e:
+        log.warning("[GacLock] Erreur nettoyage anciens snapshots: %s", e)
 
     total_locked = 1 + len(locked_opponents)
     log.info(f"[GacLock] ✅ Poule GAC verrouillée pour {clean_owner} : {total_locked} joueurs au total (Saison {season_id})")

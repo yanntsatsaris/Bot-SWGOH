@@ -1665,6 +1665,32 @@ async def get_bracket_opponents(owner_code: str, season_id: str = None) -> list[
     return [dict(r) for r in rows]
 
 
+async def cleanup_old_gac_locks(current_season_id: str = None) -> None:
+    """
+    Nettoie les anciens snapshots de rosters verrouillés et anciennes poules GAC.
+    Supprime les données des anciennes saisons pour éviter d'alourdir la base de données.
+    """
+    async with get_db() as db:
+        if current_season_id:
+            await db.execute(
+                "DELETE FROM gac_brackets WHERE season_id != ?",
+                (current_season_id,)
+            )
+            await db.execute(
+                "DELETE FROM gac_locked_rosters WHERE season_id != ?",
+                (current_season_id,)
+            )
+        else:
+            if is_postgres():
+                await db.execute("DELETE FROM gac_brackets WHERE created_at < NOW() - INTERVAL '14 days'")
+                await db.execute("DELETE FROM gac_locked_rosters WHERE locked_at < NOW() - INTERVAL '14 days'")
+            else:
+                await db.execute("DELETE FROM gac_brackets WHERE created_at < datetime('now', '-14 days')")
+                await db.execute("DELETE FROM gac_locked_rosters WHERE locked_at < datetime('now', '-14 days')")
+        await db.commit()
+    log.info("[GacLock] 🧹 Nettoyage des anciens snapshots terminé (Saison active: %s).", current_season_id or "auto")
+
+
 async def get_all_registered_players() -> list[dict]:
     """Retourne la liste de tous les joueurs enregistres sur le bot."""
     async with get_db() as db:

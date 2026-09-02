@@ -12,6 +12,7 @@ Sous-commandes:
 import logging
 import asyncio
 import datetime
+from typing import Any
 
 import discord
 from discord import app_commands

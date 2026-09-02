@@ -242,6 +242,8 @@ async def init_db() -> None:
                     "ALTER TABLE datacron_affixes ADD COLUMN IF NOT EXISTS target_role TEXT",
                     # Forum Discord — fil personnel par joueur
                     "ALTER TABLE players ADD COLUMN IF NOT EXISTS forum_thread_id TEXT",
+                    # Multi-compte : autoriser plusieurs comptes par discord_id
+                    "ALTER TABLE players DROP CONSTRAINT IF EXISTS players_discord_id_key",
                 ]
                 for mig in migrations_pg:
                     try:
@@ -1686,11 +1688,50 @@ async def get_player_by_thread_id(thread_id: str) -> dict | None:
     return dict(row) if row else None
 
 
-async def set_player_forum_thread(discord_id: str, thread_id: str) -> None:
-    """Enregistre l'ID du fil Forum Discord lié à un joueur."""
+async def set_player_forum_thread(discord_id: str, thread_id: str, ally_code: str | None = None) -> None:
+    """Enregistre l'ID du fil Forum Discord lié à un compte spécifique d'un joueur."""
+    clean_code = ally_code.replace("-", "").strip() if ally_code else None
     async with get_db() as db:
-        await db.execute(
-            "UPDATE players SET forum_thread_id = ? WHERE discord_id = ?",
-            (str(thread_id), str(discord_id))
-        )
+        if clean_code:
+            await db.execute(
+                "UPDATE players SET forum_thread_id = ? WHERE discord_id = ? AND REPLACE(ally_code, '-', '') = ?",
+                (str(thread_id), str(discord_id), clean_code)
+            )
+        else:
+            await db.execute(
+                "UPDATE players SET forum_thread_id = ? WHERE discord_id = ?",
+                (str(thread_id), str(discord_id))
+            )
         await db.commit()
+
+
+async def get_player_for_interaction(interaction: Any) -> dict | None:
+    """
+    Retourne le compte joueur lié au contexte de l'interaction (Multi-compte) :
+    1. Si la commande est exécutée dans un fil Forum, retourne le compte SWGOH associé à ce fil.
+    2. Sinon, retourne le dernier compte actif/enregistré pour cet utilisateur Discord.
+    """
+    channel_id = str(interaction.channel_id) if hasattr(interaction, "channel_id") else None
+    user_id = str(interaction.user.id) if hasattr(interaction, "user") else str(interaction)
+
+    async with get_db() as db:
+        # 1. Vérification par fil de forum
+        if channel_id:
+            cursor = await db.execute(
+                "SELECT discord_id, ally_code, username, forum_thread_id FROM players WHERE forum_thread_id = ?",
+                (channel_id,)
+            )
+            row = await cursor.fetchone()
+            if row:
+                return dict(row)
+
+        # 2. Fallback par discord_id (compte le plus récemment mis à jour)
+        cursor = await db.execute(
+            "SELECT discord_id, ally_code, username, forum_thread_id FROM players WHERE discord_id = ? ORDER BY updated_at DESC LIMIT 1",
+            (user_id,)
+        )
+        row = await cursor.fetchone()
+        if row:
+            return dict(row)
+
+    return None

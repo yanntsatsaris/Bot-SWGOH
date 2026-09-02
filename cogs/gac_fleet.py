@@ -76,14 +76,10 @@ async def capital_autocomplete(interaction: discord.Interaction, current: str) -
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
-async def _get_player_ships(discord_id: str) -> dict:
+async def _get_player_ships(target: Any) -> dict:
     """Retourne le roster de vaisseaux du joueur {base_id: {rarity, level}} ou {}."""
-    async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT ally_code FROM players WHERE discord_id = ?",
-            (str(discord_id),)
-        )
-        row = await cursor.fetchone()
+    from database.db import get_player_for_interaction
+    row = await get_player_for_interaction(target)
     if not row:
         return {}
 
@@ -321,7 +317,7 @@ class GacFleet(commands.Cog):
     ):
         await interaction.response.defer(thinking=True)
 
-        player_ships = await _get_player_ships(str(interaction.user.id))
+        player_ships = await _get_player_ships(interaction)
         has_roster = bool(player_ships)
 
         counters = await get_ship_counters(capital.upper())

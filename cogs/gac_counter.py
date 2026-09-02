@@ -72,15 +72,11 @@ async def _build_roster(ally_code: str) -> dict | None:
 
 async def _get_my_roster(interaction: discord.Interaction) -> tuple[dict | None, str | None, str | None]:
     """
-    Récupère le roster du joueur uniquement via la BDD (lié à son compte Discord).
+    Récupère le roster du joueur via la BDD (contexte multi-compte par fil forum ou ID Discord).
     Retourne (roster, ally_code, username)
     """
-    async with get_db() as db:
-        cursor = await db.execute(
-            "SELECT ally_code, username FROM players WHERE discord_id = ?",
-            (str(interaction.user.id),)
-        )
-        row = await cursor.fetchone()
+    from database.db import get_player_for_interaction
+    row = await get_player_for_interaction(interaction)
 
     if not row:
         return None, None, None

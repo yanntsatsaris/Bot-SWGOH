@@ -287,8 +287,8 @@ class GacCog(commands.Cog, name="GAC"):
                 """
                 INSERT INTO players (discord_id, ally_code, username)
                 VALUES (?, ?, ?)
-                ON CONFLICT(discord_id) DO UPDATE SET
-                    ally_code  = excluded.ally_code,
+                ON CONFLICT(ally_code) DO UPDATE SET
+                    discord_id = excluded.discord_id,
                     username   = excluded.username,
                     updated_at = datetime('now')
                 """,
@@ -305,11 +305,11 @@ class GacCog(commands.Cog, name="GAC"):
                 from cogs.forum_manager import create_player_forum_thread
                 from database.db import get_player_by_thread_id, set_player_forum_thread
 
-                # Vérifier si ce joueur a déjà un fil Forum enregistré en BDD
+                # Vérifier si ce compte précis a déjà un fil Forum enregistré en BDD
                 async with get_db() as db:
                     cursor = await db.execute(
-                        "SELECT forum_thread_id FROM players WHERE discord_id = ?",
-                        (discord_id,)
+                        "SELECT forum_thread_id FROM players WHERE discord_id = ? AND REPLACE(ally_code, '-', '') = ?",
+                        (discord_id, clean.replace("-", ""))
                     )
                     row = await cursor.fetchone()
                     existing_thread_id = row["forum_thread_id"] if row and row["forum_thread_id"] else None
@@ -328,14 +328,14 @@ class GacCog(commands.Cog, name="GAC"):
                     if existing_thread:
                         # Le fil existe → on pointe juste vers lui sans en recréer un
                         await interaction.followup.send(
-                            f"📌 Tu as déjà un fil personnel dans le forum : {existing_thread.mention}",
+                            f"📌 Tu as déjà un fil personnel pour ce compte (`{clean}`) : {existing_thread.mention}",
                             ephemeral=True,
                         )
                         return
                     else:
                         # Le fil a été supprimé → on nettoie et on en recrée un
-                        log.info("[Forum] Fil %s supprimé, recréation pour %s", existing_thread_id, discord_id)
-                        await set_player_forum_thread(discord_id, "")  # Nettoyage
+                        log.info("[Forum] Fil %s supprimé, recréation pour %s (%s)", existing_thread_id, discord_id, clean)
+                        await set_player_forum_thread(discord_id, "", ally_code=clean)  # Nettoyage
 
                 # Récupérer la ligue et le pseudo en jeu officiel via Comlink
                 league: str | None = None

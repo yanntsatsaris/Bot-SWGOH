@@ -7,9 +7,10 @@ CREATE_TABLES_SQL: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS players (
         id          INTEGER PRIMARY KEY AUTOINCREMENT,
-        discord_id  TEXT    NOT NULL UNIQUE,
+        discord_id  TEXT    NOT NULL,
         ally_code   TEXT    NOT NULL UNIQUE,
         username    TEXT    NOT NULL,
+        forum_thread_id TEXT,
         created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
         updated_at  TEXT    NOT NULL DEFAULT (datetime('now'))
     )
@@ -356,9 +357,10 @@ CREATE_TABLES_PG_SQL: list[str] = [
     """
     CREATE TABLE IF NOT EXISTS players (
         id          SERIAL PRIMARY KEY,
-        discord_id  TEXT    NOT NULL UNIQUE,
+        discord_id  TEXT    NOT NULL,
         ally_code   TEXT    NOT NULL UNIQUE,
         username    TEXT    NOT NULL,
+        forum_thread_id TEXT,
         created_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at  TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )

@@ -446,12 +446,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         except (discord.errors.NotFound, discord.errors.HTTPException) as e:
             log.warning("Impossible de defer l'interaction /gac-scout (délai 3s dépassé ou interaction inconnue) : %s", e)
         
-        my_ally_code = None
-        async with get_db() as db:
-            cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(interaction.user.id),))
-            row = await cursor.fetchone()
-            if row:
-                my_ally_code = row["ally_code"]
+        from database.db import get_player_for_interaction
+        player_info = await get_player_for_interaction(interaction)
+        my_ally_code = player_info["ally_code"] if player_info else None
                 
         if not my_ally_code:
             await self._send_response(interaction, content="❌ **Erreur** : Tu dois d'abord lier ton compte avec `/register <ton_ally_code>` pour utiliser le scouting ! Le bot a besoin de connaître ta ligue pour calibrer l'analyse.")
@@ -472,12 +469,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         try:
             async def on_scrape_finished(ally_code: str, inter: discord.Interaction):
                 try:
-                    my_ally_code = None
-                    async with get_db() as db:
-                        cursor = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (str(inter.user.id),))
-                        row = await cursor.fetchone()
-                        if row:
-                            my_ally_code = row["ally_code"]
+                    from database.db import get_player_for_interaction
+                    p_info = await get_player_for_interaction(inter)
+                    my_ally_code = p_info["ally_code"] if p_info else None
                             
                     from services.scouting import get_scout_data
                     from services.scout_image import generate_scout_map
@@ -694,10 +688,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         my_name = session.get("my_name") if session else interaction.user.display_name
         enemy_roster_index = session.get("enemy_roster_index") if session else {}
         
-        async with get_db() as db:
-            c = await db.execute("SELECT ally_code FROM players WHERE discord_id = ?", (discord_id,))
-            r = await c.fetchone()
-            if r: ally_code = r["ally_code"]
+        from database.db import get_player_for_interaction
+        p_info = await get_player_for_interaction(interaction)
+        if p_info:
+            ally_code = p_info["ally_code"]
                 
         # 3. Charger le roster du joueur (et de l'ennemi si pas dans la session)
         my_roster_index = {}

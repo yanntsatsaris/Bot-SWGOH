@@ -125,7 +125,7 @@ async def create_player_forum_thread(
         )
         thread = thread_with_msg.thread
         log.info("[Forum] Fil créé pour %s : %s (ID: %s) avec tags: %s", username, thread_name, thread.id, [t.name for t in applied_tags])
-        await set_player_forum_thread(discord_id, str(thread.id))
+        await set_player_forum_thread(discord_id, str(thread.id), ally_code=ally_code)
         return thread
     except discord.Forbidden:
         log.error("[Forum] Permission refusée pour créer un fil dans %s.", FORUM_CHANNEL_ID)

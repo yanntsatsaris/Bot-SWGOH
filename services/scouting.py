@@ -267,10 +267,18 @@ def _complete_fleet_lineup(
     return result
 
 
+# Tous les IDs de vaisseaux capitaux connus (pour détection directe dans le roster)
+ALL_CAPITAL_SHIP_IDS = {
+    "CAPITALLEVIATHAN", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALMONCALAMARICRUISER",
+    "CAPITALNEGOTIATOR", "CAPITALJEDICRUISER", "CAPITALMALEVOLENCE", "CAPITALCHIMAERA",
+    "CAPITALSTARDESTROYER", "CAPITALFINALIZER", "CAPITALRADDUS",
+}
+
 async def get_db_meta_fleets(mode: str = "defense") -> dict:
     """
     Récupère les compositions de flottes méta dynamiquement depuis la BDD (fleet_tier_list et ship_counters).
     GAC_FLEETS ne sert qu'en cas de secours extrême si la base est vide.
+    Retourne un dict: { 'CAPITALNEGOTIATOR': { 'members': [...], 'defense': int } }
     """
     fleets = {}
     try:
@@ -290,8 +298,10 @@ async def get_db_meta_fleets(mode: str = "defense") -> dict:
                 cap = (r["capital_ship"] or "").upper()
                 mems = json.loads(r["members_ids"] or "[]")
                 if cap and mems and cap not in fleets:
+                    # S'assurer que le capital lui-même est dans la liste members
+                    all_members = [cap] + [m.upper() for m in mems if m.upper() != cap]
                     fleets[cap] = {
-                        "members": [cap] + [m for m in mems if m.upper() != cap],
+                        "members": all_members,
                         "defense": max(1, int((r["hold_pct"] or 50) / 10))
                     }
 
@@ -310,8 +320,9 @@ async def get_db_meta_fleets(mode: str = "defense") -> dict:
                 cap = (r["def_capital"] or "").upper()
                 mems = json.loads(r["def_members_ids"] or "[]")
                 if cap and mems and cap not in fleets:
+                    all_members = [cap] + [m.upper() for m in mems if m.upper() != cap]
                     fleets[cap] = {
-                        "members": [cap] + [m for m in mems if m.upper() != cap],
+                        "members": all_members,
                         "defense": 8
                     }
     except Exception as e:
@@ -320,9 +331,55 @@ async def get_db_meta_fleets(mode: str = "defense") -> dict:
     # Secours si BDD totalement vide
     if not fleets:
         from services.gac_meta import GAC_FLEETS
-        fleets = GAC_FLEETS
+        fleets = dict(GAC_FLEETS)
 
     return fleets
+
+
+def _build_fleet_from_roster(roster_index: dict, used_base_ids: set, db_fleets: dict) -> list[dict]:
+    """
+    Fallback: construit une liste de flottes disponibles en scannant directement le roster
+    pour tous les vaisseaux capitaux connus, indépendamment de la BDD.
+    Retourne une liste triée prête pour le placement dans zones['Fleet'].
+    """
+    roster_upper = {k.upper(): v for k, v in (roster_index or {}).items()}
+    available = []
+
+    # Ordre de priorité des capitals (meilleure défense en premier)
+    cap_priority_order = [
+        "CAPITALLEVIATHAN", "CAPITALEXECUTOR", "CAPITALPROFUNDITY", "CAPITALMONCALAMARICRUISER",
+        "CAPITALNEGOTIATOR", "CAPITALJEDICRUISER", "CAPITALMALEVOLENCE", "CAPITALCHIMAERA",
+        "CAPITALSTARDESTROYER", "CAPITALFINALIZER", "CAPITALRADDUS",
+    ]
+
+    for cap in cap_priority_order:
+        cap_data = roster_upper.get(cap)
+        if not cap_data:
+            continue
+        rarity = cap_data.get("rarity", 0)
+        if rarity < 3:  # Minimum 3 étoiles pour être utilisable
+            continue
+
+        # Score de ce capital
+        score = rarity * 20 + cap_data.get("relic_tier", 0) * 10 + cap_data.get("gear_tier", 0)
+
+        # Membres depuis la BDD (si disponible) sinon depuis FLEET_SYNERGY_PRIORITY
+        if cap in db_fleets:
+            base_members = [m for m in db_fleets[cap]["members"] if m != cap]
+            defense_score = db_fleets[cap].get("defense", 5)
+        else:
+            base_members = FLEET_SYNERGY_PRIORITY.get(cap, [])
+            defense_score = 5
+
+        available.append({
+            "leader_id": cap,
+            "members": base_members,
+            "defense": defense_score,
+            "score": score
+        })
+
+    available.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
+    return available
 
 async def get_ship_base_ids() -> set:
     ships = set()
@@ -940,22 +997,29 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         "RADDUS": "CAPITALRADDUS",
         "ENDURANCE": "CAPITALJEDICRUISER",
     }
-    # 2. FLOTTES (Dynamique BDD via fleet_tier_list / ship_counters)
+    # 2. FLOTTES ENNEMI (Dynamique BDD via fleet_tier_list / ship_counters)
     db_fleets = await get_db_meta_fleets(mode="defense")
     available_fleets = []
+    enemy_upper = {k.upper(): v for k, v in enemy_index.items()}
     for cap_id, team_data in db_fleets.items():
         norm_cap = CAP_NORM.get(cap_id, cap_id)
-        if enemy_index.get(norm_cap) and enemy_index[norm_cap].get("rarity", 0) >= 5:
-            score = enemy_index[norm_cap].get("relic_tier", 0) * 10 + enemy_index[norm_cap].get("gear_tier", 0)
+        cap_data = enemy_upper.get(norm_cap)
+        if cap_data and cap_data.get("rarity", 0) >= 3:
+            score = cap_data.get("rarity", 0) * 20 + cap_data.get("relic_tier", 0) * 10 + cap_data.get("gear_tier", 0)
             available_fleets.append({
                 "leader_id": norm_cap,
-                "members": [m for m in team_data["members"] if m != norm_cap],
+                "members": [m for m in team_data["members"] if m.upper() != norm_cap],
                 "defense": team_data.get("defense", 5),
                 "score": score
             })
-            
+
+    # Fallback: scan direct du roster si aucune flotte trouvée via la BDD
+    if not available_fleets:
+        log.info("[PredictZones] ⚠️ Aucune flotte via BDD — fallback scan direct du roster ennemi")
+        available_fleets = _build_fleet_from_roster(enemy_index, used_base_ids, db_fleets)
+
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
-    
+
     fleet_quota = quotas.get("Fleet", 1)
     remaining_fleet_q = max(0, fleet_quota - len(zones["Fleet"]))
     for _ in range(remaining_fleet_q):
@@ -963,7 +1027,8 @@ async def _predict_zones(enemy_index: dict, quotas: dict, fmt: str, ship_base_id
         for f in available_fleets:
             cap = f["leader_id"]
             if cap not in used_base_ids and cap != "USED":
-                cap_rarity = (enemy_index.get(cap.upper()) or enemy_index.get(cap, {})).get("rarity", 7)
+                cap_data_r = enemy_upper.get(cap) or {}
+                cap_rarity = cap_data_r.get("rarity", 7)
                 max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
                 max_members = 3 + max_reinforcements
                 valid_members = _complete_fleet_lineup(cap, f["members"], enemy_index, used_base_ids, max_members=max_members)
@@ -1179,19 +1244,26 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
     # 2. FLOTTES DU JOUEUR (Dynamique BDD via fleet_tier_list / ship_counters)
     db_fleets = await get_db_meta_fleets(mode="defense")
     available_fleets = []
+    my_upper = {k.upper(): v for k, v in my_index.items()}
     for cap_id, team_data in db_fleets.items():
         norm_cap = CAP_NORM.get(cap_id, cap_id)
-        if my_index.get(norm_cap) and my_index[norm_cap].get("rarity", 0) >= 5:
-            score = my_index[norm_cap].get("relic_tier", 0) * 10 + my_index[norm_cap].get("gear_tier", 0)
+        cap_data = my_upper.get(norm_cap)
+        if cap_data and cap_data.get("rarity", 0) >= 3:
+            score = cap_data.get("rarity", 0) * 20 + cap_data.get("relic_tier", 0) * 10 + cap_data.get("gear_tier", 0)
             available_fleets.append({
                 "leader_id": norm_cap,
-                "members": [m for m in team_data["members"] if m != norm_cap],
+                "members": [m for m in team_data["members"] if m.upper() != norm_cap],
                 "defense": team_data.get("defense", 5),
                 "score": score
             })
-            
+
+    # Fallback: scan direct du roster si aucune flotte trouvée via la BDD
+    if not available_fleets:
+        log.info("[PlanUserDefense] ⚠️ Aucune flotte via BDD — fallback scan direct du roster joueur")
+        available_fleets = _build_fleet_from_roster(my_index, used_base_ids, db_fleets)
+
     available_fleets.sort(key=lambda x: (x["defense"], x["score"]), reverse=True)
-    
+
     fleet_quota = quotas.get("Fleet", 1)
     remaining_fleet_q = max(0, fleet_quota - len(zones["Fleet"]))
     for _ in range(remaining_fleet_q):
@@ -1199,11 +1271,13 @@ async def _plan_user_defense(ally_code: str, my_index: dict, quotas: dict, fmt: 
         for f in available_fleets:
             cap = f["leader_id"]
             if cap not in used_base_ids and cap != "USED":
-                cap_rarity = (my_index.get(cap.upper()) or my_index.get(cap, {})).get("rarity", 7)
+                cap_data_r = my_upper.get(cap) or {}
+                cap_rarity = cap_data_r.get("rarity", 7)
                 max_reinforcements = _get_fleet_max_reinforcements(cap_rarity)
                 # 3 vaisseaux de départ + max_reinforcements selon les étoiles du capital
                 max_members = 3 + max_reinforcements
                 valid_members = _complete_fleet_lineup(cap, f["members"], my_index, used_base_ids, max_members=max_members)
+                log.info(f"[PlanUserDefense] 🚀 Flotte {cap} | Rareté={cap_rarity}★ | Max renforts={max_reinforcements} | Membres retenus={len(valid_members)}")
                 zones["Fleet"].append({
                     "leader_id": cap,
                     "members_ids": valid_members,

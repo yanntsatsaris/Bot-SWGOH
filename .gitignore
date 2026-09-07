@@ -33,8 +33,3 @@ Thumbs.db
 # Dev Notes & Documentation interne (locale uniquement)
 dev_notes.md
 docs/
-
-
-.claude/
-graphify-out/
-CLAUDE.md

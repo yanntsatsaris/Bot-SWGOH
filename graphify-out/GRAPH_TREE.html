@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>/ — graphify tree viewer</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f9f9f9;
+      color: #333;
+    }
+    h1 {
+      margin: 20px 0 0 24px;
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: #1e3a56;
+    }
+    .controls {
+      margin: 20px 0 15px 24px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 18px;
+      background: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s ease-in-out;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button:hover {
+      background: #0056b3;
+    }
+    button:active {
+      background: #004085;
+    }
+    #tree-container {
+      width: calc(100vw - 48px); /* Adjust for body margin/padding */
+      height: 85vh;
+      overflow: auto;
+      border-radius: 8px;
+      background: #fff;
+      margin-left: 24px;
+      margin-right: 24px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: 1px solid #ddd;
+    }
+    svg {
+      background: #fff;
+      border-radius: 8px;
+      display: block; /* Important for D3 */
+    }
+    .node circle {
+      stroke-width: 2.5px;
+    }
+    .node text { /* Base style for the <text> container */
+      font: 13px 'Segoe UI', sans-serif;
+      paint-order: stroke fill; /* Ensures text is readable over lines */
+      stroke: #fff; /* White halo */
+      stroke-width: 3px; /* Halo thickness */
+      stroke-linejoin: round;
+      stroke-opacity: 0.85; /* Halo opacity */
+    }
+    .link {
+      fill: none;
+      stroke-opacity: 0.7;
+      stroke-width: 2px;
+    }
+  </style>
+</head>
+<body>
+  <h1>/ — Knowledge Graph</h1>
+  <div class="controls">
+    <button onclick="expandAll()">Expand All</button>
+    <button onclick="collapseAll()">Collapse All</button>
+    <button onclick="resetView()">Reset View</button>
+  </div>
+  <div id="tree-container">
+    <svg id="tree-svg" width="6000" height="8000"></svg>
+  </div>
+
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script>
+    const initialJsonData = {"name":"/","total_count":661,"children":[{"name":"_archive","total_count":110,"children":[{"name":"cogs","total_count":64,"children":[{"name":"gac_history.py","total_count":6,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".gac_history_fetch()","total_count":1,"children":[]},{"name":".gac_log()","total_count":1,"children":[]},{"name":"cogs/gac_history.py \u2014 Enregistrement des actions GAC","total_count":1,"children":[]},{"name":"GacHistoryCog","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]},{"name":"gac_planner.py","total_count":5,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".gac_defense_plan()","total_count":1,"children":[]},{"name":".gac_offense_plan()","total_count":1,"children":[]},{"name":"GacPlannerCog","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]},{"name":"gac_scanner.py","total_count":12,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".before_daily()","total_count":1,"children":[]},{"name":".cog_unload()","total_count":1,"children":[]},{"name":".daily_top50()","total_count":1,"children":[]},{"name":".gac_log_round()","total_count":1,"children":[]},{"name":".gac_log_team()","total_count":1,"children":[]},{"name":".gac_scan_start()","total_count":1,"children":[]},{"name":".gac_scan_top50()","total_count":1,"children":[]},{"name":"cogs/gac_scanner.py Commandes Discord pour lancer le scan GAC et l'auto-report\u2026","total_count":1,"children":[]},{"name":"GacScannerCog","total_count":1,"children":[]},{"name":"Scan automatique du Top 50 chaque semaine (nuit lundi\u2192mardi) apr\u00e8s la fin du\u2026","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]},{"name":"gac_test.py","total_count":33,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":"._refresh_button_styles()","total_count":1,"children":[]},{"name":"._refresh_content()","total_count":1,"children":[]},{"name":".btn_3v3()","total_count":1,"children":[]},{"name":".btn_5v5()","total_count":1,"children":[]},{"name":".callback()","total_count":1,"children":[]},{"name":".gac_test()","total_count":1,"children":[]},{"name":".on_timeout()","total_count":1,"children":[]},{"name":"_build_all_embeds()","total_count":1,"children":[]},{"name":"_build_header_embed()","total_count":1,"children":[]},{"name":"_build_team_embed()","total_count":1,"children":[]},{"name":"_get_teams()","total_count":1,"children":[]},{"name":"_load_teams_from_db()","total_count":1,"children":[]},{"name":"Affiche deux boutons : Format 5c5 / Format 3c3 et un s\u00e9lecteur de ligue.","total_count":1,"children":[]},{"name":"Charge les \u00e9quipes m\u00e9ta depuis la BDD pour le format et la ligue donn\u00e9s.","total_count":1,"children":[]},{"name":"cogs/gac_test.py \u2014 Commande /gac_test avec interface interactive (boutons +\u2026","total_count":1,"children":[]},{"name":"Commande de test de l'interface GAC.","total_count":1,"children":[]},{"name":"Construit un embed pour une \u00e9quipe. Le portrait du leader appara\u00eet en thumbnail\u2026","total_count":1,"children":[]},{"name":"D\u00e9sactive les boutons quand la vue expire.","total_count":1,"children":[]},{"name":"Embed d'en-t\u00eate affich\u00e9 au-dessus des \u00e9quipes.","total_count":1,"children":[]},{"name":"GacFormatView","total_count":1,"children":[]},{"name":"GacTestCog","total_count":1,"children":[]},{"name":"get_portrait_url()","total_count":1,"children":[]},{"name":"LeagueSelect","total_count":1,"children":[]},{"name":"Met \u00e0 jour l'apparence des boutons selon le format actif.","total_count":1,"children":[]},{"name":"Met \u00e0 jour le message existant.","total_count":1,"children":[]},{"name":"Retourne (teams, is_live_data). Tente la BDD d'abord, replie sur les donn\u00e9es de\u2026","total_count":1,"children":[]},{"name":"Retourne : 1 embed header + 1 embed par \u00e9quipe.","total_count":1,"children":[]},{"name":"Retourne l'URL du portrait d'un personnage via la r\u00e9solution de portrait_cache.","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"S\u00e9lecteur d\u00e9roulant pour choisir la ligue GAC.","total_count":1,"children":[]}]},{"name":"meta_manager.py","total_count":8,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".team_add()","total_count":1,"children":[]},{"name":".team_delete()","total_count":1,"children":[]},{"name":".team_list()","total_count":1,"children":[]},{"name":"cogs/meta_manager.py \u2014 Gestion manuelle de la base de donn\u00e9es m\u00e9ta GAC","total_count":1,"children":[]},{"name":"Commandes pour ajouter, modifier ou supprimer des \u00e9quipes m\u00e9ta manuellement.","total_count":1,"children":[]},{"name":"MetaManagerCog","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]}]},{"name":"debug_comlink_meta.py","total_count":2,"children":[{"name":"debug_comlink_meta.py \u2014 Affiche la structure des m\u00e9tadonn\u00e9es Comlink","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]}]},{"name":"debug_portraits.py","total_count":2,"children":[{"name":"debug_portraits.py \u2014 Diagnostic global (Persos + Vaisseaux)","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]}]},{"name":"dump_meta.py","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"find_gungans.py","total_count":1,"children":[{"name":"find_gungans()","total_count":1,"children":[]}]},{"name":"find_lang.py","total_count":1,"children":[{"name":"find_locales()","total_count":1,"children":[]}]},{"name":"find_rey.py","total_count":1,"children":[{"name":"find_rey()","total_count":1,"children":[]}]},{"name":"fix_portraits_auto.py","total_count":1,"children":[{"name":"fix_portraits()","total_count":1,"children":[]}]},{"name":"migrate.py","total_count":1,"children":[{"name":"run_migration()","total_count":1,"children":[]}]},{"name":"print_meta_keys.py","total_count":1,"children":[{"name":"print_keys()","total_count":1,"children":[]}]},{"name":"scripts","total_count":12,"children":[{"name":"check_reva.py","total_count":1,"children":[{"name":"check()","total_count":1,"children":[]}]},{"name":"inspect_db.py","total_count":1,"children":[{"name":"test()","total_count":1,"children":[]}]},{"name":"inspect_db2.py","total_count":1,"children":[{"name":"test()","total_count":1,"children":[]}]},{"name":"refactor_scouting.py","total_count":1,"children":[{"name":"refactor_predict_zones()","total_count":1,"children":[]}]},{"name":"sim_filter.py","total_count":1,"children":[{"name":"simulate()","total_count":1,"children":[]}]},{"name":"test_html.py","total_count":1,"children":[{"name":"check()","total_count":1,"children":[]}]},{"name":"test_parse.py","total_count":1,"children":[{"name":"test()","total_count":1,"children":[]}]},{"name":"check_exec.py","total_count":1,"children":[]},{"name":"check_reva2.py","total_count":1,"children":[]},{"name":"check_zones.py","total_count":1,"children":[]},{"name":"check_zones_urllib.py","total_count":1,"children":[]},{"name":"fetch_html.py","total_count":1,"children":[]}]},{"name":"services","total_count":17,"children":[{"name":"gac_meta_analyzer.py","total_count":7,"children":[{"name":"Calcule le taux d'utilisation d'un personnage parmi les joueurs scann\u00e9s.\u2026","total_count":1,"children":[]},{"name":"Calcule le win rate d'une \u00e9quipe d'attaque contre une d\u00e9fense sp\u00e9cifique. Bas\u00e9\u2026","total_count":1,"children":[]},{"name":"get_counter_win_rate()","total_count":1,"children":[]},{"name":"get_top_units_by_league()","total_count":1,"children":[]},{"name":"get_unit_usage_rate()","total_count":1,"children":[]},{"name":"Retourne les personnages les plus r\u00e9pandus dans une ligue.","total_count":1,"children":[]},{"name":"services/gac_meta_analyzer.py Analyse les snapshots stock\u00e9s pour g\u00e9n\u00e9rer des\u2026","total_count":1,"children":[]}]},{"name":"scouting_backup.py","total_count":7,"children":[{"name":"_build_roster_index()","total_count":1,"children":[]},{"name":"_is_gac_ready()","total_count":1,"children":[]},{"name":"_plan_user_defense()","total_count":1,"children":[]},{"name":"_predict_zones()","total_count":1,"children":[]},{"name":"get_omicron_dict()","total_count":1,"children":[]},{"name":"get_scout_data()","total_count":1,"children":[]},{"name":"get_ship_base_ids()","total_count":1,"children":[]}]},{"name":"swgoh_api.py","total_count":3,"children":[{"name":"fetch_player()","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re les donn\u00e9es compl\u00e8tes d'un joueur depuis l'API SWGOH.GG. Args:\u2026","total_count":1,"children":[]},{"name":"services/swgoh_api.py \u2014 Client HTTP asynchrone vers l'API SWGOH.GG","total_count":1,"children":[]}]}]},{"name":"test_playwright.py","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"test_scrape.py","total_count":1,"children":[{"name":"analyze_gac_html()","total_count":1,"children":[]}]},{"name":"test_scrape2.py","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"test_seleniumbase.py","total_count":1,"children":[{"name":"main()","total_count":1,"children":[]}]},{"name":"fetch_swgoh.py","total_count":1,"children":[]},{"name":"print_latest_loc.py","total_count":1,"children":[]}]},{"name":"cogs","total_count":177,"children":[{"name":"admin.py","total_count":26,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":"._check_initial_gac_data()","total_count":1,"children":[]},{"name":".admin_add_alias()","total_count":1,"children":[]},{"name":".admin_gac_lock()","total_count":1,"children":[]},{"name":".admin_inspect_history()","total_count":1,"children":[]},{"name":".admin_list_aliases()","total_count":1,"children":[]},{"name":".admin_preview_enemy_map()","total_count":1,"children":[]},{"name":".admin_reload()","total_count":1,"children":[]},{"name":".admin_remove_alias()","total_count":1,"children":[]},{"name":".before_periodic_sync()","total_count":1,"children":[]},{"name":".cog_load()","total_count":1,"children":[]},{"name":".cog_unload()","total_count":1,"children":[]},{"name":".debug_zetas()","total_count":1,"children":[]},{"name":".periodic_sync_gac_omicrons()","total_count":1,"children":[]},{"name":".ping()","total_count":1,"children":[]},{"name":".refresh_counters()","total_count":1,"children":[]},{"name":".reset_player_history()","total_count":1,"children":[]},{"name":".sync_commands()","total_count":1,"children":[]},{"name":".sync_datacrons()","total_count":1,"children":[]},{"name":".sync_gac_omicrons()","total_count":1,"children":[]},{"name":".sync_game_units()","total_count":1,"children":[]},{"name":"Actualisation automatique hebdomadaire (Mercredi) des Omicrons GAC et des\u2026","total_count":1,"children":[]},{"name":"AdminCog","total_count":1,"children":[]},{"name":"Commandes d'administration du bot et t\u00e2ches de fond.","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"V\u00e9rifie au d\u00e9marrage si les Omicrons GAC et les Datacrons sont initialis\u00e9s en\u2026","total_count":1,"children":[]}]},{"name":"forum_manager.py","total_count":17,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".on_thread_create()","total_count":1,"children":[]},{"name":"_find_tag()","total_count":1,"children":[]},{"name":"_normalize_tag_name()","total_count":1,"children":[]},{"name":"check_forum_access()","total_count":1,"children":[]},{"name":"cogs/forum_manager.py \u2014 Gestion du Salon Forum Discord Cr\u00e9e automatiquement un\u2026","total_count":1,"children":[]},{"name":"create_player_forum_thread()","total_count":1,"children":[]},{"name":"Cr\u00e9e un fil Forum personnel pour un joueur.","total_count":1,"children":[]},{"name":"ForumManagerCog","total_count":1,"children":[]},{"name":"Gestion du salon Forum \u2014 fil personnel par joueur.","total_count":1,"children":[]},{"name":"Met \u00e0 jour les tags d'un fil Forum (add_tags / remove_tags = cl\u00e9s de TAG_*).","total_count":1,"children":[]},{"name":"Normalise un nom de tag en retirant les \u00e9mojis et la ponctuation pour\u2026","total_count":1,"children":[]},{"name":"Recherche un tag disponible dans le salon Forum de fa\u00e7on flexible : -\u2026","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"Si un membre cr\u00e9e un fil manuellement dans notre Forum, on le supprime.","total_count":1,"children":[]},{"name":"update_thread_tags()","total_count":1,"children":[]},{"name":"V\u00e9rifie si l'utilisateur peut interagir avec le bot dans ce fil Forum. Retourne\u2026","total_count":1,"children":[]}]},{"name":"gac.py","total_count":11,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".edit_slot()","total_count":1,"children":[]},{"name":".help_command()","total_count":1,"children":[]},{"name":".register()","total_count":1,"children":[]},{"name":".reset_round()","total_count":1,"children":[]},{"name":"cogs/gac.py \u2014 Commandes slash li\u00e9es \u00e0 la Grande Ar\u00e8ne (GAC)","total_count":1,"children":[]},{"name":"Commandes d'analyse et de gestion de la Grande Ar\u00e8ne.","total_count":1,"children":[]},{"name":"GacCog","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"slot_autocomplete()","total_count":1,"children":[]},{"name":"unit_autocomplete()","total_count":1,"children":[]}]},{"name":"gac_counter.py","total_count":19,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":"._build_message_and_file()","total_count":1,"children":[]},{"name":"._record_and_advance()","total_count":1,"children":[]},{"name":".btn_autre()","total_count":1,"children":[]},{"name":".btn_defaite()","total_count":1,"children":[]},{"name":".btn_victoire()","total_count":1,"children":[]},{"name":".gac_counter()","total_count":1,"children":[]},{"name":".interaction_check()","total_count":1,"children":[]},{"name":"_build_roster()","total_count":1,"children":[]},{"name":"_get_my_roster()","total_count":1,"children":[]},{"name":"cogs/gac_counter.py \u2014 Commande /gac-counter Trouve les meilleurs counters pour\u2026","total_count":1,"children":[]},{"name":"CounterSuggestionView","total_count":1,"children":[]},{"name":"Emp\u00eache les autres joueurs d'interagir avec les boutons.","total_count":1,"children":[]},{"name":"GACCounterCog","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re le roster Comlink pour un ally_code donn\u00e9 et le transforme en index.","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re le roster du joueur via la BDD (contexte multi-compte par fil forum ou\u2026","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"unit_autocomplete()","total_count":1,"children":[]}]},{"name":"gac_fleet.py","total_count":25,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".admin_error()","total_count":1,"children":[]},{"name":".before_weekly_fleet_update()","total_count":1,"children":[]},{"name":".cog_unload()","total_count":1,"children":[]},{"name":".fleet_counter()","total_count":1,"children":[]},{"name":".fleet_tier()","total_count":1,"children":[]},{"name":".sync_all()","total_count":1,"children":[]},{"name":".sync_counters()","total_count":1,"children":[]},{"name":".sync_tier()","total_count":1,"children":[]},{"name":".weekly_fleet_update()","total_count":1,"children":[]},{"name":"_build_counter_embed()","total_count":1,"children":[]},{"name":"_build_tier_embed()","total_count":1,"children":[]},{"name":"_filter_counters_by_roster()","total_count":1,"children":[]},{"name":"_format_ship_name()","total_count":1,"children":[]},{"name":"_get_player_ships()","total_count":1,"children":[]},{"name":"capital_autocomplete()","total_count":1,"children":[]},{"name":"cogs/gac_fleet.py -- Commande /gac-fleet & T\u00e2che Hebdomadaire (Mercredi)\u2026","total_count":1,"children":[]},{"name":"Construit un embed Discord pour la tier list fleet.","total_count":1,"children":[]},{"name":"Construit un embed Discord pour les ship counters.","total_count":1,"children":[]},{"name":"Filtre les counters pour ne garder que ceux que le joueur peut utiliser.","total_count":1,"children":[]},{"name":"GacFleet","total_count":1,"children":[]},{"name":"Retourne le nom affiche d'un vaisseau.","total_count":1,"children":[]},{"name":"Retourne le roster de vaisseaux du joueur {base_id: {rarity, level}} ou {}.","total_count":1,"children":[]},{"name":"Scrape automatiquement tous les counters de vaisseaux et la tier list tous les\u2026","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]},{"name":"gac_global_meta.py","total_count":9,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".before_daily_meta_update()","total_count":1,"children":[]},{"name":".cog_unload()","total_count":1,"children":[]},{"name":".daily_meta_update()","total_count":1,"children":[]},{"name":".gac_meta_squads()","total_count":1,"children":[]},{"name":".update_meta_squads()","total_count":1,"children":[]},{"name":"GacGlobalMetaCog","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"T\u00e2che de fond hebdomadaire pour mettre \u00e0 jour la Meta GAC globale (Attack &\u2026","total_count":1,"children":[]}]},{"name":"gac_scout.py","total_count":38,"children":[{"name":"# NOTE: On ne sauvegarde PAS les zones ennemies automatiquement (enemy_defense)","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":"._send_response()","total_count":1,"children":[]},{"name":".btn_attack_plan()","total_count":1,"children":[]},{"name":".btn_cycle_counter()","total_count":1,"children":[]},{"name":".btn_loss()","total_count":1,"children":[]},{"name":".btn_record_combat()","total_count":1,"children":[]},{"name":".btn_refresh_plan()","total_count":1,"children":[]},{"name":".btn_reset()","total_count":1,"children":[]},{"name":".btn_valider()","total_count":1,"children":[]},{"name":".btn_win()","total_count":1,"children":[]},{"name":".cog_unload()","total_count":1,"children":[]},{"name":".daily_gac_round_reset()","total_count":1,"children":[]},{"name":".gac_record_battle()","total_count":1,"children":[]},{"name":".gac_scout()","total_count":1,"children":[]},{"name":".get_plan()","total_count":1,"children":[]},{"name":".interaction_check()","total_count":1,"children":[]},{"name":".interaction_check()","total_count":1,"children":[]},{"name":".on_select_slot()","total_count":1,"children":[]},{"name":".on_select_zone()","total_count":1,"children":[]},{"name":".refresh_plan_message()","total_count":1,"children":[]},{"name":"AttackPlanView","total_count":1,"children":[]},{"name":"Autocompl\u00e8te le code alli\u00e9 avec le dernier adversaire scout\u00e9 par l'utilisateur.","total_count":1,"children":[]},{"name":"Commande principale pour scouter un ennemi.","total_count":1,"children":[]},{"name":"DefenseValidationView","total_count":1,"children":[]},{"name":"enemy_code_autocomplete()","total_count":1,"children":[]},{"name":"Envoie ou \u00e9dite la r\u00e9ponse de l'interaction en toute s\u00e9curit\u00e9 avec fallback sur\u2026","total_count":1,"children":[]},{"name":"GACScoutCog","total_count":1,"children":[]},{"name":"G\u00e8re le verrouillage GAC (Mercredi 23h & 23h30) et la r\u00e9initialisation des\u2026","total_count":1,"children":[]},{"name":"SectorOutcomeSelectView","total_count":1,"children":[]},{"name":"SectorSlotSelectView","total_count":1,"children":[]},{"name":"SectorZoneSelectView","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]},{"name":"meta_scanner.py","total_count":15,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".before_daily_meta_scan()","total_count":1,"children":[]},{"name":".cog_unload()","total_count":1,"children":[]},{"name":".daily_meta_scan()","total_count":1,"children":[]},{"name":".force_scan()","total_count":1,"children":[]},{"name":"analyze_player_meta()","total_count":1,"children":[]},{"name":"Attend que le bot soit pr\u00eat avant de lancer la boucle.","total_count":1,"children":[]},{"name":"build_meta_report()","total_count":1,"children":[]},{"name":"Cog responsable du scan quotidien de la m\u00e9ta via Comlink.","total_count":1,"children":[]},{"name":"cogs/meta_scanner.py \u2014 T\u00e2che de fond pour scanner la m\u00e9ta GAC via Comlink","total_count":1,"children":[]},{"name":"MetaScannerCog","total_count":1,"children":[]},{"name":"Pour chaque joueur, on pr\u00e9dit ses \u00e9quipes, puis on agr\u00e8ge pour trouver les\u2026","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re le roster d'un joueur et pr\u00e9dit ses \u00e9quipes probables en utilisant le\u2026","total_count":1,"children":[]},{"name":"Scan les classements de chaque ligue et reconstruit les statistiques m\u00e9ta.\u2026","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]}]},{"name":"review_portraits.py","total_count":16,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".btn_invalid()","total_count":1,"children":[]},{"name":".btn_valid()","total_count":1,"children":[]},{"name":".fix_portrait()","total_count":1,"children":[]},{"name":".list_incorrect_portraits()","total_count":1,"children":[]},{"name":".reset_portrait()","total_count":1,"children":[]},{"name":".review_portraits()","total_count":1,"children":[]},{"name":".send_next_review()","total_count":1,"children":[]},{"name":".update_status()","total_count":1,"children":[]},{"name":"cogs/review_portraits.py \u2014 Commande pour valider manuellement les images\u2026","total_count":1,"children":[]},{"name":"image_autocomplete()","total_count":1,"children":[]},{"name":"PortraitReviewView","total_count":1,"children":[]},{"name":"ReviewPortraitsCog","total_count":1,"children":[]},{"name":"setup()","total_count":1,"children":[]},{"name":"unit_autocomplete()","total_count":1,"children":[]}]},{"name":"__init__.py","total_count":1,"children":[]}]},{"name":"config.py","total_count":1,"children":[{"name":"config.py \u2014 Chargement centralis\u00e9 de la configuration depuis .env","total_count":1,"children":[]}]},{"name":"database","total_count":131,"children":[{"name":"db.py","total_count":129,"children":[{"name":".__aenter__()","total_count":1,"children":[]},{"name":".__aexit__()","total_count":1,"children":[]},{"name":".__aiter__()","total_count":1,"children":[]},{"name":".__aiter__()","total_count":1,"children":[]},{"name":".__anext__()","total_count":1,"children":[]},{"name":".__await__()","total_count":1,"children":[]},{"name":".__contains__()","total_count":1,"children":[]},{"name":".__getitem__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".__iter__()","total_count":1,"children":[]},{"name":".__repr__()","total_count":1,"children":[]},{"name":"._run()","total_count":1,"children":[]},{"name":".commit()","total_count":1,"children":[]},{"name":".execute()","total_count":1,"children":[]},{"name":".executemany()","total_count":1,"children":[]},{"name":".fetchall()","total_count":1,"children":[]},{"name":".fetchone()","total_count":1,"children":[]},{"name":".get()","total_count":1,"children":[]},{"name":".items()","total_count":1,"children":[]},{"name":".keys()","total_count":1,"children":[]},{"name":".lastrowid()","total_count":1,"children":[]},{"name":".rollback()","total_count":1,"children":[]},{"name":".values()","total_count":1,"children":[]},{"name":"_translate_sql_to_pg()","total_count":1,"children":[]},{"name":"add_unit_alias()","total_count":1,"children":[]},{"name":"add_used_units()","total_count":1,"children":[]},{"name":"Ajoute ou met \u00e0 jour une abr\u00e9viation pour un personnage ou vaisseau.","total_count":1,"children":[]},{"name":"Charge la session GAC active (nom, code, ligue, format et roster reliques de\u2026","total_count":1,"children":[]},{"name":"Charge UNIQUEMENT les slots de d\u00e9fense adverse modifi\u00e9s manuellement via /gac-\u2026","total_count":1,"children":[]},{"name":"cleanup_old_gac_locks()","total_count":1,"children":[]},{"name":"clear_used_units()","total_count":1,"children":[]},{"name":"cycle_sector_counter_offset()","total_count":1,"children":[]},{"name":"database/db.py \u2014 Gestion des connexions Base de Donn\u00e9es (PostgreSQL & SQLite\u2026","total_count":1,"children":[]},{"name":"Enregistre en m\u00e9moire active le profil et les reliques de l'adversaire pour les\u2026","total_count":1,"children":[]},{"name":"Enregistre l'ensemble des zones de d\u00e9fense (joueur ou ennemie) dans\u2026","total_count":1,"children":[]},{"name":"Enregistre l'ID du fil Forum Discord li\u00e9 \u00e0 un compte sp\u00e9cifique d'un joueur.","total_count":1,"children":[]},{"name":"Enregistre une liste d'unit\u00e9s comme br\u00fbl\u00e9es/utilis\u00e9es pour le round en cours.","total_count":1,"children":[]},{"name":"Enveloppe de connexion pour ex\u00e9cuter des requ\u00eates via asyncpg avec la syntaxe\u2026","total_count":1,"children":[]},{"name":"Enveloppe de curseur pour standardiser fetchall / fetchone sur asyncpg.","total_count":1,"children":[]},{"name":"Enveloppe pour les enregistrements asyncpg afin d'offrir un acc\u00e8s dict et\u2026","total_count":1,"children":[]},{"name":"Gestionnaire de contexte asynchrone universel pour obtenir une connexion\u2026","total_count":1,"children":[]},{"name":"get_active_datacron_sets()","total_count":1,"children":[]},{"name":"get_active_sector_statuses()","total_count":1,"children":[]},{"name":"get_all_registered_players()","total_count":1,"children":[]},{"name":"get_all_unit_aliases()","total_count":1,"children":[]},{"name":"get_attack_team_by_slot()","total_count":1,"children":[]},{"name":"get_bracket_opponents()","total_count":1,"children":[]},{"name":"get_character_metadata()","total_count":1,"children":[]},{"name":"get_counter_feedback_stats()","total_count":1,"children":[]},{"name":"get_counters_from_db()","total_count":1,"children":[]},{"name":"get_datacron_template()","total_count":1,"children":[]},{"name":"get_datacrons_for_character()","total_count":1,"children":[]},{"name":"get_db()","total_count":1,"children":[]},{"name":"get_fleet_tier_list()","total_count":1,"children":[]},{"name":"get_gac_valid_omicrons()","total_count":1,"children":[]},{"name":"get_known_def_capitals()","total_count":1,"children":[]},{"name":"get_locked_roster()","total_count":1,"children":[]},{"name":"get_pg_pool()","total_count":1,"children":[]},{"name":"get_player_by_thread_id()","total_count":1,"children":[]},{"name":"get_player_for_interaction()","total_count":1,"children":[]},{"name":"get_ship_counters()","total_count":1,"children":[]},{"name":"get_used_units()","total_count":1,"children":[]},{"name":"Incr\u00e9mente l'offset du contre pour ce secteur (Option #1 -> Option #2...) et\u2026","total_count":1,"children":[]},{"name":"init_db()","total_count":1,"children":[]},{"name":"Initialise les abr\u00e9viations par d\u00e9faut si elles ne sont pas d\u00e9j\u00e0 en base.","total_count":1,"children":[]},{"name":"Initialise ou retourne le pool de connexions PostgreSQL (asyncpg).","total_count":1,"children":[]},{"name":"Initialise toutes les tables (PostgreSQL si configur\u00e9, sinon SQLite).","total_count":1,"children":[]},{"name":"is_postgres()","total_count":1,"children":[]},{"name":"load_active_gac_session()","total_count":1,"children":[]},{"name":"load_manual_enemy_slots()","total_count":1,"children":[]},{"name":"load_user_defense_zones()","total_count":1,"children":[]},{"name":"Met \u00e0 jour le statut d'un secteur (OPEN, CLEARED, FAILED) et optionnellement\u2026","total_count":1,"children":[]},{"name":"Nettoie les anciens snapshots de rosters verrouill\u00e9s et anciennes poules GAC.\u2026","total_count":1,"children":[]},{"name":"Permet \u00e0 db.execute() d'\u00eatre soit attendu (await db.execute()), soit utilis\u00e9 en\u2026","total_count":1,"children":[]},{"name":"PGConnectionWrapper","total_count":1,"children":[]},{"name":"PGCursorWrapper","total_count":1,"children":[]},{"name":"PGExecuteContext","total_count":1,"children":[]},{"name":"PGRowWrapper","total_count":1,"children":[]},{"name":"Reconstruit le dictionnaire de zones (North, South, Back, Fleet) depuis\u2026","total_count":1,"children":[]},{"name":"record_counter_feedback()","total_count":1,"children":[]},{"name":"Recupere la tier list fleet pour un cote/ligue/saison donnes.","total_count":1,"children":[]},{"name":"Recupere le snapshot verrouille d'un joueur (reconstruit le profil pour\u2026","total_count":1,"children":[]},{"name":"Recupere les adversaires de la poule GAC d'un joueur.","total_count":1,"children":[]},{"name":"Recupere les ship counters pour un capital ship defensif donne.","total_count":1,"children":[]},{"name":"remove_unit_alias()","total_count":1,"children":[]},{"name":"Remplace l'\u00e9quipe pos\u00e9e sur un emplacement (zone + slot_index) sp\u00e9cifique.","total_count":1,"children":[]},{"name":"Retourne l'ensemble des base_ids des personnages br\u00fbl\u00e9s/utilis\u00e9s par le joueur\u2026","total_count":1,"children":[]},{"name":"Retourne la liste de tous les joueurs enregistres sur le bot.","total_count":1,"children":[]},{"name":"Retourne la liste de toutes les abr\u00e9viations enregistr\u00e9es.","total_count":1,"children":[]},{"name":"Retourne la liste des capital ships defensifs deja scrapes.","total_count":1,"children":[]},{"name":"Retourne la liste des Omicrons valides pour la GAC sous forme de dictionnaire :\u2026","total_count":1,"children":[]},{"name":"Retourne la liste des sets de Datacrons actifs avec leurs templates.","total_count":1,"children":[]},{"name":"Retourne le compte joueur li\u00e9 au contexte de l'interaction (Multi-compte) : 1.\u2026","total_count":1,"children":[]},{"name":"Retourne le joueur associ\u00e9 \u00e0 un fil de forum Discord.","total_count":1,"children":[]},{"name":"Retourne les informations compl\u00e8tes d'un template de Datacron.","total_count":1,"children":[]},{"name":"Retourne True si DATABASE_URL est configur\u00e9 pour PostgreSQL.","total_count":1,"children":[]},{"name":"Retourne un dictionnaire {(zone, slot_index): [base_id, ...]} avec les unit\u00e9s\u2026","total_count":1,"children":[]},{"name":"Retourne un dictionnaire {(zone, slot_index): {'status': status,\u2026","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re les m\u00e9tadonn\u00e9es enrichies d'un personnage (alignement, r\u00f4le, factions,\u2026","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re tous les counters pour un leader d\u00e9fensif donn\u00e9. Retourne les donn\u00e9es\u2026","total_count":1,"children":[]},{"name":"R\u00e9initialise les unit\u00e9s br\u00fbl\u00e9es et les \u00e9tats de secteurs pour un joueur ou pour\u2026","total_count":1,"children":[]},{"name":"Sauvegarde l'historique scrap\u00e9 en base de donn\u00e9es SQLite. Ins\u00e8re un round et\u2026","total_count":1,"children":[]},{"name":"Sauvegarde la liste des adversaires d'une poule de GAC.","total_count":1,"children":[]},{"name":"Sauvegarde le snapshot verrouille du profil d'un joueur.","total_count":1,"children":[]},{"name":"Sauvegarde les counters extraits de swgoh.gg en base de donn\u00e9es.","total_count":1,"children":[]},{"name":"Sauvegarde les entrees de la tier list fleet en base.","total_count":1,"children":[]},{"name":"Sauvegarde les ship counters pour un vaisseau mere defensif.","total_count":1,"children":[]},{"name":"Sauvegarde ou met \u00e0 jour la liste des Omicrons sp\u00e9cifiques \u00e0 la GAC.","total_count":1,"children":[]},{"name":"Sauvegarde ou met \u00e0 jour les sets, templates et affixes de Datacrons.","total_count":1,"children":[]},{"name":"save_active_gac_session()","total_count":1,"children":[]},{"name":"save_bracket_opponents()","total_count":1,"children":[]},{"name":"save_counters_to_db()","total_count":1,"children":[]},{"name":"save_datacron_data()","total_count":1,"children":[]},{"name":"save_fleet_tier_list()","total_count":1,"children":[]},{"name":"save_gac_history_to_db()","total_count":1,"children":[]},{"name":"save_gac_valid_omicrons()","total_count":1,"children":[]},{"name":"save_locked_roster()","total_count":1,"children":[]},{"name":"save_ship_counters()","total_count":1,"children":[]},{"name":"save_user_defense_slot()","total_count":1,"children":[]},{"name":"save_user_defense_zones()","total_count":1,"children":[]},{"name":"seed_default_unit_aliases()","total_count":1,"children":[]},{"name":"set_player_forum_thread()","total_count":1,"children":[]},{"name":"set_sector_status()","total_count":1,"children":[]},{"name":"Supprime une abr\u00e9viation.","total_count":1,"children":[]},{"name":"Traduit une requ\u00eate SQL SQLite avec placeholders '?' vers PostgreSQL '$1, $2,\u2026","total_count":1,"children":[]},{"name":"Trouve les Datacrons (actifs) qui ciblent sp\u00e9cifiquement un personnage donn\u00e9\u2026","total_count":1,"children":[]}]},{"name":"models.py","total_count":1,"children":[{"name":"database/models.py \u2014 Sch\u00e9mas SQL des tables SQLite","total_count":1,"children":[]}]},{"name":"__init__.py","total_count":1,"children":[]}]},{"name":"main.py","total_count":11,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".close()","total_count":1,"children":[]},{"name":".on_command_error()","total_count":1,"children":[]},{"name":".on_interaction()","total_count":1,"children":[]},{"name":".on_ready()","total_count":1,"children":[]},{"name":".setup_hook()","total_count":1,"children":[]},{"name":"Appel\u00e9 automatiquement par discord.py avant la connexion.","total_count":1,"children":[]},{"name":"Arr\u00eat propre des workers et des pools de connexions.","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]},{"name":"main.py \u2014 Point d'entr\u00e9e du bot SWGOH-GAC","total_count":1,"children":[]},{"name":"SwgohBot","total_count":1,"children":[]}]},{"name":"scripts","total_count":34,"children":[{"name":"bracket_sb_worker.py","total_count":3,"children":[{"name":"parse_bracket_html()","total_count":1,"children":[]},{"name":"scrape_bracket()","total_count":1,"children":[]},{"name":"scripts/bracket_sb_worker.py Worker SeleniumBase d\u00e9di\u00e9 pour r\u00e9cup\u00e9rer le\u2026","total_count":1,"children":[]}]},{"name":"counters_sb_worker.py","total_count":3,"children":[{"name":"extract_seasons_from_dropdown()","total_count":1,"children":[]},{"name":"Extrait automatiquement la liste ordonn\u00e9e des season_id pour le format demand\u00e9\u2026","total_count":1,"children":[]},{"name":"scrape()","total_count":1,"children":[]}]},{"name":"datacrons_sb_worker.py","total_count":4,"children":[{"name":"clean_character_id_from_url()","total_count":1,"children":[]},{"name":"Extrait le base_id ou nom de perso propre depuis une URL ou thumbnail.","total_count":1,"children":[]},{"name":"scrape_datacrons()","total_count":1,"children":[]},{"name":"scripts/datacrons_sb_worker.py \u2014 Worker SeleniumBase pour scrapper les\u2026","total_count":1,"children":[]}]},{"name":"fleet_tier_sb_worker.py","total_count":4,"children":[{"name":"normalize_ship_id()","total_count":1,"children":[]},{"name":"parse_tier_list_page()","total_count":1,"children":[]},{"name":"scrape_fleet_tier()","total_count":1,"children":[]},{"name":"scripts/fleet_tier_sb_worker.py Scrape la Tier List Fleet (attaque et/ou\u2026","total_count":1,"children":[]}]},{"name":"gac_omicrons_sb_worker.py","total_count":2,"children":[{"name":"scrape_gac_omicrons()","total_count":1,"children":[]},{"name":"scripts/gac_omicrons_sb_worker.py \u2014 Worker SeleniumBase pour scrapper la liste\u2026","total_count":1,"children":[]}]},{"name":"inspect_player_datacrons.py","total_count":2,"children":[{"name":"inspect()","total_count":1,"children":[]},{"name":"scripts/inspect_player_datacrons.py \u2014 Inspecte les Datacrons d'un joueur via\u2026","total_count":1,"children":[]}]},{"name":"meta_sb_worker.py","total_count":1,"children":[{"name":"scrape()","total_count":1,"children":[]}]},{"name":"migrate_sqlite_to_postgres.py","total_count":3,"children":[{"name":"main()","total_count":1,"children":[]},{"name":"migrate()","total_count":1,"children":[]},{"name":"scripts/migrate_sqlite_to_postgres.py \u2014 Script de migration complet SQLite vers\u2026","total_count":1,"children":[]}]},{"name":"sb_worker.py","total_count":1,"children":[{"name":"scrape()","total_count":1,"children":[]}]},{"name":"ship_counters_sb_worker.py","total_count":6,"children":[{"name":"_scrape_single_capital_flow()","total_count":1,"children":[]},{"name":"extract_seasons_from_dropdown()","total_count":1,"children":[]},{"name":"parse_ship_counter_panel()","total_count":1,"children":[]},{"name":"Scrape les pages 1 a 5 d'un capital ship dans la session Chrome active.","total_count":1,"children":[]},{"name":"scrape_ship_counters()","total_count":1,"children":[]},{"name":"scripts/ship_counters_sb_worker.py Scrape les counters de vaisseaux sur\u2026","total_count":1,"children":[]}]},{"name":"sync_portraits_swgoh.py","total_count":3,"children":[{"name":"download_image()","total_count":1,"children":[]},{"name":"fetch_json()","total_count":1,"children":[]},{"name":"process_swgoh_gg()","total_count":1,"children":[]}]},{"name":"test_comlink_unit.py","total_count":2,"children":[{"name":"fetch_unit_from_comlink()","total_count":1,"children":[]},{"name":"scripts/test_comlink_unit.py \u2014 Script de test Comlink pour inspecter les\u2026","total_count":1,"children":[]}]}]},{"name":"services","total_count":166,"children":[{"name":"comlink.py","total_count":11,"children":[{"name":"_decode_bundle()","total_count":1,"children":[]},{"name":"_post_raw()","total_count":1,"children":[]},{"name":"check_health()","total_count":1,"children":[]},{"name":"Conserve une m\u00e9thode _post_raw pour la compatibilit\u00e9 avec les requ\u00eates\u2026","total_count":1,"children":[]},{"name":"get_game_data()","total_count":1,"children":[]},{"name":"get_localization()","total_count":1,"children":[]},{"name":"get_player()","total_count":1,"children":[]},{"name":"get_player_roster()","total_count":1,"children":[]},{"name":"Retourne le profil brut complet d'un joueur depuis Comlink via le wrapper.","total_count":1,"children":[]},{"name":"scan_all_leaderboards()","total_count":1,"children":[]},{"name":"services/comlink.py \u2014 Client HTTP vers SWGOH Comlink utilisant le wrapper\u2026","total_count":1,"children":[]}]},{"name":"datacron_analyzer.py","total_count":7,"children":[{"name":"Analyse l'impact tactique complet d'un Datacron sur une escouade de 3 ou 5\u2026","total_count":1,"children":[]},{"name":"analyze_datacron_impact_on_squad()","total_count":1,"children":[]},{"name":"Extrait les cibles (alignement, faction, r\u00f4le, personnage) d'un palier de\u2026","total_count":1,"children":[]},{"name":"get_template_affixes()","total_count":1,"children":[]},{"name":"parse_affix_target_scopes()","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re les affixes actifs d'un template jusqu'\u00e0 un niveau donn\u00e9.","total_count":1,"children":[]},{"name":"services/datacron_analyzer.py \u2014 Analyse de l'impact tactique des Datacrons sur\u2026","total_count":1,"children":[]}]},{"name":"datacron_renderer.py","total_count":6,"children":[{"name":"_download_asset_if_missing()","total_count":1,"children":[]},{"name":"Assure le t\u00e9l\u00e9chargement et la mise en cache locale d'une texture Datacron.","total_count":1,"children":[]},{"name":"G\u00e9n\u00e8re le badge Datacron et retourne les octets PNG.","total_count":1,"children":[]},{"name":"render_datacron_badge()","total_count":1,"children":[]},{"name":"render_datacron_badge_bytes()","total_count":1,"children":[]},{"name":"services/datacron_renderer.py \u2014 G\u00e9n\u00e9rateur graphique officiel de badges\u2026","total_count":1,"children":[]}]},{"name":"datacron_scraper.py","total_count":5,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".scrape_and_sync()","total_count":1,"children":[]},{"name":"DatacronScraper","total_count":1,"children":[]},{"name":"Lance le scraping de swgoh.gg pour les Datacrons actifs et les enregistre en\u2026","total_count":1,"children":[]},{"name":"services/datacron_scraper.py \u2014 Service de scraping et gestion des Datacrons\u2026","total_count":1,"children":[]}]},{"name":"gac_attack_planner.py","total_count":5,"children":[{"name":"filter_counters_by_roster()","total_count":1,"children":[]},{"name":"Filtre et enrichit les counters selon le roster du joueur. Prend en compte le\u2026","total_count":1,"children":[]},{"name":"get_best_counter_with_memory()","total_count":1,"children":[]},{"name":"services/gac_attack_planner.py Planification et filtrage des counters.","total_count":1,"children":[]},{"name":"S\u00e9lectionne les meilleurs counters en int\u00e9grant l'historique de feedback et le\u2026","total_count":1,"children":[]}]},{"name":"gac_counter_engine.py","total_count":1,"children":[{"name":"services/gac_counter_engine.py \u2014 (Conserv\u00e9 pour compatibilit\u00e9 d'import) La\u2026","total_count":1,"children":[]}]},{"name":"gac_counters_scraper.py","total_count":11,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".ensure_counters_available()","total_count":1,"children":[]},{"name":".fetch_html_for_leader()","total_count":1,"children":[]},{"name":".refresh_counters_for_leader()","total_count":1,"children":[]},{"name":".refresh_counters_for_leaders_batch()","total_count":1,"children":[]},{"name":"GacCountersScraper","total_count":1,"children":[]},{"name":"Lance le worker pour r\u00e9cup\u00e9rer le HTML de la page des counters et le sauvegarde\u2026","total_count":1,"children":[]},{"name":"Lance le worker SeleniumBase en batch pour scrapper plusieurs leaders d'un coup.","total_count":1,"children":[]},{"name":"Lance le worker SeleniumBase pour scrapper les counters d'un leader d\u00e9fensif.\u2026","total_count":1,"children":[]},{"name":"services/gac_counters_scraper.py Service pour lancer le scraping des counters.","total_count":1,"children":[]},{"name":"V\u00e9rifie la pr\u00e9sence des contres en BDD. - Si un leader n'a AUCUN contre en BDD\u2026","total_count":1,"children":[]}]},{"name":"gac_history_scraper.py","total_count":14,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":"._extract_round_info_from_url()","total_count":1,"children":[]},{"name":"._parse_html()","total_count":1,"children":[]},{"name":"._worker_loop()","total_count":1,"children":[]},{"name":".queue_scrape()","total_count":1,"children":[]},{"name":".start()","total_count":1,"children":[]},{"name":".stop()","total_count":1,"children":[]},{"name":"Ajoute un joueur \u00e0 la file d'attente pour \u00eatre scrap\u00e9.","total_count":1,"children":[]},{"name":"Analyse l'HTML brut de swgoh.gg pour extraire les rounds et les \u00e9quipes\u2026","total_count":1,"children":[]},{"name":"Arr\u00eate proprement le scraper.","total_count":1,"children":[]},{"name":"Boucle principale qui d\u00e9pile et traite les requ\u00eates.","total_count":1,"children":[]},{"name":"D\u00e9marre le worker en arri\u00e8re-plan.","total_count":1,"children":[]},{"name":"Extrait ally_code, season_id et round_number depuis une URL swgoh.gg. Ex:\u2026","total_count":1,"children":[]},{"name":"GACHistoryScraper","total_count":1,"children":[]}]},{"name":"gac_lock_service.py","total_count":13,"children":[{"name":"_extract_season_id_from_profile()","total_count":1,"children":[]},{"name":"auto_lock_all_registered_players()","total_count":1,"children":[]},{"name":"Extrait le season_id actif depuis le profil Comlink d'un joueur.","total_count":1,"children":[]},{"name":"Extrait les ally codes des 7 adversaires depuis le HTML de la page /gac-\u2026","total_count":1,"children":[]},{"name":"fetch_bracket_from_swgoh_gg()","total_count":1,"children":[]},{"name":"lock_player_and_bracket()","total_count":1,"children":[]},{"name":"lock_single_player()","total_count":1,"children":[]},{"name":"parse_bracket_html()","total_count":1,"children":[]},{"name":"services/gac_lock_service.py \u2014 Service de Verrouillage (Lock) Automatique des\u2026","total_count":1,"children":[]},{"name":"Tente de r\u00e9cup\u00e9rer la page de bracket swgoh.gg et d'en extraire les 7\u2026","total_count":1,"children":[]},{"name":"T\u00e2che automatique : parcourt tous les joueurs enregistr\u00e9s sur le bot et\u2026","total_count":1,"children":[]},{"name":"T\u00e9l\u00e9charge et verrouille le profil d'un joueur (roster + datacrons) pour la\u2026","total_count":1,"children":[]},{"name":"Verrouille le profil du joueur enregistr\u00e9 ainsi que tous ses adversaires de\u2026","total_count":1,"children":[]}]},{"name":"gac_meta.py","total_count":1,"children":[{"name":"services/gac_meta.py \u2014 D\u00e9finitions centralis\u00e9es des \u00e9quipes et flottes Int\u00e8gre\u2026","total_count":1,"children":[]}]},{"name":"gac_meta_squads_scraper.py","total_count":7,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":"._parse_html()","total_count":1,"children":[]},{"name":"._save_to_db()","total_count":1,"children":[]},{"name":".fetch_and_parse()","total_count":1,"children":[]},{"name":"GacMetaSquadsScraper","total_count":1,"children":[]},{"name":"G\u00e9n\u00e8re l'URL, demande \u00e0 sb_worker.py de r\u00e9cup\u00e9rer le HTML (via le VPS), et\u2026","total_count":1,"children":[]},{"name":"Parse le tableau HTML pour extraire Units, Seen, Hold %, Banners et Season ID.","total_count":1,"children":[]}]},{"name":"gac_omicron_scraper.py","total_count":5,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".scrape_and_sync()","total_count":1,"children":[]},{"name":"GacOmicronScraper","total_count":1,"children":[]},{"name":"Lance le scraping de swgoh.gg pour les Omicrons GAC et les enregistre en base\u2026","total_count":1,"children":[]},{"name":"services/gac_omicron_scraper.py \u2014 Service de scraping et gestion des Omicrons\u2026","total_count":1,"children":[]}]},{"name":"gac_planner.py","total_count":6,"children":[{"name":"# IMPORTANT: On filtre avec SUM(seen) >= 10 pour exclure les \u00e9quipes\u2026","total_count":1,"children":[]},{"name":".__init__()","total_count":1,"children":[]},{"name":".get_team_suggestions()","total_count":1,"children":[]},{"name":"GacPlanner","total_count":1,"children":[]},{"name":"Retourne une liste d'\u00e9quipes sugg\u00e9r\u00e9es (par ordre de performance) que le joueur\u2026","total_count":1,"children":[]},{"name":"services/gac_planner.py Planifie des \u00e9quipes d'attaque et de d\u00e9fense en\u2026","total_count":1,"children":[]}]},{"name":"gac_scout_analyzer.py","total_count":3,"children":[{"name":".get_defensive_habits()","total_count":1,"children":[]},{"name":"Analyse les habitudes d\u00e9fensives d'un joueur en extrayant ses vrais matchs de\u2026","total_count":1,"children":[]},{"name":"GacScoutAnalyzer","total_count":1,"children":[]}]},{"name":"gac_ship_counters_scraper.py","total_count":13,"children":[{"name":".__init__()","total_count":1,"children":[]},{"name":".ensure_ship_counters_available()","total_count":1,"children":[]},{"name":".refresh_all_fleet_tier()","total_count":1,"children":[]},{"name":".refresh_all_ship_counters()","total_count":1,"children":[]},{"name":".refresh_fleet_tier_list()","total_count":1,"children":[]},{"name":".refresh_ship_counters()","total_count":1,"children":[]},{"name":"GacShipCountersScraper","total_count":1,"children":[]},{"name":"Lance le scraping de la tier list fleet pour un cote/ligue donnes. Retourne le\u2026","total_count":1,"children":[]},{"name":"Lance le scraping des counters pour un capital ship defensif. Retourne le\u2026","total_count":1,"children":[]},{"name":"Refresh la tier list pour tous les cotes et toutes les ligues.","total_count":1,"children":[]},{"name":"Refresh tous les ship counters (sequentiel pour eviter les bans).","total_count":1,"children":[]},{"name":"services/gac_ship_counters_scraper.py Service async pour scraper la tier list\u2026","total_count":1,"children":[]},{"name":"Verifie si les counters sont disponibles/recents pour les capitaux donnes.\u2026","total_count":1,"children":[]}]},{"name":"image_generator.py","total_count":17,"children":[{"name":"_circle_mask()","total_count":1,"children":[]},{"name":"_compute_height()","total_count":1,"children":[]},{"name":"_draw_portrait_cell()","total_count":1,"children":[]},{"name":"_draw_portrait_row()","total_count":1,"children":[]},{"name":"_find_font()","total_count":1,"children":[]},{"name":"_get_alignment()","total_count":1,"children":[]},{"name":"_get_font()","total_count":1,"children":[]},{"name":"_load_portrait()","total_count":1,"children":[]},{"name":"base_id_from_name()","total_count":1,"children":[]},{"name":"Charge la premi\u00e8re police TrueType disponible sur le syst\u00e8me.","total_count":1,"children":[]},{"name":"Charge le portrait depuis le cache local. Tente un t\u00e9l\u00e9chargement \u00e0 la vol\u00e9e si\u2026","total_count":1,"children":[]},{"name":"Cr\u00e9e un masque circulaire.","total_count":1,"children":[]},{"name":"Dessine une rang\u00e9e de portraits align\u00e9s horizontalement.","total_count":1,"children":[]},{"name":"generate_gac_report()","total_count":1,"children":[]},{"name":"G\u00e9n\u00e8re un rapport GAC sous forme d'image PNG et retourne un discord.File. Args:\u2026","total_count":1,"children":[]},{"name":"Reverse lookup nom \u2192 base_id via STATIC_NAMES.","total_count":1,"children":[]},{"name":"services/image_generator.py \u2014 G\u00e9n\u00e8re une image PNG du rapport GAC\u2026","total_count":1,"children":[]}]},{"name":"portrait_cache.py","total_count":9,"children":[{"name":"_load_data()","total_count":1,"children":[]},{"name":"build_portrait_cache()","total_count":1,"children":[]},{"name":"Charge le cache des donn\u00e9es d'unit\u00e9s et des chemins d'images valid\u00e9s depuis la\u2026","total_count":1,"children":[]},{"name":"download_portrait()","total_count":1,"children":[]},{"name":"get_portrait_path()","total_count":1,"children":[]},{"name":"get_unit_name()","total_count":1,"children":[]},{"name":"Retourne le nom lisible d'un personnage \u00e0 partir de son base_id.","total_count":1,"children":[]},{"name":"services/portrait_cache.py \u2014 Gestion du cache local des portraits et vaisseaux\u2026","total_count":1,"children":[]},{"name":"Tente de t\u00e9l\u00e9charger le portrait depuis swgoh.gg si absent du cache local.\u2026","total_count":1,"children":[]}]},{"name":"scout_image.py","total_count":5,"children":[{"name":"generate_attack_plan_image()","total_count":1,"children":[]},{"name":"generate_scout_map()","total_count":1,"children":[]},{"name":"G\u00e9n\u00e8re l'image PNG de la carte GAC scanned.","total_count":1,"children":[]},{"name":"G\u00e9n\u00e8re l'image PNG du Plan d'Attaque Global GAC (Retina HD). - Chaque c\u00f4t\u00e9\u2026","total_count":1,"children":[]},{"name":"services/scout_image.py \u2014 G\u00e9n\u00e8re la carte GAC (Scouting)","total_count":1,"children":[]}]},{"name":"scouting.py","total_count":21,"children":[{"name":"_build_roster_index()","total_count":1,"children":[]},{"name":"_complete_fleet_lineup()","total_count":1,"children":[]},{"name":"_get_fleet_max_reinforcements()","total_count":1,"children":[]},{"name":"_is_gac_ready()","total_count":1,"children":[]},{"name":"_plan_user_defense()","total_count":1,"children":[]},{"name":"_predict_zones()","total_count":1,"children":[]},{"name":"Associe intelligemment les Datacrons de l'inventaire du joueur aux escouades\u2026","total_count":1,"children":[]},{"name":"attach_datacrons_to_attack_plan()","total_count":1,"children":[]},{"name":"attach_datacrons_to_scouted_zones()","total_count":1,"children":[]},{"name":"Construit une composition de flotte compl\u00e8te (front + renforts jusqu'\u00e0\u2026","total_count":1,"children":[]},{"name":"generate_attack_plan()","total_count":1,"children":[]},{"name":"get_db_meta_fleets()","total_count":1,"children":[]},{"name":"get_gac_valid_omicron_units()","total_count":1,"children":[]},{"name":"get_omicron_dict()","total_count":1,"children":[]},{"name":"get_scout_data()","total_count":1,"children":[]},{"name":"get_ship_base_ids()","total_count":1,"children":[]},{"name":"get_zeta_dict()","total_count":1,"children":[]},{"name":"G\u00e9n\u00e8re un plan d'attaque global optimis\u00e9 pour l'ensemble de la carte ennemie.\u2026","total_count":1,"children":[]},{"name":"Retourne le nombre maximum de renforts autoris\u00e9s en fonction des \u00e9toiles du\u2026","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re les compositions de flottes m\u00e9ta dynamiquement depuis la BDD\u2026","total_count":1,"children":[]},{"name":"services/scouting.py \u2014 Moteur de Scouting Hybride pour la GAC","total_count":1,"children":[]}]},{"name":"unit_names.py","total_count":5,"children":[{"name":"_load_units_data()","total_count":1,"children":[]},{"name":"build_name_cache()","total_count":1,"children":[]},{"name":"Charge le cache depuis le fichier JSON g\u00e9n\u00e9r\u00e9 par sync_all_units.py, ou la BDD.","total_count":1,"children":[]},{"name":"get_name()","total_count":1,"children":[]},{"name":"services/unit_names.py \u2014 Gestion des noms des unit\u00e9s","total_count":1,"children":[]}]},{"name":"__init__.py","total_count":1,"children":[]}]},{"name":"sync_all_units.py","total_count":1,"children":[{"name":"sync()","total_count":1,"children":[]}]},{"name":"sync_assets.py","total_count":3,"children":[{"name":"download_alignments()","total_count":1,"children":[]},{"name":"download_asset()","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]}]},{"name":"sync_meta.py","total_count":20,"children":[{"name":"_ensure_unique_index()","total_count":1,"children":[]},{"name":"_parse_percent()","total_count":1,"children":[]},{"name":"_parse_single_squad()","total_count":1,"children":[]},{"name":"_squad_url()","total_count":1,"children":[]},{"name":"Convertit '72.5%' \u2192 0.725. Retourne None si non parsable.","total_count":1,"children":[]},{"name":"Cr\u00e9e l'index unique (leader_name, format) si absent.","total_count":1,"children":[]},{"name":"Extrait les \u00e9quipes m\u00e9ta depuis le HTML de SWGOH.GG. SWGOH.GG affiche ses\u2026","total_count":1,"children":[]},{"name":"fetch_page()","total_count":1,"children":[]},{"name":"get_connection()","total_count":1,"children":[]},{"name":"Ins\u00e8re ou met \u00e0 jour les \u00e9quipes dans meta_teams. Cl\u00e9 d'unicit\u00e9 : (leader_name,\u2026","total_count":1,"children":[]},{"name":"main()","total_count":1,"children":[]},{"name":"Ouvre une connexion SQLite synchrone (usage hors bot).","total_count":1,"children":[]},{"name":"Parse un seul bloc HTML de squad et retourne un dict normalis\u00e9.","total_count":1,"children":[]},{"name":"parse_squads()","total_count":1,"children":[]},{"name":"Retourne l'URL de la page squads pour le format demand\u00e9. Tente une d\u00e9tection\u2026","total_count":1,"children":[]},{"name":"R\u00e9cup\u00e8re une page HTML avec cloudscraper (g\u00e8re le challenge Cloudflare) et\u2026","total_count":1,"children":[]},{"name":"sync_format()","total_count":1,"children":[]},{"name":"sync_meta.py \u2014 Script de synchronisation des \u00e9quipes m\u00e9ta GAC depuis SWGOH.GG\u2026","total_count":1,"children":[]},{"name":"Synchronise les \u00e9quipes m\u00e9ta pour un format donn\u00e9. Retourne le nb de lignes.","total_count":1,"children":[]},{"name":"upsert_teams()","total_count":1,"children":[]}]},{"name":"utils","total_count":7,"children":[{"name":"gac_config.py","total_count":3,"children":[{"name":"get_gac_quotas()","total_count":1,"children":[]},{"name":"Retourne les quotas pour une ligue (ex: 'KYBER') et un format ('3v3' ou '5v5').","total_count":1,"children":[]},{"name":"utils/gac_config.py \u2014 Configuration des quotas GAC","total_count":1,"children":[]}]},{"name":"helpers.py","total_count":3,"children":[{"name":"format_ally_code()","total_count":1,"children":[]},{"name":"Normalise un code alli\u00e9 SWGOH au format XXX-XXX-XXX. Args: ally_code: Cha\u00eene\u2026","total_count":1,"children":[]},{"name":"utils/helpers.py \u2014 Fonctions utilitaires g\u00e9n\u00e9riques","total_count":1,"children":[]}]},{"name":"__init__.py","total_count":1,"children":[]}]}]};
+
+    function transformData(jsonData) {
+        // Helper function to recursively build the children structure
+        function processNode(node, parentL1StageName) {
+            let displayName = node.name;
+            // Append total_count if it exists and is not already in the name
+            if (node.total_count !== undefined) {
+                if (!/\(Total Count: \d+\)$/.test(displayName)) {
+                    displayName += ` (Total Count: ${node.total_count})`;
+                }
+            }
+
+            const newNode = { name: displayName };
+
+            if (parentL1StageName === "Root") {
+                 newNode.originalStageName = node.name;
+            } else {
+                newNode.originalStageName = parentL1StageName;
+            }
+
+            if (node.children && node.children.length > 0) {
+                const stageNameToPass = (parentL1StageName === "Root") ? node.name : parentL1StageName;
+                newNode.children = node.children.map(child => processNode(child, stageNameToPass));
+            }
+
+            return newNode;
+        }
+
+        let rootDisplayName = jsonData.name;
+        if (jsonData.total_count !== undefined && !/\(Total Count: \d+\)$/.test(rootDisplayName)) {
+            rootDisplayName += ` (Total Count: ${jsonData.total_count})`;
+        }
+
+        return {
+            name: rootDisplayName,
+            originalStageName: "Root",
+            children: (jsonData.children || []).map(child => processNode(child, "Root"))
+        };
+    }
+
+    const treeData = transformData(initialJsonData);
+
+    // Auto-populated phaseColors: every depth-1 child of the root gets
+    // a stable colour from a bigger palette so all top-level dirs are
+    // distinguishable.
+    const PALETTE = [
+      ["#3498DB","#2980B9","#AED6F1"], ["#2ECC71","#27AE60","#A9DFBF"],
+      ["#E74C3C","#C0392B","#F5B7B1"], ["#9B59B6","#8E44AD","#D7BDE2"],
+      ["#F39C12","#D68910","#FAD7A0"], ["#1ABC9C","#117864","#A2D9CE"],
+      ["#34495E","#1B2631","#ABB2B9"], ["#E67E22","#BA4A00","#F5CBA7"],
+      ["#16A085","#0E6655","#A2D9CE"], ["#D35400","#A04000","#EDBB99"],
+      ["#7F8C8D","#566573","#D5DBDB"], ["#C0392B","#7B241C","#F5B7B1"],
+      ["#2E86C1","#1B4F72","#A9CCE3"], ["#28B463","#196F3D","#A9DFBF"],
+      ["#AF7AC5","#6C3483","#D2B4DE"],
+    ];
+    const phaseColors = { "Root": { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+                          "Default": { fill: "#BDC3C7", stroke: "#95A5A6", collapsedFill: "#ECF0F1" } };
+    (initialJsonData.children || []).forEach((c, i) => {
+      const pal = PALETTE[i % PALETTE.length];
+      phaseColors[c.name] = { fill: pal[0], stroke: pal[1], collapsedFill: pal[2] };
+    });
+
+    const levelSpecificPalettes = {
+      0: { fill: "#4A4A4A", stroke: "#333333", collapsedFill: "#6C757D" },
+      2: { fill: "#6ab04c", stroke: "#508a38", collapsedFill: "#a3d391" },
+      3: { fill: "#f0932b", stroke: "#d0730f", collapsedFill: "#f6c07e" },
+      4: { fill: "#be2edd", stroke: "#a01cb3", collapsedFill: "#e08bf2" },
+      5: { fill: "#00a8ff", stroke: "#007ac1", collapsedFill: "#74d2ff" },
+      6: { fill: "#e55039", stroke: "#c23620", collapsedFill: "#f09a8d" },
+      default: { fill: "#747d8c", stroke: "#57606f", collapsedFill: "#a4b0be" }
+    };
+
+    const svgElement = d3.select("#tree-svg");
+    const initialSvgWidth = +svgElement.attr("width");
+    const initialSvgHeight = +svgElement.attr("height");
+    const margin = { top: 40, right: 120, bottom: 80, left: 450 };
+    let width = initialSvgWidth - margin.left - margin.right;
+    let height = initialSvgHeight - margin.top - margin.bottom;
+    const duration = 500;
+    let nodeCounter = 0;
+    const g = svgElement.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+    const treemap = d3.tree().nodeSize([40, 0]);
+    let rootNode = d3.hierarchy(treeData, d => d.children);
+    rootNode.x0 = 0;
+    rootNode.y0 = 0;
+
+    if (rootNode.children) {
+      rootNode.children.forEach(d_child => {
+        if (d_child.children) { collapseBranch(d_child); }
+      });
+    }
+    updateTree(rootNode);
+
+    function collapseBranch(d) { if (d.children) { d._children = d.children; d._children.forEach(collapseBranch); d.children = null; } }
+    function expandBranch(d) { if (d._children) { d.children = d._children; d._children = null; } if (d.children) { d.children.forEach(expandBranch); } }
+    window.expandAll = () => { expandBranch(rootNode); updateTree(rootNode); };
+    window.collapseAll = () => { if (rootNode.children) { rootNode.children.forEach(collapseBranch); } updateTree(rootNode); };
+    window.resetView = () => { if (rootNode.children) { rootNode.children.forEach(d_child => { if (d_child.children || d_child._children) { collapseBranch(d_child); } }); } if (rootNode._children && !rootNode.children) { rootNode.children = rootNode._children; rootNode._children = null; } updateTree(rootNode); };
+
+    function updateTree(source) {
+      const treeLayoutData = treemap(rootNode);
+      let nodes = treeLayoutData.descendants();
+      let links = treeLayoutData.descendants().slice(1);
+
+      let minX = 0;
+      let maxX = 0;
+      if (nodes.length > 0) {
+        minX = d3.min(nodes, d => d.x);
+        maxX = d3.max(nodes, d => d.x);
+      }
+
+      let neededHeight = Math.max(initialSvgHeight, maxX - minX + margin.top + margin.bottom + 100);
+      svgElement.transition().duration(duration / 2).attr("height", neededHeight);
+      g.transition().duration(duration / 2).attr("transform", `translate(${margin.left},${margin.top - minX + 40})`);
+
+      nodes.forEach(d => { d.y = d.depth * 400; }); // Adjust horizontal separation if needed
+
+      const node = g.selectAll('g.node').data(nodes, d => d.id || (d.id = ++nodeCounter));
+      const nodeEnter = node.enter().append('g')
+        .attr('class', d => "node" + (d.children || d._children ? " node--internal" : " node--leaf") + (d._children ? " _children" : ""))
+        .attr('transform', d => `translate(${source.y0},${source.x0})`)
+        .on('click', (event, d) => { if (d.children) { d._children = d.children; d.children = null; } else if (d._children) { d.children = d._children; d._children = null; } updateTree(d); })
+        .style('cursor', d => (d.children || d._children) ? 'pointer' : 'default');
+
+      nodeEnter.append('circle').attr('r', 1e-6);
+
+      nodeEnter.append('text')
+        .attr('dy', '.35em')
+        .attr('x', d => d.children || d._children ? -14 : 14)
+        .attr('text-anchor', d => d.children || d._children ? 'end' : 'start')
+        .style("fill-opacity", 1e-6)
+        .call(wrapText, 380);
+
+      const nodeUpdate = nodeEnter.merge(node);
+      nodeUpdate.transition().duration(duration)
+        .attr('transform', d => `translate(${d.y},${d.x})`)
+        .attr('class', d => "node" + (d.children ? " node--internal" : " node--leaf") + (d._children ? " node--internal _children" : ""));
+
+      nodeUpdate.select('circle').attr('r', 8.5)
+        .style('fill', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            if (d._children) return palette.collapsedFill;
+            if (d.children) return palette.fill;
+            return "#fff";
+        })
+        .style('stroke', d => {
+            let palette;
+            if (d.depth === 0) {
+                palette = levelSpecificPalettes[0];
+            } else if (d.depth === 1) {
+                palette = phaseColors[d.data.originalStageName] || phaseColors.Default;
+            } else {
+                palette = levelSpecificPalettes[d.depth] || levelSpecificPalettes.default;
+            }
+            return palette.stroke;
+        });
+      nodeUpdate.select('text').style("fill-opacity", 1).call(wrapText, 380);
+
+      const nodeExit = node.exit().transition().duration(duration).attr('transform', d => `translate(${source.y},${source.x})`).remove();
+      nodeExit.select('circle').attr('r', 1e-6);
+      nodeExit.select('text').style('fill-opacity', 1e-6);
+
+      const link = g.selectAll('path.link').data(links, d => d.id);
+      const linkEnter = link.enter().insert('path', "g").attr('class', 'link').attr('d', d => { const o = { x: source.x0, y: source.y0 }; return diagonal(o, o); });
+
+      linkEnter.merge(link).transition().duration(duration).attr('d', d => diagonal(d, d.parent))
+        .style('stroke', d => {
+            const sourceNode = d.parent;
+            if (!sourceNode) return phaseColors.Default.stroke;
+            const l1AncestorName = sourceNode.data.originalStageName;
+            const colorPalette = phaseColors[l1AncestorName] || phaseColors.Default;
+            return colorPalette.stroke;
+        });
+      link.exit().transition().duration(duration).attr('d', d => { const o = { x: source.x, y: source.y }; return diagonal(o, o); }).remove();
+      nodes.forEach(d => { d.x0 = d.x; d.y0 = d.y; });
+    }
+
+    function diagonal(s, d) { return `M ${s.y} ${s.x} C ${(s.y + d.y) / 2} ${s.x}, ${(s.y + d.y) / 2} ${d.x}, ${d.y} ${d.x}`; }
+
+    function wrapText(textElements, maxWidth) {
+        const textPartColors = {
+            name: '#343a40',
+            count: '#0056b3'
+        };
+        const countRegex = /(\s\(Total Count: \d+\))$/;
+
+        textElements.each(function () {
+            const textD3 = d3.select(this);
+            const originalNodeText = textD3.datum().data.name;
+            const x = parseFloat(textD3.attr("x") || 0);
+            const initialDy = textD3.attr("dy");
+            const textAnchor = textD3.attr("text-anchor");
+            const lineHeight = 1.1;
+
+            textD3.text(null);
+
+            let namePart = originalNodeText;
+            let countPartText = "";
+
+            const countMatch = originalNodeText.match(countRegex);
+            if (countMatch && originalNodeText.endsWith(countMatch[0])) {
+                namePart = originalNodeText.substring(0, originalNodeText.length - countMatch[0].length).trim();
+                countPartText = countMatch[0].trim();
+            }
+
+            const tokens = [];
+            namePart.split(/\s+/).filter(Boolean).forEach(word => {
+                tokens.push({ text: word, type: 'name' });
+            });
+            if (countPartText) {
+                tokens.push({ text: countPartText, type: 'count' });
+            }
+
+            if (tokens.length === 0 && originalNodeText) {
+                tokens.push({ text: originalNodeText, type: 'name' });
+            }
+
+            let currentTspan = textD3.append("tspan").attr("x", x).attr("dy", initialDy);
+            if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+
+            let lineTokens = [];
+
+            for (let i = 0; i < tokens.length; i++) {
+                const tokenObj = tokens[i];
+
+                lineTokens.push(tokenObj);
+                currentTspan.text(lineTokens.map(t => t.text).join(" "));
+
+                if (currentTspan.node().getComputedTextLength() > maxWidth && lineTokens.length > 1) {
+                    lineTokens.pop();
+
+                    currentTspan.text(null);
+                    lineTokens.forEach((prevToken, idx) => {
+                        currentTspan.append("tspan")
+                            .text((idx > 0 ? " " : "") + prevToken.text)
+                            .style("fill", textPartColors[prevToken.type] || textPartColors.name)
+                            .style("font-weight", prevToken.type === 'count' ? "bold" : "normal");
+                    });
+
+                    lineTokens = [tokenObj];
+                    currentTspan = textD3.append("tspan").attr("x", x).attr("dy", lineHeight + "em");
+                    if (textAnchor === "end") currentTspan.attr("text-anchor", "end");
+                }
+            }
+
+            currentTspan.text(null);
+            lineTokens.forEach((token, idx) => {
+                currentTspan.append("tspan")
+                    .text((idx > 0 ? " " : "") + token.text)
+                    .style("fill", textPartColors[token.type] || textPartColors.name)
+                    .style("font-weight", token.type === 'count' ? "bold" : "normal");
+            });
+
+            if (textD3.selectAll("tspan > tspan").empty() && textD3.select("tspan").text().length === 0 && originalNodeText) {
+                let t = textD3.select("tspan");
+                let displayText = originalNodeText;
+                t.text(displayText).style("fill", textPartColors.name);
+                if (t.node() && t.node().getComputedTextLength() > maxWidth && displayText.length > 20) {
+                    let estimatedChars = Math.floor(maxWidth / (t.node().getComputedTextLength()/displayText.length) );
+                    displayText = displayText.substring(0, Math.max(0, estimatedChars - 3)) + "...";
+                    t.text(displayText);
+                }
+            }
+        });
+    }
+  </script>
+</body>
+</html>

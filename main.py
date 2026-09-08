@@ -21,11 +21,23 @@ from logging.handlers import WatchedFileHandler
 # Chemin du log adapté selon l'OS (Linux vs Windows en dev)
 LOG_FILE = "/var/log/bot-swgoh/bot.log" if platform.system() == "Linux" else "bot.log"
 
+
+def build_file_handler(chemin: str) -> WatchedFileHandler:
+    """Retombe sur un fichier local plutôt que d'empêcher le démarrage du bot."""
+    repertoire = os.path.dirname(chemin)
+    try:
+        if repertoire:
+            os.makedirs(repertoire, exist_ok=True)
+        return WatchedFileHandler(chemin, encoding="utf-8")
+    except OSError:
+        return WatchedFileHandler(os.path.basename(chemin), encoding="utf-8")
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
-        WatchedFileHandler(LOG_FILE, encoding="utf-8"),
+        build_file_handler(LOG_FILE),
         logging.StreamHandler(sys.stdout),
     ],
 )

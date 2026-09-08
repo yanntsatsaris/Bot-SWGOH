@@ -253,7 +253,9 @@ async def init_db() -> None:
         log.info("🐘 Base de données PostgreSQL initialisée avec succès.")
     else:
         from database.models import CREATE_TABLES_SQL
-        os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
+        repertoire_db = os.path.dirname(DATABASE_PATH)
+        if repertoire_db:
+            os.makedirs(repertoire_db, exist_ok=True)
         async with aiosqlite.connect(DATABASE_PATH) as db:
             db.row_factory = aiosqlite.Row
             await db.execute("PRAGMA journal_mode=WAL")

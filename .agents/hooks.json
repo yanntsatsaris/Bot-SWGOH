@@ -1,0 +1,12 @@
+{
+  "integrity-gate": {
+    "enabled": true,
+    "Stop": [
+      {
+        "type": "command",
+        "command": ".venv/bin/python -m pytest tests/test_module_integrity.py tests/test_layering.py",
+        "timeout": 60
+      }
+    ]
+  }
+}

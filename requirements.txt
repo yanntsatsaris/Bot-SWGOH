@@ -1,5 +1,4 @@
-# Discord
-discord.py==2.4.0
+# Python 3.10 – 3.12, production sous 3.11.2. discord.py 2.4.0 importe `audioop`, retiré en 3.13 (PEP 594).
 
 # Discord
 discord.py==2.4.0
@@ -15,9 +14,8 @@ aiosqlite==0.20.0
 asyncpg==0.29.0
 
 # Web Scraping (utilisé par sync_meta.py)
-requests==2.32.3
+requests==2.31.0  # épinglé par seleniumbase 4.30.5
 beautifulsoup4==4.12.3
-
 lxml==5.3.0
 cloudscraper==1.2.71
 
@@ -25,7 +23,7 @@ cloudscraper==1.2.71
 Pillow==10.4.0
 
 # API Comlink officielle
-swgoh-comlink
+swgoh-comlink==2.3.0
 
 # Web Scraping Avancé (Contournement Cloudflare)
 seleniumbase==4.30.5

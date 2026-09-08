@@ -6,6 +6,7 @@ venv/
 
 # Cache Python
 __pycache__/
+.pytest_cache/
 *.pyc
 *.pyo
 *.pyd
@@ -30,11 +31,13 @@ build/
 .DS_Store
 Thumbs.db
 
-# Dev Notes & Documentation interne (locale uniquement)
+# Notes de travail personnelles (non partagées)
 dev_notes.md
-docs/
 
-
-.claude/
+# Les règles partagées (AGENTS.md, .agents/, .claude/) sont versionnées :
+# c'est le canal de connaissance commun au projet. Seul l'état local est ignoré.
+.claude/settings.local.json
 graphify-out/
-CLAUDE.md
+
+# Environnements virtuels
+.venv/

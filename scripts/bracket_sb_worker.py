@@ -50,6 +50,19 @@ def scrape_bracket(ally_code: str, output_json_path: str):
     exit_code = 1
     opponents = []
 
+    # Sélecteurs CSS valides pour la page bracket swgoh.gg (par ordre de priorité)
+    BRACKET_SELECTORS = [
+        "div.compare-players",
+        "div.gac-bracket-compare-app",
+        "div.compare-players__header-comparisons",
+        "div.compare-players__nameplate",
+        "div.compare-players__nameplate-ally-code",
+        ".nameplate-ally-code",
+        "[class*='compare-players']",
+        "[class*='bracket']",
+        "[class*='nameplate']",
+    ]
+
     try:
         if not is_windows:
             display = Display(visible=0, size=(1920, 1080))
@@ -70,15 +83,42 @@ def scrape_bracket(ally_code: str, output_json_path: str):
                 except Exception as e:
                     print(f"[BRACKET-WORKER] Clic captcha: {e}", flush=True)
                 sb.sleep(8)
-            else:
-                for _ in range(25):
-                    if sb.is_element_present("div.compare-players") or sb.is_element_present("div.gac-bracket-compare-app"):
-                        break
-                    sb.sleep(0.2)
+
+            # Attendre que le contenu soit chargé (SPA React — on essaie tous les sélecteurs connus)
+            page_loaded = False
+            for selector in BRACKET_SELECTORS:
+                try:
+                    sb.wait_for_element_present(selector, timeout=8)
+                    print(f"[BRACKET-WORKER] Élément trouvé : {selector}", flush=True)
+                    page_loaded = True
+                    break
+                except Exception:
+                    continue
+
+            if not page_loaded:
+                # Dernier recours : attendre 6s supplémentaires et tenter quand même
+                print("[BRACKET-WORKER] Aucun sélecteur bracket trouvé — attente 6s supplémentaires...", flush=True)
+                sb.sleep(6)
 
             page_html = sb.get_page_source()
             opponents = parse_bracket_html(page_html, clean_code)
             print(f"[BRACKET-WORKER] {len(opponents)} adversaires trouves pour {clean_code}: {opponents}", flush=True)
+
+            # Si toujours 0 : log le titre de la page pour diagnostic
+            if not opponents:
+                try:
+                    title = sb.get_title()
+                    print(f"[BRACKET-WORKER] Titre page: {title}", flush=True)
+                    # Chercher des ally codes dans toute la page (fallback agressif)
+                    all_codes = re.findall(r'\b(\d{3}[-]?\d{3}[-]?\d{3})\b', page_html)
+                    for c in all_codes:
+                        clean = c.replace("-", "").strip()
+                        if len(clean) == 9 and clean != clean_code and clean not in opponents:
+                            opponents.append(clean)
+                    if opponents:
+                        print(f"[BRACKET-WORKER] Fallback regex: {len(opponents)} codes trouvés", flush=True)
+                except Exception as diag_e:
+                    print(f"[BRACKET-WORKER] Diag: {diag_e}", flush=True)
 
         out_dir = os.path.dirname(os.path.abspath(output_json_path))
         os.makedirs(out_dir, exist_ok=True)

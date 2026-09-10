@@ -619,20 +619,22 @@ class AdminCog(commands.Cog, name="Admin"):
         description="[Admin] Déclenche immédiatement le verrouillage (Lock) des rosters et brackets GAC.",
     )
     @app_commands.describe(
-        ally_code="Ally code d'un joueur spécifique (optionnel, sinon tous les joueurs enregistrés)"
+        ally_code="Ally code d'un joueur spécifique (optionnel, sinon tous les joueurs enregistrés)",
+        force="Force le re-scrape swgoh.gg même si le bracket existe déjà en BDD (défaut: False)"
     )
     @app_commands.default_permissions(administrator=True)
-    async def admin_gac_lock(self, interaction: discord.Interaction, ally_code: str | None = None) -> None:
+    async def admin_gac_lock(self, interaction: discord.Interaction, ally_code: str | None = None, force: bool = False) -> None:
         await interaction.response.defer(ephemeral=True)
         from services.gac_lock_service import lock_player_and_bracket, auto_lock_all_registered_players
 
         try:
             if ally_code:
                 clean = ally_code.replace("-", "").strip()
-                res = await lock_player_and_bracket(clean)
+                res = await lock_player_and_bracket(clean, force_rescrape=force)
                 opp_list = [f"{o['name']} (`{o['ally_code']}`)" for o in res.get('opponents', [])]
+                force_note = " *(force re-scrape)*" if force else ""
                 await interaction.followup.send(
-                    f"🔒 **Lock GAC effectué pour `{clean}`** :\n"
+                    f"🔒 **Lock GAC effectué pour `{clean}`**{force_note} :\n"
                     f"• Joueurs verrouillés : **{res.get('locked_count', 0)}**\n"
                     f"• Saison : `{res.get('season_id', 'N/A')}`\n"
                     f"• Adversaires de poule ({len(opp_list)}) :\n" + ("\n".join([f"  └ {o}" for o in opp_list]) if opp_list else "  └ Aucun extrait"),
@@ -645,7 +647,7 @@ class AdminCog(commands.Cog, name="Admin"):
                     except Exception:
                         pass
 
-                results = await auto_lock_all_registered_players(progress_callback=progress)
+                results = await auto_lock_all_registered_players(progress_callback=progress, force_rescrape=force)
                 total_players = len(results)
                 total_locked = sum(r.get("locked_count", 0) for r in results.values())
 

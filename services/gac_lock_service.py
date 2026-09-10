@@ -142,9 +142,13 @@ async def fetch_bracket_from_swgoh_gg(ally_code: str) -> list[str]:
     return []
 
 
-async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str] = None) -> dict:
+async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str] = None, force_rescrape: bool = False) -> dict:
     """
     Verrouille le profil du joueur enregistré ainsi que tous ses adversaires de poule GAC.
+    
+    Si la BDD contient déjà un bracket complet (≥7 adversaires) pour cette saison,
+    le scraping swgoh.gg est skipé (idémpotence) sauf si force_rescrape=True.
+    Cela protège les bonnes données du run 21h00 lors du re-run 21h30.
     """
     clean_owner = str(owner_ally_code).replace("-", "").strip()
     owner_profile = await lock_single_player(clean_owner)
@@ -158,16 +162,26 @@ async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str
     if opponent_codes:
         opponents_to_lock = [str(c).replace("-", "").strip() for c in opponent_codes if str(c).replace("-", "").strip() != clean_owner]
 
-    # 2. Extraction automatique depuis le bracket swgoh.gg live
+    # 2. Vérifier si on a déjà un bracket complet en BDD pour cette saison
+    # (idempotence : ne pas écraser un bon bracket avec un résultat partiel dû à un conflit Chrome)
+    if not opponents_to_lock and not force_rescrape:
+        existing_bracket = await get_bracket_opponents(clean_owner, season_id)
+        if len(existing_bracket) >= 7:
+            # Bracket déjà complet — re-lock les profils existants sans re-scraper
+            log.info(f"[GacLock] ✅ Bracket déjà complet ({len(existing_bracket)} adversaires) pour {clean_owner} saison {season_id} — re-lock profils existants, skip scrape.")
+            opponents_to_lock = [r["opponent_code"] for r in existing_bracket]
+
+    # 3. Extraction automatique depuis le bracket swgoh.gg live (si pas encore de données complètes)
     if not opponents_to_lock:
         scraped_opps = await fetch_bracket_from_swgoh_gg(clean_owner)
         if scraped_opps:
             opponents_to_lock = scraped_opps
 
-    # 3. Fallback : vérifier si on a déjà des adversaires enregistrés en BDD pour cette saison
+    # 4. Fallback : vérifier si on a des adversaires en BDD (bracket partiel ou d'une saison précédente)
     if not opponents_to_lock:
         existing_bracket = await get_bracket_opponents(clean_owner, season_id)
         if existing_bracket:
+            log.info(f"[GacLock] 📂 Fallback BDD : {len(existing_bracket)} adversaire(s) existants pour {clean_owner}")
             opponents_to_lock = [r["opponent_code"] for r in existing_bracket]
 
     locked_opponents = []
@@ -198,13 +212,15 @@ async def lock_player_and_bracket(owner_ally_code: str, opponent_codes: list[str
     }
 
 
-async def auto_lock_all_registered_players(progress_callback=None) -> dict:
+async def auto_lock_all_registered_players(progress_callback=None, force_rescrape: bool = False) -> dict:
     """
     Tâche automatique : parcourt tous les joueurs enregistrés sur le bot et verrouille leurs profils.
+    Si force_rescrape=True, force le re-scrape swgoh.gg même si le bracket existe déjà en BDD.
     """
     players = await get_all_registered_players()
-    log.info(f"[GacAutoLock] 🚀 Démarrage du verrouillage automatique pour {len(players)} joueurs enregistrés...")
-    
+    log.info(f"[GacAutoLock] 🚀 Démarrage du verrouillage automatique pour {len(players)} joueurs enregistrés%s...",
+             " (force re-scrape)" if force_rescrape else "")
+
     results = {}
     for i, p in enumerate(players, 1):
         ac = p.get("ally_code")
@@ -216,7 +232,7 @@ async def auto_lock_all_registered_players(progress_callback=None) -> dict:
                 await progress_callback(f"⏳ **[{i}/{len(players)}]** Verrouillage de **{p_name}** (`{ac}`) & extraction poule swgoh.gg...")
             except Exception:
                 pass
-        res = await lock_player_and_bracket(ac)
+        res = await lock_player_and_bracket(ac, force_rescrape=force_rescrape)
         results[ac] = res
         await asyncio.sleep(0.5)
 

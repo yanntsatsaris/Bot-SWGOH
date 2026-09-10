@@ -244,8 +244,8 @@ class GacFleet(commands.Cog):
     def cog_unload(self):
         self.weekly_fleet_update.cancel()
 
-    # ─── Tâche Hebdomadaire (Mercredi soir ~23h30 Paris) ──────────────────────
-    @tasks.loop(time=datetime.time(hour=21, minute=30, tzinfo=datetime.timezone.utc))
+    # ─── Tâche Hebdomadaire (Mercredi minuit Paris = 22h00 UTC) ───────────────
+    @tasks.loop(time=datetime.time(hour=22, minute=0, tzinfo=datetime.timezone.utc))
     async def weekly_fleet_update(self):
         """
         Scrape automatiquement tous les counters de vaisseaux et la tier list

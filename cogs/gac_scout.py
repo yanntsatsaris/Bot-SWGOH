@@ -351,7 +351,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
 
     @tasks.loop(time=[
         datetime.time(hour=21, minute=0, tzinfo=datetime.timezone.utc),   # 23h00 Paris (Lock officiel & 1er essai poule)
-        datetime.time(hour=21, minute=30, tzinfo=datetime.timezone.utc),  # 23h30 Paris (Rattrapage si swgoh.gg a eu du retard)
+        datetime.time(hour=22, minute=30, tzinfo=datetime.timezone.utc),  # 00h30 Paris (Rattrapage — Fleet scraper terminé depuis 30min)
     ])
     async def daily_gac_round_reset(self) -> None:
         """

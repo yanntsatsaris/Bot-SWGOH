@@ -14,6 +14,21 @@ from config import FORUM_CHANNEL_ID
 
 log = logging.getLogger(__name__)
 
+# Cache court terme pour les lectures DB répétées lors de l'autocomplete (évite de re-payer la latence réseau à chaque frappe/tentative)
+_autocomplete_cache: dict[str, tuple[float, object]] = {}
+_AUTOCOMPLETE_CACHE_TTL = 15  # secondes
+
+
+async def _cached_fetch(key: str, factory):
+    import time
+    now = time.monotonic()
+    cached = _autocomplete_cache.get(key)
+    if cached and (now - cached[0]) < _AUTOCOMPLETE_CACHE_TTL:
+        return cached[1]
+    value = await factory()
+    _autocomplete_cache[key] = (now, value)
+    return value
+
 
 HELP_MESSAGE = """
 🤖 **Bienvenue sur Bot-SWGOH !**
@@ -212,8 +227,8 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
 
     # Les 3 requêtes sont indépendantes : on les lance en parallèle pour rester sous les 3s de Discord
     session_result, user_zones_result, cleared_slots = await asyncio.gather(
-        load_active_gac_session(discord_id),
-        load_user_defense_zones(discord_id, used_type_target),
+        _cached_fetch(f"session:{discord_id}", lambda: load_active_gac_session(discord_id)),
+        _cached_fetch(f"zones:{discord_id}:{used_type_target}", lambda: load_user_defense_zones(discord_id, used_type_target)),
         _fetch_cleared_slots(),
         return_exceptions=True,
     )

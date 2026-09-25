@@ -107,9 +107,9 @@ class SectorSlotSelectView(discord.ui.View):
             outcome_view = SectorOutcomeSelectView(self.parent_view, self.zone, slot_idx)
             await interaction.response.send_message(f"📌 **Secteur {self.zone} #{slot_idx}** — Sélectionne le résultat de ton combat :", view=outcome_view, ephemeral=True)
         else:
+            await interaction.response.defer(ephemeral=True)
             from database.db import cycle_sector_counter_offset
             new_off = await cycle_sector_counter_offset(str(interaction.user.id), self.zone, slot_idx)
-            await interaction.response.defer(ephemeral=True)
             await interaction.followup.send(f"🔄 **Secteur {self.zone} #{slot_idx}** — Passage à l'Alternative #{new_off + 1} ! Le plan global a été rééquilibré.", ephemeral=True)
             await self.parent_view.refresh_plan_message(interaction)
 
@@ -132,15 +132,16 @@ class SectorZoneSelectView(discord.ui.View):
 
     async def on_select_zone(self, interaction: discord.Interaction):
         zone = interaction.data["values"][0]
+        await interaction.response.defer(ephemeral=True)
         from database.db import get_active_sector_statuses
         statuses = await get_active_sector_statuses(str(interaction.user.id))
         cleared_slots = {s_idx for (z, s_idx), data in statuses.items() if z == zone and data.get("status") == "CLEARED"}
         
         slot_view = SectorSlotSelectView(self.parent_view, zone, self.action, cleared_slots=cleared_slots)
         if not slot_view.has_options:
-            await interaction.response.send_message(f"🎉 **Tous les secteurs de la zone {zone} sont déjà tombés !**", ephemeral=True)
+            await interaction.followup.send(f"🎉 **Tous les secteurs de la zone {zone} sont déjà tombés !**", ephemeral=True)
             return
-        await interaction.response.send_message(f"📍 **Zone {zone} sélectionnée.** Choisis l'emplacement :", view=slot_view, ephemeral=True)
+        await interaction.followup.send(f"📍 **Zone {zone} sélectionnée.** Choisis l'emplacement :", view=slot_view, ephemeral=True)
 
 
 class AttackPlanView(discord.ui.View):

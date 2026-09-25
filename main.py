@@ -10,7 +10,6 @@ from discord.ext import commands
 
 from config import DISCORD_TOKEN, DISCORD_GUILD_ID
 from database.db import init_db
-
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
@@ -48,6 +47,26 @@ INITIAL_EXTENSIONS = [
 
 
 # ---------------------------------------------------------------------------
+# Watchdog de la boucle asyncio — détecte les gels et journalise les threads actifs
+# ---------------------------------------------------------------------------
+async def _event_loop_watchdog(threshold: float = 1.0, interval: float = 0.5) -> None:
+    import faulthandler
+    import io
+    import time
+
+    last = time.monotonic()
+    while True:
+        await asyncio.sleep(interval)
+        now = time.monotonic()
+        lag = now - last - interval
+        if lag > threshold:
+            buf = io.StringIO()
+            faulthandler.dump_traceback(file=buf, all_threads=True)
+            log.warning("⚠️ Boucle asyncio gelée pendant %.2fs — threads actifs:\n%s", lag, buf.getvalue())
+        last = now
+
+
+# ---------------------------------------------------------------------------
 # Classe principale du bot
 # ---------------------------------------------------------------------------
 class SwgohBot(commands.Bot):
@@ -77,6 +96,9 @@ class SwgohBot(commands.Bot):
         # 1.5 Initialisation du Scraper en arrière-plan
         self.gac_scraper = GACHistoryScraper(get_db)
         await self.gac_scraper.start()
+
+        # 1.6 Watchdog de la boucle asyncio (diagnostic des gels)
+        asyncio.create_task(_event_loop_watchdog())
 
         # 2. Chargement des cogs
         for extension in INITIAL_EXTENSIONS:

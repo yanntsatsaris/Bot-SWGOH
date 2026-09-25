@@ -98,7 +98,8 @@ class SwgohBot(commands.Bot):
         await self.gac_scraper.start()
 
         # 1.6 Watchdog de la boucle asyncio (diagnostic des gels)
-        asyncio.create_task(_event_loop_watchdog())
+        # NOTE : la référence est gardée sur self, sinon la tâche peut être garbage-collectée (asyncio ne garde qu'une weakref)
+        self._watchdog_task = asyncio.create_task(_event_loop_watchdog())
 
         # 2. Chargement des cogs
         for extension in INITIAL_EXTENSIONS:

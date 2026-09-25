@@ -199,7 +199,8 @@ class AttackPlanView(discord.ui.View):
                 self.fmt = session["format"]
         
         plan = await generate_attack_plan(discord_id, self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
-        img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
+        # Rendu Pillow synchrone (CPU-bound) déchargé sur un thread pour ne pas geler l'event loop
+        img_buf = await asyncio.to_thread(generate_attack_plan_image, plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
         file_plan = discord.File(img_buf, filename="attack_plan.png")
         
         msg = (
@@ -291,7 +292,8 @@ class DefenseValidationView(discord.ui.View):
             await interaction.followup.send("⏳ **Génération du Plan d'Attaque Global en cours...** (Assignation optimale des contres secteur par secteur)...")
             
             plan = await generate_attack_plan(str(interaction.user.id), self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
-            img_buf = generate_attack_plan_image(plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
+            # Rendu Pillow synchrone (CPU-bound) déchargé sur un thread pour ne pas geler l'event loop
+            img_buf = await asyncio.to_thread(generate_attack_plan_image, plan, self.league, self.fmt, self.enemy_name, self.my_name, self.my_roster_index, self.enemy_roster_index)
             
             file_plan = discord.File(img_buf, filename="attack_plan.png")
             msg = (
@@ -753,7 +755,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
 
         # 5. Régénérer le plan complet rééquilibré
         new_plan = await generate_attack_plan(discord_id, my_roster_index, enemy_zones, fmt, league, enemy_roster_index)
-        img_buf = generate_attack_plan_image(new_plan, league, fmt, enemy_name, my_name, my_roster_index, enemy_roster_index)
+        # Rendu Pillow synchrone (CPU-bound) déchargé sur un thread pour ne pas geler l'event loop
+        img_buf = await asyncio.to_thread(generate_attack_plan_image, new_plan, league, fmt, enemy_name, my_name, my_roster_index, enemy_roster_index)
         file_plan = discord.File(img_buf, filename="attack_plan.png")
         
         units_str = ", ".join(get_name(u) for u in all_atk) if all_atk else "Équipe inconnue"

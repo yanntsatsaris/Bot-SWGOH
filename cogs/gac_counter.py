@@ -2,6 +2,7 @@
 cogs/gac_counter.py — Commande /gac-counter
 Trouve les meilleurs counters pour une équipe ennemie en GAC.
 """
+import asyncio
 import logging
 
 import discord
@@ -192,7 +193,8 @@ class CounterSuggestionView(discord.ui.View):
             
         mock_suggestions = [{"enemy_team": team_dict, "counters": counter_units}]
         
-        img_file = generate_gac_report(self.my_name, self.adv_name, mock_suggestions, self.format_type)
+        # Rendu Pillow synchrone (CPU-bound) déchargé sur un thread pour ne pas geler l'event loop
+        img_file = await asyncio.to_thread(generate_gac_report, self.my_name, self.adv_name, mock_suggestions, self.format_type)
 
         missing_str = ""
         if sugg.get("missing"):

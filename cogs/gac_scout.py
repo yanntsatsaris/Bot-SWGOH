@@ -661,7 +661,10 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         if not await check_forum_access(interaction):
             return
 
-        await interaction.response.defer(ephemeral=False)
+        try:
+            await interaction.response.defer(ephemeral=False)
+        except (discord.errors.NotFound, discord.errors.HTTPException) as e:
+            log.warning("Impossible de defer l'interaction /gac-record-battle (délai 3s dépassé ou interaction inconnue) : %s", e)
         discord_id = str(interaction.user.id)
         
         from database.db import set_sector_status, add_used_units, load_user_defense_zones, get_db

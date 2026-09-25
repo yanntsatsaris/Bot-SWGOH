@@ -700,13 +700,21 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         ship_base_ids = await get_ship_base_ids()
         
         if ally_code:
-            p_profile = await get_player(ally_code)
+            try:
+                p_profile = await get_player(ally_code)
+            except Exception as e:
+                log.warning(f"[gac-record-battle] Impossible de récupérer le profil Comlink pour {ally_code}: {e}")
+                p_profile = None
             if p_profile:
                 my_roster_index = _build_roster_index(p_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
                 my_name = p_profile.get("name", my_name)
                 
         if not enemy_roster_index and enemy_code:
-            e_profile = await get_player(enemy_code)
+            try:
+                e_profile = await get_player(enemy_code)
+            except Exception as e:
+                log.warning(f"[gac-record-battle] Impossible de récupérer le profil Comlink pour {enemy_code}: {e}")
+                e_profile = None
             if e_profile:
                 enemy_roster_index = _build_roster_index(e_profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
                 enemy_name = e_profile.get("name", enemy_name)

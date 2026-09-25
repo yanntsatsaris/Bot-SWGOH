@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 class SectorOutcomeSelectView(discord.ui.View):
     def __init__(self, parent_view, zone: str, slot_index: int):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)
         self.parent_view = parent_view
         self.zone = zone
         self.slot_index = slot_index
@@ -78,7 +78,7 @@ class SectorOutcomeSelectView(discord.ui.View):
 
 class SectorSlotSelectView(discord.ui.View):
     def __init__(self, parent_view, zone: str, action: str, cleared_slots: set = None):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)
         self.parent_view = parent_view
         self.zone = zone
         self.action = action
@@ -116,7 +116,7 @@ class SectorSlotSelectView(discord.ui.View):
 
 class SectorZoneSelectView(discord.ui.View):
     def __init__(self, parent_view, action: str):
-        super().__init__(timeout=60)
+        super().__init__(timeout=None)
         self.parent_view = parent_view
         self.action = action
 
@@ -669,7 +669,7 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             log.warning("Impossible de defer l'interaction /gac-record-battle (délai 3s dépassé ou interaction inconnue) : %s", e)
         discord_id = str(interaction.user.id)
         
-        from database.db import set_sector_status, add_used_units, load_user_defense_zones, get_db
+        from database.db import set_sector_status, add_used_units, load_user_defense_zones, save_user_defense_zones, get_db
         from services.scouting import generate_attack_plan, _build_roster_index, get_omicron_dict, get_zeta_dict, get_ship_base_ids
         from services.scout_image import generate_attack_plan_image
         from services.unit_names import get_name
@@ -735,6 +735,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 enemy_zones = await load_user_defense_zones(discord_id, "enemy_defense")
         else:
             enemy_zones = {"North": [], "South": [], "Back": [], "Fleet": []}
+
+        # Snapshot des zones ennemies mis en cache pour que l'autocomplete du slot affiche les vrais leaders
+        await save_user_defense_zones(discord_id, enemy_zones, "enemy_defense")
         
         my_zones = await load_user_defense_zones(discord_id, "defense")
 
@@ -760,15 +763,16 @@ class GACScoutCog(commands.Cog, name="GACScout"):
         file_plan = discord.File(img_buf, filename="attack_plan.png")
         
         units_str = ", ".join(get_name(u) for u in all_atk) if all_atk else "Équipe inconnue"
+        user_tag = f"<@{interaction.user.id}> "
         if resultat.value == "CLEARED":
             header_msg = (
-                f"✅ **Secteur {zone.name} #{slot} enregistré comme VICTOIRE (TOMBÉ) !**\n"
+                f"{user_tag}✅ **Secteur {zone.name} #{slot} enregistré comme VICTOIRE (TOMBÉ) !**\n"
                 f"🔥 **Unités utilisées & verrouillées** : {units_str}.\n"
                 f"Le secteur est désormais grisé (`✔ TOMBÉ`) et tous les autres contres ont été rééquilibrés avec tes troupes restantes."
             )
         else:
             header_msg = (
-                f"⚠ **Secteur {zone.name} #{slot} enregistré comme ÉCHEC (DÉFAITE) !**\n"
+                f"{user_tag}⚠ **Secteur {zone.name} #{slot} enregistré comme ÉCHEC (DÉFAITE) !**\n"
                 f"🔥 **Unités brûlées** : {units_str}.\n"
                 f"Un nouveau contre de rattrapage (2-shot) a été calculé avec tes unités restantes disponibles."
             )

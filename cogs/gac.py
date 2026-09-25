@@ -177,7 +177,10 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
     cmd_name = str(getattr(interaction.command, "name", "") or "").lower()
     cote_raw = str(getattr(interaction.namespace, "cote", "") or "").lower()
     
-    if "record-battle" in cmd_name or "enemy" in cote_raw or "adverse" in cote_raw:
+    if "record-battle" in cmd_name:
+        # Snapshot des zones ennemies scoutées, rafraîchi à chaque exécution de /gac-record-battle
+        used_type_target = "enemy_defense"
+    elif "enemy" in cote_raw or "adverse" in cote_raw:
         used_type_target = "enemy_defense_manual"
     else:
         used_type_target = "defense"

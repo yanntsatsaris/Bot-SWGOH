@@ -133,12 +133,10 @@ class SectorZoneSelectView(discord.ui.View):
     async def on_select_zone(self, interaction: discord.Interaction):
         zone = interaction.data["values"][0]
         await interaction.response.defer(ephemeral=True)
-        from database.db import get_active_sector_statuses, load_user_defense_zones
+        from database.db import get_active_sector_statuses
         
-        # Auto-réparation : si la vue utilisée par Discord n'a pas les zones ennemies en mémoire
-        # (ex: instance persistante par défaut suite à un routage de bouton ambigu), on recharge le dernier snapshot.
-        if not self.parent_view.enemy_zones:
-            self.parent_view.enemy_zones = await load_user_defense_zones(str(interaction.user.id), "enemy_defense")
+        # Auto-réparation : recharge l'état complet de la vue parente si elle a été perdue
+        await self.parent_view._ensure_state(interaction)
 
         statuses = await get_active_sector_statuses(str(interaction.user.id))
         cleared_slots = {s_idx for (z, s_idx), data in statuses.items() if z == zone and data.get("status") == "CLEARED"}
@@ -186,12 +184,14 @@ class AttackPlanView(discord.ui.View):
         from services.scouting import generate_attack_plan
         return await generate_attack_plan(str(discord_id), self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
 
-    async def refresh_plan_message(self, interaction: discord.Interaction):
-        from services.scouting import generate_attack_plan
-        from services.scout_image import generate_attack_plan_image
-        from database.db import load_active_gac_session
-        
+    async def _ensure_state(self, interaction: discord.Interaction) -> None:
+        """Auto-réparation : si cette instance de vue a perdu son état (ex: routage vers l'instance
+        persistante par défaut enregistrée via bot.add_view), on recharge tout depuis la BDD/Comlink."""
+        if self.my_roster_index and self.enemy_zones:
+            return
         discord_id = str(interaction.user.id)
+        from database.db import load_active_gac_session, load_user_defense_zones, get_player_for_interaction
+
         session = await load_active_gac_session(discord_id)
         if session:
             if not self.enemy_roster_index and session.get("enemy_roster_index"):
@@ -204,6 +204,31 @@ class AttackPlanView(discord.ui.View):
                 self.league = session["league"]
             if session.get("format"):
                 self.fmt = session["format"]
+
+        if not self.enemy_zones:
+            self.enemy_zones = await load_user_defense_zones(discord_id, "enemy_defense")
+
+        if not self.my_roster_index:
+            try:
+                from services.comlink import get_player
+                from services.scouting import _build_roster_index, get_omicron_dict, get_zeta_dict, get_ship_base_ids
+                p_info = await get_player_for_interaction(interaction)
+                if p_info and p_info.get("ally_code"):
+                    profile = await get_player(p_info["ally_code"])
+                    if profile:
+                        omicron_dict = await get_omicron_dict()
+                        zeta_dict = await get_zeta_dict()
+                        ship_base_ids = await get_ship_base_ids()
+                        self.my_roster_index = _build_roster_index(profile.get("rosterUnit", []), omicron_dict, zeta_dict, ship_base_ids)
+            except Exception as e:
+                log.warning("[_ensure_state] Impossible de recharger le roster : %s", e)
+
+    async def refresh_plan_message(self, interaction: discord.Interaction):
+        from services.scouting import generate_attack_plan
+        from services.scout_image import generate_attack_plan_image
+        
+        discord_id = str(interaction.user.id)
+        await self._ensure_state(interaction)
         
         plan = await generate_attack_plan(discord_id, self.my_roster_index, self.enemy_zones, self.fmt, self.league, self.enemy_roster_index)
         # Rendu Pillow synchrone (CPU-bound) déchargé sur un thread pour ne pas geler l'event loop

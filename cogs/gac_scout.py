@@ -133,7 +133,13 @@ class SectorZoneSelectView(discord.ui.View):
     async def on_select_zone(self, interaction: discord.Interaction):
         zone = interaction.data["values"][0]
         await interaction.response.defer(ephemeral=True)
-        from database.db import get_active_sector_statuses
+        from database.db import get_active_sector_statuses, load_user_defense_zones
+        
+        # Auto-réparation : si la vue utilisée par Discord n'a pas les zones ennemies en mémoire
+        # (ex: instance persistante par défaut suite à un routage de bouton ambigu), on recharge le dernier snapshot.
+        if not self.parent_view.enemy_zones:
+            self.parent_view.enemy_zones = await load_user_defense_zones(str(interaction.user.id), "enemy_defense")
+
         statuses = await get_active_sector_statuses(str(interaction.user.id))
         cleared_slots = {s_idx for (z, s_idx), data in statuses.items() if z == zone and data.get("status") == "CLEARED"}
         

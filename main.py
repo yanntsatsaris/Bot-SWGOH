@@ -128,12 +128,14 @@ class SwgohBot(commands.Bot):
 
     async def on_interaction(self, interaction: discord.Interaction) -> None:
         user_str = f"{interaction.user} (ID: {interaction.user.id})"
+        # Âge de l'interaction au moment où on_interaction s'exécute (délai réseau/gateway avant notre traitement)
+        age = (discord.utils.utcnow() - interaction.created_at).total_seconds()
         if interaction.type == discord.InteractionType.application_command:
             cmd_name = interaction.command.name if interaction.command else "Commande Inconnue"
-            log.info("📌 [COMMAND] Utilisation de /%s par %s", cmd_name, user_str)
+            log.info("📌 [COMMAND] Utilisation de /%s par %s (latence gateway=%.2fs, âge interaction=%.3fs)", cmd_name, user_str, self.latency, age)
         elif interaction.type == discord.InteractionType.component:
             custom_id = interaction.data.get("custom_id", "Bouton Inconnu")
-            log.info("🔘 [ACTION] Clic sur bouton [%s] par %s", custom_id, user_str)
+            log.info("🔘 [ACTION] Clic sur bouton [%s] par %s (latence gateway=%.2fs, âge interaction=%.3fs)", custom_id, user_str, self.latency, age)
 
     async def on_ready(self) -> None:
         log.info("Connecté en tant que %s (ID : %s)", self.user, self.user.id)

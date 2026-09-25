@@ -249,8 +249,15 @@ class AttackPlanView(discord.ui.View):
 
     @discord.ui.button(label="🔄 Autre Option", style=discord.ButtonStyle.primary, custom_id="btn_cycle_counter")
     async def btn_cycle_counter(self, interaction: discord.Interaction, button: discord.ui.Button):
+        import time
+        age = (discord.utils.utcnow() - interaction.created_at).total_seconds()
+        t0 = time.monotonic()
         view = SectorZoneSelectView(self, action="cycle")
-        await interaction.response.send_message("📌 **Changement de Contre** — Sélectionne le secteur dont tu souhaites voir l'Alternative suivante :", view=view, ephemeral=True)
+        try:
+            await interaction.response.send_message("📌 **Changement de Contre** — Sélectionne le secteur dont tu souhaites voir l'Alternative suivante :", view=view, ephemeral=True)
+        except Exception:
+            log.warning("[btn_cycle_counter] échec send_message après %.3fs (âge interaction au clic=%.3fs)", time.monotonic() - t0, age)
+            raise
 
     @discord.ui.button(label="🔄 Actualiser Carte", style=discord.ButtonStyle.secondary, custom_id="btn_refresh_plan")
     async def btn_refresh_plan(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -378,6 +385,8 @@ class GACScoutCog(commands.Cog, name="GACScout"):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.daily_gac_round_reset.start()
+        # Messages de secours (salon textuel) par interaction, pour éditer au lieu de spammer
+        self._fallback_messages: dict[int, discord.Message] = {}
 
     def cog_unload(self) -> None:
         if self.daily_gac_round_reset.is_running():
@@ -409,6 +418,9 @@ class GACScoutCog(commands.Cog, name="GACScout"):
             await clear_used_units()
             log.info("✅ Réinitialisation automatique terminée.")
 
+        # Purge du cache des messages de secours (évite une croissance illimitée)
+        self._fallback_messages.clear()
+
     async def _send_response(
         self,
         inter: discord.Interaction,
@@ -431,16 +443,32 @@ class GACScoutCog(commands.Cog, name="GACScout"):
                 kwargs = {}
                 if content is not None:
                     kwargs["content"] = content
+                if attachments is not None:
+                    kwargs["files"] = attachments
+                if view is not None:
+                    kwargs["view"] = view
                 await inter.response.send_message(**kwargs)
         except (discord.errors.NotFound, discord.errors.HTTPException) as e:
             log.warning("Échec réponse interaction (%s) — fallback sur le salon textuel", e)
             try:
                 user_tag = f"<@{inter.user.id}> "
                 full_content = f"{user_tag}{content}" if content else user_tag
-                kwargs = {"content": full_content}
-                if attachments:
-                    kwargs["files"] = attachments
-                await inter.channel.send(**kwargs)
+                fallback_msg = self._fallback_messages.get(inter.id)
+                if fallback_msg:
+                    # Édite le même message de secours au lieu d'en spammer un nouveau à chaque étape
+                    edit_kwargs = {"content": full_content}
+                    if attachments is not None:
+                        edit_kwargs["attachments"] = attachments
+                    if view is not None:
+                        edit_kwargs["view"] = view
+                    await fallback_msg.edit(**edit_kwargs)
+                else:
+                    send_kwargs = {"content": full_content}
+                    if attachments:
+                        send_kwargs["files"] = attachments
+                    if view is not None:
+                        send_kwargs["view"] = view
+                    self._fallback_messages[inter.id] = await inter.channel.send(**send_kwargs)
             except Exception as send_err:
                 log.error("Échec de l'envoi fallback sur le salon : %s", send_err)
 

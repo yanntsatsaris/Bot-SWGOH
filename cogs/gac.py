@@ -1,6 +1,7 @@
 """
 cogs/gac.py — Commandes slash liées à la Grande Arène (GAC)
 """
+import asyncio
 import logging
 
 import discord
@@ -190,45 +191,14 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
     from database.db import get_db, load_active_gac_session, load_user_defense_zones
     from services.unit_names import get_name
     from utils.gac_config import get_gac_quotas
-    from services.comlink import get_player
     
     league = "KYBER"
     format_type = "5v5"
-    
-    # 1. Récupérer la session active de l'utilisateur
-    try:
-        session = await load_active_gac_session(discord_id)
-        if session:
-            if session.get("league"):
-                league = session["league"].upper()
-            if session.get("format"):
-                format_type = session["format"]
-    except Exception as e:
-        log.debug("Erreur lecture session active pour slot_autocomplete: %s", e)
+    is_record_battle = "record-battle" in cmd_name
 
-    # 2. Quotas de la ligue
-    quotas = get_gac_quotas(league, format_type)
-    quota_slots = quotas.get(zone, 4 if league == "KYBER" else 2)
-
-    # 3. Charger les équipes actuelles enregistrées pour cette zone
-    slots_dict = {}
-    try:
-        user_zones = await load_user_defense_zones(discord_id, used_type_target)
-        zone_teams = user_zones.get(zone, [])
-        for idx, t in enumerate(zone_teams, 1):
-            s_idx = t.get("slot_index") or idx
-            ldr = t.get("leader_id")
-            if ldr and ldr not in ["USED", "None", "EMPTY", "Vide"]:
-                slots_dict[s_idx] = ldr
-    except Exception as e:
-        log.debug("Erreur lecture user_zones pour slot_autocomplete: %s", e)
-        zone_teams = []
-
-    max_slots = max(quota_slots, max(slots_dict.keys(), default=1), len(zone_teams))
-
-    # Récupération des secteurs déjà tombés (CLEARED) si record-battle
-    cleared_slots = set()
-    if "record-battle" in cmd_name:
+    async def _fetch_cleared_slots():
+        if not is_record_battle:
+            return set()
         try:
             async with get_db() as db:
                 c_cursor = await db.execute(
@@ -236,9 +206,49 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
                     (discord_id, zone)
                 )
                 c_rows = await c_cursor.fetchall()
-                cleared_slots = {r["slot_index"] for r in c_rows}
+                return {r["slot_index"] for r in c_rows}
         except Exception:
-            pass
+            return set()
+
+    # Les 3 requêtes sont indépendantes : on les lance en parallèle pour rester sous les 3s de Discord
+    session_result, user_zones_result, cleared_slots = await asyncio.gather(
+        load_active_gac_session(discord_id),
+        load_user_defense_zones(discord_id, used_type_target),
+        _fetch_cleared_slots(),
+        return_exceptions=True,
+    )
+
+    # 1. Session active (ligue / format)
+    session = session_result if not isinstance(session_result, Exception) else None
+    if session:
+        if session.get("league"):
+            league = session["league"].upper()
+        if session.get("format"):
+            format_type = session["format"]
+    elif isinstance(session_result, Exception):
+        log.debug("Erreur lecture session active pour slot_autocomplete: %s", session_result)
+
+    # 2. Quotas de la ligue
+    quotas = get_gac_quotas(league, format_type)
+    quota_slots = quotas.get(zone, 4 if league == "KYBER" else 2)
+
+    # 3. Charger les équipes actuelles enregistrées pour cette zone
+    slots_dict = {}
+    zone_teams = []
+    if isinstance(user_zones_result, Exception):
+        log.debug("Erreur lecture user_zones pour slot_autocomplete: %s", user_zones_result)
+    else:
+        zone_teams = user_zones_result.get(zone, [])
+        for idx, t in enumerate(zone_teams, 1):
+            s_idx = t.get("slot_index") or idx
+            ldr = t.get("leader_id")
+            if ldr and ldr not in ["USED", "None", "EMPTY", "Vide"]:
+                slots_dict[s_idx] = ldr
+
+    if isinstance(cleared_slots, Exception):
+        cleared_slots = set()
+
+    max_slots = max(quota_slots, max(slots_dict.keys(), default=1), len(zone_teams))
 
     choices = []
     for s_idx in range(1, max_slots + 1):
@@ -251,7 +261,7 @@ async def slot_autocomplete(interaction: discord.Interaction, current: str) -> l
             label = f"Slot #{s_idx} (Vide / À modifier)"
         choices.append(app_commands.Choice(name=label[:100], value=s_idx))
         
-    if not choices and "record-battle" in cmd_name:
+    if not choices and is_record_battle:
         choices.append(app_commands.Choice(name=f"🎉 Tous les secteurs de la zone {zone} sont tombés !", value=1))
         
     return choices[:25]
